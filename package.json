@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@ai-sdk/perplexity": "^2.0.11",
+    "ai": "^5.0.60",
+    "discord.js": "^14.22.1",
+    "dotenv": "^17.2.3"
+  }
+}
