@@ -108,15 +108,21 @@ async function generateImage(prompt) {
       features: { imageGeneration: true }
     });
 
-    console.log("Image generation response:", response); // Add this debug log
+    console.log("Full image generation response:", JSON.stringify(response, null, 2));
 
-    const images = response.images;
-
-    if (images && images.length > 0) {
-      return images[0];
-    } else {
-      throw new Error("No images generated");
+    if (response.steps && response.steps.length > 0) {
+      for (const step of response.steps) {
+        if (step.image) return step.image;
+        if (step.images && step.images.length > 0) return step.images[0];
+        if (step.content) {
+          // Search for URLs in content string or JSON stringified object
+          const contentStr = typeof step.content === "string" ? step.content : JSON.stringify(step.content);
+          const imageUrlMatch = contentStr.match(/https?:\/\/\S+\.(jpg|png|gif)/i);
+          if (imageUrlMatch) return imageUrlMatch[0];
+        }
+      }
     }
+    throw new Error("No images found in response");
   } catch (error) {
     console.error("Error generating image:", error);
     return null;
