@@ -99,22 +99,18 @@ Every reply should feel like it’s coming from a real buddy in a gaming Discord
 
 async function generateImage(prompt) {
   try {
-    const { images } = await generateText({
+    const response = await generateText({
       model: perplexity('sonar'),
       messages: [
-        {
-          role: "system",
-          content: "You are an AI that generates images from text prompts."
-        },
-        {
-          role: "user",
-          content: `Generate an image for this prompt: ${prompt}`
-        }
+        { role: "system", content: "You are an AI that generates images from text prompts." },
+        { role: "user", content: `Generate an image for this prompt: ${prompt}` }
       ],
-      features: {
-        imageGeneration: true
-      }
+      features: { imageGeneration: true }
     });
+
+    console.log("Image generation response:", response); // Add this debug log
+
+    const images = response.images;
 
     if (images && images.length > 0) {
       return images[0];
