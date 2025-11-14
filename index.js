@@ -1,7 +1,7 @@
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
-const fetch = require('node-fetch');
+const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 require('dotenv').config();
 
 // create provider instance w/ own api key
