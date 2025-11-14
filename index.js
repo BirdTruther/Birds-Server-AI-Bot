@@ -106,6 +106,5 @@ client.on(Events.MessageCreate, async (message) => {
         await message.reply(response);
     }
 });
-});
 
 client.login(process.env.DISCORD_TOKEN);
