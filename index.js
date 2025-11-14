@@ -1,6 +1,7 @@
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
+const fetch = require('node-fetch');
 require('dotenv').config();
 
 // create provider instance w/ own api key
@@ -79,10 +80,32 @@ client.on('ready', (readyClient) => {
 // if a message mentions the watcher, send message to perplexity
 client.on(Events.MessageCreate, async (message) => {
     console.log(`message created of type ${typeof message.content}: ${message}`);
+
+    // Prevent bot replying to itself
+    if (message.author.bot) return;
+
+    // Meme feature: Responds to “meme” in message
+    if (message.content.toLowerCase().includes('meme')) {
+        try {
+            const response = await fetch('https://meme-api.com/gimme');
+            const data = await response.json();
+            if (data && data.url) {
+                await message.channel.send({ content: data.title, files: [data.url] });
+            } else {
+                await message.channel.send('Could not fetch a meme right now. Try again later.');
+            }
+        } catch (err) {
+            await message.channel.send('Error fetching meme!');
+        }
+        return; // This stops further processing if meme was requested
+    }
+
+    // If the bot is mentioned, do AI response as before
     if (message.content.includes(`<@${client.user.id}>`)) {
         const response = await completion(message.content);
         await message.reply(response);
-    };
+    }
+});
 });
 
 client.login(process.env.DISCORD_TOKEN);
