@@ -71,7 +71,7 @@ async function completion(message) {
 // Your config for temporary VC creation
 const CREATE_VC_CHANNEL_ID = '1443458117420584971'; 
 const TEMP_VC_CATEGORY_ID = '1143323149648281650'; 
-const TEMP_VC_PREFIX = 'Temp VC';
+const TEMP_VC_PREFIX = 'Tarkov VC';
 
 // initialize discord bot with voice state intent added
 const client = new Client({
