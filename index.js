@@ -1,4 +1,4 @@
-const { Client, Events, GatewayIntentBits, ChannelType, PermissionFlagsBits } = require('discord.js');
+const { Client, Events, GatewayIntentBits } = require('discord.js');
 const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -68,83 +68,13 @@ async function completion(message) {
         return e
     }
 }
-// Your config for temporary VC creation
-const CREATE_VC_CHANNEL_ID = '1443458117420584971'; 
-const TEMP_VC_CATEGORY_ID = '1143323149648281650'; 
-const TEMP_VC_PREFIX = 'Tarkov VC';
 
-// initialize discord bot with voice state intent added
-const client = new Client({
-    intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages,
-        GatewayIntentBits.MessageContent,
-        GatewayIntentBits.GuildVoiceStates
-    ]
-});
+// initialize discord bot
+const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
 
 client.on('ready', (readyClient) => {
     console.log(`Logged in as ${readyClient.user.tag}`);
 });
-
-// Handle joins/leaves/moves in voice channels for temporary VC management
-client.on('voiceStateUpdate', async (oldState, newState) => {
-    const user = newState.member;
-    if (!user || user.user.bot) return;
-
-    // User joined a voice channel
-    if (!oldState.channelId && newState.channelId) {
-        if (newState.channelId === CREATE_VC_CHANNEL_ID) {
-            try {
-                const guild = newState.guild;
-                const channel = await guild.channels.create({
-                    name: `${TEMP_VC_PREFIX} - ${user.displayName}`,
-                    type: ChannelType.GuildVoice,
-                    parent: TEMP_VC_CATEGORY_ID || undefined,
-                    permissionOverwrites: [
-                        {
-                            id: guild.id,
-                            allow: [],
-                            deny: []
-                        },
-                        {
-                            id: user.id,
-                            allow: [PermissionFlagsBits.Connect, PermissionFlagsBits.Speak, PermissionFlagsBits.ManageChannels]
-                        }
-                    ]
-                });
-                await newState.setChannel(channel);
-            } catch (err) {
-                console.error('Error creating temp VC:', err);
-            }
-        }
-    }
-
-    // User left a voice channel
-    if (oldState.channelId && !newState.channelId) {
-        maybeDeleteTempChannel(oldState.channel);
-    }
-
-    // User switched voice channels
-    if (oldState.channelId && newState.channelId && oldState.channelId !== newState.channelId) {
-        maybeDeleteTempChannel(oldState.channel);
-    }
-});
-
-// Deletes empty temp voice channels
-async function maybeDeleteTempChannel(channel) {
-    if (!channel || channel.type !== ChannelType.GuildVoice) return;
-    if (!channel.name.startsWith(TEMP_VC_PREFIX)) return;
-
-    const hasNonBotMembers = channel.members.some(m => !m.user.bot);
-    if (!hasNonBotMembers) {
-        try {
-            await channel.delete('Temp voice channel empty');
-        } catch (err) {
-            console.error('Error deleting temp VC:', err);
-        }
-    }
-}
 
 // if a message mentions the watcher, send message to perplexity
 client.on(Events.MessageCreate, async (message) => {
