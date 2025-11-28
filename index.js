@@ -109,6 +109,15 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
     
+    //Auto dungeon join
+     if (message.toLowerCase().trim() === '!join') {
+        const allowedUser = 'TangiaBot'.toLowerCase();
+        if (tags.username.toLowerCase() === allowedUser) {
+            twitchClient.say(channel, '!join');
+            console.log(`[DUNGEON] Relayed !join from ${tags.username}`);
+        }
+        return;
+    }
     // Meme feature for Twitch
     if (message.toLowerCase().includes('meme')) {
         try {
