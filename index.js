@@ -103,6 +103,12 @@ twitchClient.on('message', async (channel, tags, message, self) => {
 
     console.log(`[TWITCH] ${tags.username}: ${message}`);
 
+    //Gives a link to this code
+    if (message.toLowerCase().includes('!code') || message.toLowerCase().includes('!github')) {
+        twitchClient.say(channel, 'Check out my code! 🤖 https://github.com/BirdTruther/Birds-Server-AI-Bot');
+        return;
+    }
+    
     // Meme feature for Twitch
     if (message.toLowerCase().includes('meme')) {
         try {
