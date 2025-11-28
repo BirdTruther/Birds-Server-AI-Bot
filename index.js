@@ -1,4 +1,5 @@
 const { Client, Events, GatewayIntentBits } = require('discord.js');
+const tmi = require('tmi.js');
 const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -68,6 +69,65 @@ async function completion(message) {
         return e
     }
 }
+
+// Twitch client configuration
+const twitchClient = new tmi.Client({
+    options: { debug: true },
+    identity: {
+        username: process.env.TWITCH_BOT_USERNAME,
+        password: process.env.TWITCH_OAUTH_TOKEN
+    },
+    channels: [process.env.TWITCH_CHANNEL]
+});
+
+// Connect to Twitch
+twitchClient.connect().catch(console.error);
+
+// When connected to Twitch
+twitchClient.on('connected', (address, port) => {
+    console.log(`Connected to Twitch chat at ${address}:${port}`);
+});
+
+// Listen to Twitch chat messages
+twitchClient.on('message', async (channel, tags, message, self) => {
+    // Ignore messages from the bot itself
+    if (self) return;
+
+    console.log(`[TWITCH] ${tags.username}: ${message}`);
+
+    // Meme feature for Twitch
+    if (message.toLowerCase().includes('meme')) {
+        try {
+            const response = await fetch('https://meme-api.com/gimme');
+            const data = await response.json();
+            if (data && data.url) {
+                twitchClient.say(channel, `${data.title} ${data.url}`);
+            } else {
+                twitchClient.say(channel, 'Could not fetch a meme right now. Try again later.');
+            }
+        } catch (err) {
+            twitchClient.say(channel, 'Error fetching meme!');
+        }
+        return;
+    }
+
+    // If bot is mentioned (using @BotName or !patrick)
+    if (message.toLowerCase().includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
+        message.toLowerCase().startsWith('!patrick')) {
+        
+        const response = await completion(message);
+        
+        // Twitch has a 500 character limit per message, so split if needed
+        if (response.length > 500) {
+            const chunks = response.match(/.{1,500}/g);
+            for (const chunk of chunks) {
+                await twitchClient.say(channel, chunk);
+            }
+        } else {
+            twitchClient.say(channel, response);
+        }
+    }
+});
 
 // initialize discord bot
 const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
