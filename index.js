@@ -110,7 +110,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     }
     
     //Auto dungeon join
-     if (message.toLowerCase().trim() === '!join') {
+     if (message.toLowerCase().includes() === '!join') {
         const allowedUser = 'TangiaBot'.toLowerCase();
         if (tags.username.toLowerCase() === allowedUser) {
             twitchClient.say(channel, '!join');
