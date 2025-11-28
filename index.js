@@ -88,6 +88,13 @@ twitchClient.on('connected', (address, port) => {
     console.log(`Connected to Twitch chat at ${address}:${port}`);
 });
 
+async function sendTwitchMessage(channel, text, delayMs = 1500) {
+    return new Promise((resolve) => {
+        twitchClient.say(channel, text);
+        setTimeout(resolve, delayMs);
+    });
+}
+
 // Listen to Twitch chat messages
 twitchClient.on('message', async (channel, tags, message, self) => {
     // Ignore messages from the bot itself
@@ -117,11 +124,28 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         
         const response = await completion(message);
         
-        // Twitch has a 500 character limit per message, so split if needed
-        if (response.length > 500) {
-            const chunks = response.match(/.{1,500}/g);
-            for (const chunk of chunks) {
-                await twitchClient.say(channel, chunk);
+        // Twitch has a 500 character limit per message
+        // Split into chunks if needed and send with delay
+        if (response.length > 480) {
+            // Split at sentence boundaries for cleaner messages
+            const sentences = response.match(/[^.!?]+[.!?]+/g) || [response];
+            let currentChunk = '';
+            
+            for (const sentence of sentences) {
+                // If adding this sentence would exceed limit, send current chunk
+                if ((currentChunk + sentence).length > 480) {
+                    if (currentChunk) {
+                        await sendTwitchMessage(channel, currentChunk.trim(), 1500);
+                    }
+                    currentChunk = sentence;
+                } else {
+                    currentChunk += sentence;
+                }
+            }
+            
+            // Send remaining chunk
+            if (currentChunk) {
+                await sendTwitchMessage(channel, currentChunk.trim(), 1500);
             }
         } else {
             twitchClient.say(channel, response);
