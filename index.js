@@ -110,14 +110,17 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     }
     
     //Auto dungeon join
-     if (message.toLowerCase().includes() === '!join') {
-        const allowedUser = 'TangiaBot'.toLowerCase();
-        if (tags.username.toLowerCase() === allowedUser) {
+     if (tags.username.toLowerCase() === 'tangiabot' && 
+        message.toLowerCase().includes('started a tangia dungeon') && 
+        message.toLowerCase().includes('!join')) {
+        // Wait 1 second then auto-join
+        setTimeout(() => {
             twitchClient.say(channel, '!join');
-            console.log(`[DUNGEON] Relayed !join from ${tags.username}`);
-        }
+            console.log('[DUNGEON] Auto-joined dungeon!');
+        }, 1000);
         return;
     }
+    
     // Meme feature for Twitch
     if (message.toLowerCase().includes('meme')) {
         try {
