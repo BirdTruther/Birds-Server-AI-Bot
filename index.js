@@ -158,25 +158,30 @@ if (message.toLowerCase() === '!trader') {
     return;
 }
 
-// !bestammo [caliber] - DEBUG CALIBERS FIRST
+/// !bestammo [caliber] - FINAL WORKING VERSION
 if (message.toLowerCase().startsWith('!bestammo ')) {
-    const caliber = message.substring(10).trim();
+    const searchCaliber = message.substring(10).trim().toLowerCase();
     const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
         const ammoList = data.itemsByType?.filter(item => 
             item.properties && item.properties.caliber
         ) || [];
         
-        // Show first 5 caliber examples
-        const sampleCalibers = ammoList.slice(0,5).map(item => item.properties.caliber).filter(Boolean);
-        console.log('[DEBUG] Sample calibers:', sampleCalibers);
+        // Convert user input to API format (5.56 → Caliber556x45NATO)
+        let apiCaliber = '';
+        if (searchCaliber.includes('5.56')) apiCaliber = 'Caliber556x45NATO';
+        else if (searchCaliber.includes('7.62x39')) apiCaliber = 'Caliber762x39';
+        else if (searchCaliber.includes('9mm') || searchCaliber.includes('9x19')) apiCaliber = 'Caliber9x19';
+        else if (searchCaliber.includes('7.62x54')) apiCaliber = 'Caliber762x54R';
+        else if (searchCaliber.includes('12g')) apiCaliber = 'Caliber12g';
+        else {
+            twitchClient.say(channel, `Try: 5.56, 7.62x39, 9mm, 7.62x54, 12g`);
+            return;
+        }
         
         const matchingAmmo = ammoList.filter(item => 
-            item.properties.caliber && 
-            item.properties.caliber.toLowerCase().includes(caliber.toLowerCase())
+            item.properties.caliber === apiCaliber
         );
-        
-        console.log('[DEBUG] Matching', caliber, ':', matchingAmmo.length);
         
         if (matchingAmmo.length > 0) {
             const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
@@ -186,12 +191,9 @@ if (message.toLowerCase().startsWith('!bestammo ')) {
             
             twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
         } else {
-            twitchClient.say(channel, `Try: 5.56x45, 7.62x39, 9x19 (check console for exact names)`);
+            twitchClient.say(channel, `No ${searchCaliber} ammo found`);
         }
-    }).catch(err => {
-        console.error('[BESTAMMO ERROR]', err);
-        twitchClient.say(channel, `Error: ${caliber}`);
-    });
+    }).catch(() => twitchClient.say(channel, `Error: ${searchCaliber}`));
     return;
 }
 
