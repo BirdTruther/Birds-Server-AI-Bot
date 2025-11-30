@@ -140,15 +140,20 @@ if (message.toLowerCase().startsWith('!map ')) {
     return;
 }
 
-/// !trader - MAIN 10 TRADERS WITH RESET TIMES
+// !trader - 9 MAIN TRADERS IN EST TIME
 if (message.toLowerCase() === '!trader') {
     const query = gql`query { traders { name resetTime } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
         const mainTraders = data.traders.filter(t => 
-            ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Lightkeeper', 'Ref'].includes(t.name)
+            ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'].includes(t.name)
         );
-        const traderList = mainTraders.map(t => `${t.name}: ${t.resetTime || 'N/A'}`).join(', ');
-        twitchClient.say(channel, `Main Traders: ${traderList}`);
+        const traderList = mainTraders.map(t => {
+            if (!t.resetTime) return `${t.name}: Now`;
+            const date = new Date(t.resetTime);
+            const estTime = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
+            return `${t.name}: ${estTime}`;
+        }).join(', ');
+        twitchClient.say(channel, `Traders: ${traderList}`);
     }).catch(() => twitchClient.say(channel, `Error fetching traders`));
     return;
 }
