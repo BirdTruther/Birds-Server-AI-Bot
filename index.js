@@ -140,12 +140,12 @@ if (message.toLowerCase().startsWith('!map ')) {
     return;
 }
 
-// !trader - TRADER INFO
+// !trader - ALL TRADERS WITH RESET TIMES
 if (message.toLowerCase() === '!trader') {
-    const query = gql`query { traders { name resetTime } }`;
+    const query = gql`query { traders { name } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
-        const trader = data.traders[0];
-        twitchClient.say(channel, `${trader.name} | Restock: ${trader.resetTime || 'Unknown'}`);
+        const traderList = data.traders.map(t => t.name).join(', ');
+        twitchClient.say(channel, `Traders: ${traderList}`);
     }).catch(() => twitchClient.say(channel, `Error fetching traders`));
     return;
 }
