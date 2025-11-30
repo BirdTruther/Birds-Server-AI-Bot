@@ -125,38 +125,7 @@ if (message.toLowerCase().startsWith('!price ')) {
     }).catch(() => twitchClient.say(channel, `Error: ${itemName}`));
     return;
 }
-
-// !ammo [ammo] - AMMO STATS
-if (message.toLowerCase().startsWith('!ammo ')) {
-    const ammoName = message.substring(6);
-    const query = gql`query { itemsByType(type: ammo, name: "${ammoName}") { name properties { ... on ItemPropertiesAmmo { damage penetrationPower armorDamage fragmentationChance } } } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.itemsByType?.length > 0) {
-            const item = data.itemsByType[0];
-            const p = item.properties;
-            if (p) {
-                twitchClient.say(channel, `${item.name} | DMG:${p.damage} PEN:${p.penetrationPower} ARM:${p.armorDamage} FRAG:${(p.fragmentationChance*100).toFixed(0)}%`);
-            } else twitchClient.say(channel, `No stats: ${ammoName}`);
-        } else twitchClient.say(channel, `No ammo: ${ammoName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${ammoName}`));
-    return;
-}
-
-// !craft [craft] - HIDEOUT CRAFTS
-if (message.toLowerCase().startsWith('!craft ')) {
-    const craftName = message.substring(7);
-    const query = gql`query { crafts(name: "${craftName}") { rewardItems { item { name } } duration station { name } } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.crafts?.length > 0) {
-            const craft = data.crafts[0];
-            const items = craft.rewardItems.map(r => r.item.name).join(', ');
-            const mins = Math.floor(craft.duration / 60);
-            twitchClient.say(channel, `${craft.station.name} | ${mins}min | Out: ${items}`);
-        } else twitchClient.say(channel, `No craft: ${craftName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${craftName}`));
-    return;
-}
-
+    
 // !map [map] - MAP INFO
 if (message.toLowerCase().startsWith('!map ')) {
     const mapName = message.substring(5);
@@ -171,32 +140,6 @@ if (message.toLowerCase().startsWith('!map ')) {
     return;
 }
 
-// !trending - TOP FLEA ITEMS
-if (message.toLowerCase() === '!trending') {
-    const query = gql`query { items(limit: 5, sorts: [{name: avg24hPrice, direction: desc}]) { name avg24hPrice } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        const items = data.items.slice(0,5).map(i => `${i.name}:₽${i.avg24hPrice?.toLocaleString() || 'N/A'}`).join(' | ');
-        twitchClient.say(channel, `Top 5: ${items}`);
-    }).catch(() => twitchClient.say(channel, `Error fetching trending`));
-    return;
-}
-
-// !bestammo [caliber] - BEST AMMO FOR CALIBER
-if (message.toLowerCase().startsWith('!bestammo ')) {
-    const caliber = message.substring(10);
-    const query = gql`query { itemsByType(type: ammo, name: "${caliber}") { name properties { ... on ItemPropertiesAmmo { penetrationPower caliber } } } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.itemsByType?.length > 0) {
-            const sorted = data.itemsByType.filter(a => a.properties?.caliber?.toLowerCase().includes(caliber.toLowerCase())).sort((a,b) => (b.properties?.penetrationPower || 0) - (a.properties?.penetrationPower || 0));
-            if (sorted.length > 0) {
-                const best = sorted[0];
-                twitchClient.say(channel, `Best: ${best.name} (PEN:${best.properties.penetrationPower})`);
-            } else twitchClient.say(channel, `No ${caliber} found`);
-        } else twitchClient.say(channel, `No ${caliber} ammo`);
-    }).catch(() => twitchClient.say(channel, `Error: ${caliber}`));
-    return;
-}
-
 // !trader - TRADER INFO
 if (message.toLowerCase() === '!trader') {
     const query = gql`query { traders { name resetTime } }`;
@@ -206,20 +149,7 @@ if (message.toLowerCase() === '!trader') {
     }).catch(() => twitchClient.say(channel, `Error fetching traders`));
     return;
 }
-
-// !quest [name] - QUEST INFO
-if (message.toLowerCase().startsWith('!quest ')) {
-    const questName = message.substring(7);
-    const query = gql`query { tasks(name: "${questName}") { name trader { name } minPlayerLevel experience } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.tasks?.length > 0) {
-            const quest = data.tasks[0];
-            twitchClient.say(channel, `${quest.name} | ${quest.trader.name} | L${quest.minPlayerLevel} | XP:${quest.experience}`);
-        } else twitchClient.say(channel, `No quest: ${questName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${questName}`));
-    return;
-}
-
+    
     //Auto dungeon join
     if (tags.username.toLowerCase() === 'tangiabot' && 
     (message.toLowerCase().includes('started a tangia dungeon') || 
