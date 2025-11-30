@@ -14,6 +14,8 @@ Utility Commands
 
     Rate Limiting: Twitch responses are split into sentence-based chunks under 480 characters with 1.5-second delays to avoid spam warnings.
 
+    Use the bot to find quick info about Escape From Tarkov! !price | !map | !trader | !bestammo
+
 Game Automation
 
     Smart Triggering: Listens for TangiaBot messages containing "started a tangia dungeon" or "started a tangia boss fight" with "!join" mention, then delays 1 second before responding.
