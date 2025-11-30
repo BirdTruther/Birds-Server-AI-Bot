@@ -115,13 +115,13 @@ twitchClient.on('message', async (channel, tags, message, self) => {
 // !price
 if (message.toLowerCase().startsWith('!price ')) {
     const itemName = message.substring(7);
-    const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice basePrice traders { name price currency loyaltyLevel } link } }`;
+    const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice basePrice sellFor { price source } link } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
         if (data.itemsByName?.length > 0) {
             const item = data.itemsByName[0];
             const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traderPrices = item.traders?.map(t => `${t.name}L${t.loyaltyLevel}:₽${t.price}`).join(', ') || 'None';
-            twitchClient.say(channel, `${item.name} | Flea:${fleaPrice} | Traders:${traderPrices} | ${item.link}`);
+            const traderDeals = item.sellFor?.map(sell => `${sell.source}:₽${sell.price}`).slice(0,2).join(', ') || 'None';
+            twitchClient.say(channel, `${item.name} | Flea:${fleaPrice} | Sell:${traderDeals} | ${item.link}`);
         } else twitchClient.say(channel, `No item: ${itemName}`);
     }).catch(() => twitchClient.say(channel, `Error: ${itemName}`));
     return;
