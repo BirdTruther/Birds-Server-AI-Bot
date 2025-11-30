@@ -158,30 +158,35 @@ if (message.toLowerCase() === '!trader') {
     return;
 }
 
-// !bestammo [caliber]
+// !bestammo [caliber] - DEBUG CALIBERS FIRST
 if (message.toLowerCase().startsWith('!bestammo ')) {
     const caliber = message.substring(10).trim();
     const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
-        console.log('[DEBUG] Ammo data received:', data.itemsByType?.length || 0); // Debug log
-        
         const ammoList = data.itemsByType?.filter(item => 
-            item.properties && 
-            item.properties.caliber && 
-            item.properties.caliber.toLowerCase().includes(caliber.toLowerCase())
+            item.properties && item.properties.caliber
         ) || [];
         
-        console.log('[DEBUG] Filtered ammo for', caliber, ':', ammoList.length); // Debug log
+        // Show first 5 caliber examples
+        const sampleCalibers = ammoList.slice(0,5).map(item => item.properties.caliber).filter(Boolean);
+        console.log('[DEBUG] Sample calibers:', sampleCalibers);
         
-        if (ammoList.length > 0) {
-            const bestAmmo = ammoList.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
+        const matchingAmmo = ammoList.filter(item => 
+            item.properties.caliber && 
+            item.properties.caliber.toLowerCase().includes(caliber.toLowerCase())
+        );
+        
+        console.log('[DEBUG] Matching', caliber, ':', matchingAmmo.length);
+        
+        if (matchingAmmo.length > 0) {
+            const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
             const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
             const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
             const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
             
             twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
         } else {
-            twitchClient.say(channel, `No ${caliber} ammo found`);
+            twitchClient.say(channel, `Try: 5.56x45, 7.62x39, 9x19 (check console for exact names)`);
         }
     }).catch(err => {
         console.error('[BESTAMMO ERROR]', err);
