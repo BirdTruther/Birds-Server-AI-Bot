@@ -266,82 +266,84 @@ client.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     
 //Tarkov Commands FOR DISCORD
-// !price [item] - FLEA + TRADER SELL PRICES
-if (message.toLowerCase().startsWith('!price ')) {
-    const itemName = message.substring(7);
-    const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice sellFor { price source } link } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.itemsByName?.length > 0) {
-            const item = data.itemsByName[0];
-            const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traders = item.sellFor?.slice(0,2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
-            twitchClient.say(channel, `${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}`);
-        } else twitchClient.say(channel, `No item: ${itemName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${itemName}`));
-    return;
-}
+// !price [item]
+    if (message.content.toLowerCase().startsWith('!price ')) {
+        const itemName = message.content.substring(7);
+        const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice sellFor { price source } properties { ... on ItemPropertiesAmmo { penetrationPower damage } } link } }`;
+        request('https://api.tarkov.dev/graphql', query).then(data => {
+            if (data.itemsByName?.length > 0) {
+                const item = data.itemsByName[0];
+                const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
+                const traders = item.sellFor?.slice(0,2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
+                let stats = '';
+                if (item.properties && item.properties.penetrationPower) {
+                    stats = ` | PEN:${item.properties.penetrationPower} DMG:${item.properties.damage}`;
+                }
+                message.reply(`${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}${stats}`);
+            } else {
+                message.reply(`No item: ${itemName}`);
+            }
+        }).catch(() => message.reply(`Error: ${itemName}`));
+        return;
+    }
+
+    // !bestammo [caliber]
+    if (message.content.toLowerCase().startsWith('!bestammo ')) {
+        const searchCaliber = message.content.substring(10).trim().toLowerCase();
+        const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
+        request('https://api.tarkov.dev/graphql', query).then(data => {
+            const ammoList = data.itemsByType?.filter(item => item.properties && item.properties.caliber) || [];
+            const matchingAmmo = ammoList.filter(item => 
+                item.name.toLowerCase().includes(searchCaliber) || 
+                item.properties.caliber.toLowerCase().includes(searchCaliber)
+            );
+            if (matchingAmmo.length > 0) {
+                const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
+                const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
+                const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
+                const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
+                message.reply(`${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
+            } else {
+                message.reply(`No ${searchCaliber} ammo found`);
+            }
+        }).catch(() => message.reply(`Error: ${searchCaliber}`));
+        return;
+    }
+
+    // !trader
+    if (message.content.toLowerCase() === '!trader') {
+        const query = gql`query { traders { name resetTime } }`;
+        request('https://api.tarkov.dev/graphql', query).then(data => {
+            const mainTraders = data.traders.filter(t => 
+                ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'].includes(t.name)
+            );
+            const traderList = mainTraders.map(t => {
+                if (!t.resetTime) return `${t.name}: Now`;
+                const date = new Date(t.resetTime);
+                const estTime = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
+                return `${t.name}: ${estTime}`;
+            }).join(', ');
+            message.reply(`Traders: ${traderList}`);
+        }).catch(() => message.reply(`Error fetching traders`));
+        return;
+    }
+
+    // !map [map]
+    if (message.content.toLowerCase().startsWith('!map ')) {
+        const mapName = message.content.substring(5);
+        const query = gql`query { maps(name: "${mapName}") { name enemies } }`;
+        request('https://api.tarkov.dev/graphql', query).then(data => {
+            if (data.maps?.length > 0) {
+                const map = data.maps[0];
+                const bosses = map.enemies?.join(', ') || 'None';
+                message.reply(`${map.name} | Bosses: ${bosses}`);
+            } else {
+                message.reply(`No map: ${mapName}`);
+            }
+        }).catch(() => message.reply(`Error: ${mapName}`));
+        return;
+    }
     
-// !map [map] - MAP INFO
-if (message.toLowerCase().startsWith('!map ')) {
-    const mapName = message.substring(5);
-    const query = gql`query { maps(name: "${mapName}") { name enemies } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.maps?.length > 0) {
-            const map = data.maps[0];
-            const bosses = map.enemies?.join(', ') || 'None';
-            twitchClient.say(channel, `${map.name} | Bosses: ${bosses}`);
-        } else twitchClient.say(channel, `No map: ${mapName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${mapName}`));
-    return;
-}
-
-// !trader - 9 MAIN TRADERS IN EST TIME
-if (message.toLowerCase() === '!trader') {
-    const query = gql`query { traders { name resetTime } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        const mainTraders = data.traders.filter(t => 
-            ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'].includes(t.name)
-        );
-        const traderList = mainTraders.map(t => {
-            if (!t.resetTime) return `${t.name}: Now`;
-            const date = new Date(t.resetTime);
-            const estTime = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
-            return `${t.name}: ${estTime}`;
-        }).join(', ');
-        twitchClient.say(channel, `Traders: ${traderList}`);
-    }).catch(() => twitchClient.say(channel, `Error fetching traders`));
-    return;
-}
-
-// !bestammo [caliber]
-if (message.toLowerCase().startsWith('!bestammo ')) {
-    const searchCaliber = message.substring(10).trim().toLowerCase();
-    const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        const ammoList = data.itemsByType?.filter(item => 
-            item.properties && item.properties.caliber
-        ) || [];
-        
-        // AUTO-FILTER: Find ANY ammo containing search term in name OR caliber
-        const matchingAmmo = ammoList.filter(item => 
-            item.name.toLowerCase().includes(searchCaliber) || 
-            item.properties.caliber.toLowerCase().includes(searchCaliber)
-        );
-        
-        if (matchingAmmo.length > 0) {
-            const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
-            const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
-            const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
-            
-            twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
-        } else {
-            twitchClient.say(channel, `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`);
-        }
-    }).catch(() => twitchClient.say(channel, `Error: ${searchCaliber}`));
-    return;
-}
-
     // Meme feature: Responds to “meme” in message
     if (message.content.toLowerCase().includes('meme')) {
         try {
