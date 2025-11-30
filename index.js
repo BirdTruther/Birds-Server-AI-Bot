@@ -1,3 +1,9 @@
+// ============================================================================
+// BIRDS-SERVER-AI-BOT - Optimized Single-File Version
+// Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
+// ============================================================================
+
+// ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 const tmi = require('tmi.js');
 const { createPerplexity } = require('@ai-sdk/perplexity');
@@ -6,13 +12,23 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const { request, gql } = require('graphql-request');
 require('dotenv').config();
 
-// create provider instance w/ own api key
+// ===== CONFIGURATION CONSTANTS =====
+const CONFIG = {
+    TWITCH_CHAR_LIMIT: 480,
+    TWITCH_DELAY_MS: 1500,
+    DUNGEON_AUTO_JOIN_DELAY: 1000,
+    MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'],
+    EST_TIMEZONE: 'America/New_York',
+    GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot'
+};
+
+// ===== AI SERVICE (Perplexity) =====
 const perplexity = createPerplexity({
     apiKey: process.env.PERPLEXITY_TOKEN
 });
 
-// generate response to messages
-async function completion(message) {
+// Generate AI response with ThePatrick personality
+async function getAIResponse(message) {
     try {
         const { text } = await generateText({
             model: perplexity('sonar'),
@@ -20,7 +36,7 @@ async function completion(message) {
                 {
                     role: "system",
                     content: `
-                    Your name is ThePatrick. You are an active member of a gaming-focused Discord server, around 25 years old, and you’ve been hanging out here for years. 
+                    Your name is ThePatrick. You are an active member of a gaming-focused Discord server, around 25 years old, and you've been hanging out here for years. 
                     You talk just like the most chill, approachable regulars in a Discord group–never stuffy, never formal.
                     **IMPORTANT: Keep all twitch chat responses under 400 characters total. Be punchy and concise - Twitch chat moves fast!**
                     Your style should be:
@@ -35,8 +51,8 @@ async function completion(message) {
                     - If asked for help, make it easy and upbeat—never like a boring FAQ!
                     Examples:
                     - "Mic check? 🎙️ Did my voice just glitch into another dimension or are we good?"
-                    - "Yo, drop your setup! I’ll judge your cable management, but only a little. 😏"
-                    - "If your Discord voice isn’t working, first: don’t panic. Second: let’s fix it, easy mode."
+                    - "Yo, drop your setup! I'll judge your cable management, but only a little. 😏"
+                    - "If your Discord voice isn't working, first: don't panic. Second: let's fix it, easy mode."
                     - "Anyone up for a round after work, hit me up! 🎮"
                     - "Bro, your meme game is strong today. Did you sleep on the internet?"
                     - Never: Sound like a formal AI assistant.
@@ -46,33 +62,205 @@ async function completion(message) {
                     - Never: Include refrences/citation links or numbers in your statements ie [Number].
                     - Never @ThePatrick in your replies this would be tagging yourself which is stupid. 
                     Remember:
-                    You are here to vibe with the Discord crew, not to act like a customer service bot. Respond as if you’re genuinely chatting back at people close to your age. Always keep things light unless the topic is deep or serious.
-                    Every reply should feel like it’s coming from a real buddy in a gaming Discord server—not a robot or staff member.
+                    You are here to vibe with the Discord crew, not to act like a customer service bot. Respond as if you're genuinely chatting back at people close to your age. Always keep things light unless the topic is deep or serious.
+                    Every reply should feel like it's coming from a real buddy in a gaming Discord server—not a robot or staff member.
                     You must limit your responses to less than 2000 characters. 
                     `
                 },
                 {
                     role: "user",
-                    content:[
-                        {
-                            type: 'text',
-                            text: message,
-                        },
-                    ]
-                },
+                    content: [{
+                        type: 'text',
+                        text: message,
+                    }]
+                }
             ]
-        })
-        console.log(text)
-        console.log(typeof text)
-        JSON.stringify(text)
-        return text
-    } catch (e) {
-        console.log(`error: ${e}`);
-        return e
+        });
+        console.log('[AI Response]', text);
+        return text;
+    } catch (error) {
+        console.error('[AI Error]', error);
+        return "Yo, my brain just glitched. Try again? 🤖";
     }
 }
 
-// Twitch client configuration
+// ===== TARKOV API SERVICE (Shared Functions) =====
+
+// Get item price from Tarkov API
+async function getTarkovPrice(itemName) {
+    const query = gql`query { 
+        itemsByName(name: "${itemName}") { 
+            name 
+            shortName 
+            avg24hPrice 
+            sellFor { price source } 
+            properties { 
+                ... on ItemPropertiesAmmo { 
+                    penetrationPower 
+                    damage 
+                } 
+            } 
+            link 
+        } 
+    }`;
+    
+    try {
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        if (data.itemsByName?.length > 0) {
+            const item = data.itemsByName[0];
+            const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
+            const traders = item.sellFor?.slice(0, 2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
+            let stats = '';
+            if (item.properties?.penetrationPower) {
+                stats = ` | PEN:${item.properties.penetrationPower} DMG:${item.properties.damage}`;
+            }
+            return `${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}${stats}`;
+        }
+        return `No item found: ${itemName}`;
+    } catch (error) {
+        console.error('[Tarkov Price Error]', error);
+        return `Error fetching: ${itemName}`;
+    }
+}
+
+// Get best ammo by caliber from Tarkov API
+async function getBestAmmo(searchCaliber) {
+    const query = gql`query { 
+        itemsByType(type: ammo) { 
+            name 
+            properties { 
+                ... on ItemPropertiesAmmo { 
+                    penetrationPower 
+                    damage 
+                    caliber 
+                } 
+            } 
+            avg24hPrice 
+            sellFor { price source } 
+        } 
+    }`;
+    
+    try {
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        const ammoList = data.itemsByType?.filter(item => item.properties?.caliber) || [];
+        
+        // AUTO-FILTER: Find ANY ammo containing search term in name OR caliber
+        const matchingAmmo = ammoList.filter(item => 
+            item.name.toLowerCase().includes(searchCaliber.toLowerCase()) || 
+            item.properties.caliber.toLowerCase().includes(searchCaliber.toLowerCase())
+        );
+        
+        if (matchingAmmo.length > 0) {
+            const bestAmmo = matchingAmmo.sort((a, b) => 
+                (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0)
+            )[0];
+            const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
+            const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
+            const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
+            
+            return `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`;
+        }
+        return `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`;
+    } catch (error) {
+        console.error('[Best Ammo Error]', error);
+        return `Error: ${searchCaliber}`;
+    }
+}
+
+// Get trader reset times
+async function getTraderResets() {
+    const query = gql`query { traders { name resetTime } }`;
+    
+    try {
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        const mainTraders = data.traders.filter(t => CONFIG.MAIN_TRADERS.includes(t.name));
+        const traderList = mainTraders.map(t => {
+            if (!t.resetTime) return `${t.name}: Now`;
+            const date = new Date(t.resetTime);
+            const estTime = date.toLocaleString('en-US', { 
+                timeZone: CONFIG.EST_TIMEZONE, 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                hour12: true 
+            });
+            return `${t.name}: ${estTime}`;
+        }).join(', ');
+        return `Traders: ${traderList}`;
+    } catch (error) {
+        console.error('[Trader Resets Error]', error);
+        return 'Error fetching traders';
+    }
+}
+
+// Get map info
+async function getMapInfo(mapName) {
+    const query = gql`query { maps(name: "${mapName}") { name enemies } }`;
+    
+    try {
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        if (data.maps?.length > 0) {
+            const map = data.maps[0];
+            const bosses = map.enemies?.join(', ') || 'None';
+            return `${map.name} | Bosses: ${bosses}`;
+        }
+        return `No map: ${mapName}`;
+    } catch (error) {
+        console.error('[Map Info Error]', error);
+        return `Error: ${mapName}`;
+    }
+}
+
+// ===== MEME SERVICE =====
+async function fetchMeme() {
+    try {
+        const response = await fetch('https://meme-api.com/gimme');
+        const data = await response.json();
+        if (data?.url) {
+            return { title: data.title, url: data.url };
+        }
+        return null;
+    } catch (error) {
+        console.error('[Meme Fetch Error]', error);
+        return null;
+    }
+}
+
+// ===== TWITCH UTILITIES =====
+async function sendTwitchMessage(channel, text, delayMs = CONFIG.TWITCH_DELAY_MS) {
+    return new Promise((resolve) => {
+        twitchClient.say(channel, text);
+        setTimeout(resolve, delayMs);
+    });
+}
+
+// Split long messages for Twitch's character limit
+async function sendTwitchChunked(channel, text) {
+    if (text.length <= CONFIG.TWITCH_CHAR_LIMIT) {
+        twitchClient.say(channel, text);
+        return;
+    }
+    
+    // Split at sentence boundaries for cleaner messages
+    const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
+    let currentChunk = '';
+    
+    for (const sentence of sentences) {
+        if ((currentChunk + sentence).length > CONFIG.TWITCH_CHAR_LIMIT) {
+            if (currentChunk) {
+                await sendTwitchMessage(channel, currentChunk.trim());
+            }
+            currentChunk = sentence;
+        } else {
+            currentChunk += sentence;
+        }
+    }
+    
+    if (currentChunk) {
+        await sendTwitchMessage(channel, currentChunk.trim());
+    }
+}
+
+// ===== TWITCH CLIENT SETUP =====
 const twitchClient = new tmi.Client({
     options: { debug: true },
     identity: {
@@ -82,289 +270,162 @@ const twitchClient = new tmi.Client({
     channels: [process.env.TWITCH_CHANNEL]
 });
 
-// Connect to Twitch
 twitchClient.connect().catch(console.error);
 
-// When connected to Twitch
 twitchClient.on('connected', (address, port) => {
-    console.log(`Connected to Twitch chat at ${address}:${port}`);
+    console.log(`✅ Connected to Twitch at ${address}:${port}`);
 });
 
-async function sendTwitchMessage(channel, text, delayMs = 1500) {
-    return new Promise((resolve) => {
-        twitchClient.say(channel, text);
-        setTimeout(resolve, delayMs);
-    });
-}
-
-// Listen to Twitch chat messages
+// ===== TWITCH MESSAGE HANDLER =====
 twitchClient.on('message', async (channel, tags, message, self) => {
-    // Ignore messages from the bot itself
-    if (self) return;
-
+    if (self) return; // Ignore bot's own messages
+    
     console.log(`[TWITCH] ${tags.username}: ${message}`);
-
-    //Gives a link to this code
-    if (message.toLowerCase().includes('!code') || message.toLowerCase().includes('!github')) {
-        twitchClient.say(channel, 'Check out my code! 🤖 https://github.com/BirdTruther/Birds-Server-AI-Bot');
+    
+    const lowerMessage = message.toLowerCase();
+    
+    // !code or !github - Share repo link
+    if (lowerMessage.includes('!code') || lowerMessage.includes('!github')) {
+        twitchClient.say(channel, `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`);
         return;
     }
-
-// TARKOV COMMANDS FOR TWITCH
-// !price [item] - FLEA + TRADER SELL PRICES
-if (message.toLowerCase().startsWith('!price ')) {
-    const itemName = message.substring(7);
-    const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice sellFor { price source } link } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.itemsByName?.length > 0) {
-            const item = data.itemsByName[0];
-            const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traders = item.sellFor?.slice(0,2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
-            twitchClient.say(channel, `${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}`);
-        } else twitchClient.say(channel, `No item: ${itemName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${itemName}`));
-    return;
-}
     
-// !map [map] - MAP INFO
-if (message.toLowerCase().startsWith('!map ')) {
-    const mapName = message.substring(5);
-    const query = gql`query { maps(name: "${mapName}") { name enemies } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        if (data.maps?.length > 0) {
-            const map = data.maps[0];
-            const bosses = map.enemies?.join(', ') || 'None';
-            twitchClient.say(channel, `${map.name} | Bosses: ${bosses}`);
-        } else twitchClient.say(channel, `No map: ${mapName}`);
-    }).catch(() => twitchClient.say(channel, `Error: ${mapName}`));
-    return;
-}
-
-// !trader - 9 MAIN TRADERS IN EST TIME
-if (message.toLowerCase() === '!trader') {
-    const query = gql`query { traders { name resetTime } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        const mainTraders = data.traders.filter(t => 
-            ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'].includes(t.name)
-        );
-        const traderList = mainTraders.map(t => {
-            if (!t.resetTime) return `${t.name}: Now`;
-            const date = new Date(t.resetTime);
-            const estTime = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
-            return `${t.name}: ${estTime}`;
-        }).join(', ');
-        twitchClient.say(channel, `Traders: ${traderList}`);
-    }).catch(() => twitchClient.say(channel, `Error fetching traders`));
-    return;
-}
-
-// !bestammo [caliber]
-if (message.toLowerCase().startsWith('!bestammo ')) {
-    const searchCaliber = message.substring(10).trim().toLowerCase();
-    const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
-    request('https://api.tarkov.dev/graphql', query).then(data => {
-        const ammoList = data.itemsByType?.filter(item => 
-            item.properties && item.properties.caliber
-        ) || [];
-        
-        // AUTO-FILTER: Find ANY ammo containing search term in name OR caliber
-        const matchingAmmo = ammoList.filter(item => 
-            item.name.toLowerCase().includes(searchCaliber) || 
-            item.properties.caliber.toLowerCase().includes(searchCaliber)
-        );
-        
-        if (matchingAmmo.length > 0) {
-            const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
-            const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
-            const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
-            
-            twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
-        } else {
-            twitchClient.say(channel, `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`);
-        }
-    }).catch(() => twitchClient.say(channel, `Error: ${searchCaliber}`));
-    return;
-}
-
-    //Auto dungeon join
+    // !price [item] - Get Tarkov item price
+    if (lowerMessage.startsWith('!price ')) {
+        const itemName = message.substring(7);
+        const result = await getTarkovPrice(itemName);
+        twitchClient.say(channel, result);
+        return;
+    }
+    
+    // !bestammo [caliber] - Get best ammo for caliber
+    if (lowerMessage.startsWith('!bestammo ')) {
+        const searchCaliber = message.substring(10).trim();
+        const result = await getBestAmmo(searchCaliber);
+        twitchClient.say(channel, result);
+        return;
+    }
+    
+    // !trader - Get trader reset times
+    if (lowerMessage === '!trader') {
+        const result = await getTraderResets();
+        twitchClient.say(channel, result);
+        return;
+    }
+    
+    // !map [mapname] - Get map info
+    if (lowerMessage.startsWith('!map ')) {
+        const mapName = message.substring(5);
+        const result = await getMapInfo(mapName);
+        twitchClient.say(channel, result);
+        return;
+    }
+    
+    // Auto-join Tangia dungeon/boss fights
     if (tags.username.toLowerCase() === 'tangiabot' && 
-    (message.toLowerCase().includes('started a tangia dungeon') || 
-     message.toLowerCase().includes('started a tangia boss fight')) && 
-    message.toLowerCase().includes('!join')) {
-    // Wait 1 second then auto-join
-    setTimeout(() => {
-        twitchClient.say(channel, '!join');
-        console.log('[DUNGEON/BOSS] Auto-joined!');
-    }, 1000);
-    return;
-}
-    
-    // Meme feature for Twitch
-    if (message.toLowerCase().includes('meme')) {
-        try {
-            const response = await fetch('https://meme-api.com/gimme');
-            const data = await response.json();
-            if (data && data.url) {
-                twitchClient.say(channel, `${data.title} ${data.url}`);
-            } else {
-                twitchClient.say(channel, 'Could not fetch a meme right now. Try again later.');
-            }
-        } catch (err) {
-            twitchClient.say(channel, 'Error fetching meme!');
-        }
+        (lowerMessage.includes('started a tangia dungeon') || 
+         lowerMessage.includes('started a tangia boss fight')) && 
+        lowerMessage.includes('!join')) {
+        setTimeout(() => {
+            twitchClient.say(channel, '!join');
+            console.log('[DUNGEON/BOSS] Auto-joined!');
+        }, CONFIG.DUNGEON_AUTO_JOIN_DELAY);
         return;
     }
-
-    // If bot is mentioned (using @BotName or !patrick)
-    if (message.toLowerCase().includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
-        message.toLowerCase().startsWith('!patrick')) {
-        
-        const response = await completion(message);
-        
-        // Twitch has a 500 character limit per message
-        // Split into chunks if needed and send with delay
-        if (response.length > 480) {
-            // Split at sentence boundaries for cleaner messages
-            const sentences = response.match(/[^.!?]+[.!?]+/g) || [response];
-            let currentChunk = '';
-            
-            for (const sentence of sentences) {
-                // If adding this sentence would exceed limit, send current chunk
-                if ((currentChunk + sentence).length > 480) {
-                    if (currentChunk) {
-                        await sendTwitchMessage(channel, currentChunk.trim(), 1500);
-                    }
-                    currentChunk = sentence;
-                } else {
-                    currentChunk += sentence;
-                }
-            }
-            
-            // Send remaining chunk
-            if (currentChunk) {
-                await sendTwitchMessage(channel, currentChunk.trim(), 1500);
-            }
+    
+    // Meme command
+    if (lowerMessage.includes('meme')) {
+        const meme = await fetchMeme();
+        if (meme) {
+            twitchClient.say(channel, `${meme.title} ${meme.url}`);
         } else {
-            twitchClient.say(channel, response);
+            twitchClient.say(channel, 'Could not fetch a meme right now. Try again later.');
         }
+        return;
+    }
+    
+    // AI response when bot is mentioned (@BotName or !patrick)
+    if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
+        lowerMessage.startsWith('!patrick')) {
+        const response = await getAIResponse(message);
+        await sendTwitchChunked(channel, response);
     }
 });
 
-// initialize discord bot
-const client = new Client({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent] });
-
-client.on('ready', (readyClient) => {
-    console.log(`Logged in as ${readyClient.user.tag}`);
+// ===== DISCORD CLIENT SETUP =====
+const discordClient = new Client({ 
+    intents: [
+        GatewayIntentBits.Guilds, 
+        GatewayIntentBits.GuildMessages, 
+        GatewayIntentBits.MessageContent
+    ] 
 });
 
-// if a message mentions the watcher, send message to perplexity
-client.on(Events.MessageCreate, async (message) => {
-    console.log(`message created of type ${typeof message.content}: ${message}`);
+discordClient.on('ready', (readyClient) => {
+    console.log(`✅ Discord logged in as ${readyClient.user.tag}`);
+});
 
-    // Prevent bot replying to itself
-    if (message.author.bot) return;
+// ===== DISCORD MESSAGE HANDLER =====
+discordClient.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return; // Ignore bot messages
     
-//Tarkov Commands FOR DISCORD
-// !price [item]
-    if (message.content.toLowerCase().startsWith('!price ')) {
+    console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
+    
+    const lowerContent = message.content.toLowerCase();
+    
+    // !price [item] - Get Tarkov item price
+    if (lowerContent.startsWith('!price ')) {
         const itemName = message.content.substring(7);
-        const query = gql`query { itemsByName(name: "${itemName}") { name shortName avg24hPrice sellFor { price source } properties { ... on ItemPropertiesAmmo { penetrationPower damage } } link } }`;
-        request('https://api.tarkov.dev/graphql', query).then(data => {
-            if (data.itemsByName?.length > 0) {
-                const item = data.itemsByName[0];
-                const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
-                const traders = item.sellFor?.slice(0,2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
-                let stats = '';
-                if (item.properties && item.properties.penetrationPower) {
-                    stats = ` | PEN:${item.properties.penetrationPower} DMG:${item.properties.damage}`;
-                }
-                message.reply(`${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}${stats}`);
-            } else {
-                message.reply(`No item: ${itemName}`);
-            }
-        }).catch(() => message.reply(`Error: ${itemName}`));
-        return;
-    }
-
-    // !bestammo [caliber]
-    if (message.content.toLowerCase().startsWith('!bestammo ')) {
-        const searchCaliber = message.content.substring(10).trim().toLowerCase();
-        const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
-        request('https://api.tarkov.dev/graphql', query).then(data => {
-            const ammoList = data.itemsByType?.filter(item => item.properties && item.properties.caliber) || [];
-            const matchingAmmo = ammoList.filter(item => 
-                item.name.toLowerCase().includes(searchCaliber) || 
-                item.properties.caliber.toLowerCase().includes(searchCaliber)
-            );
-            if (matchingAmmo.length > 0) {
-                const bestAmmo = matchingAmmo.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
-                const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
-                const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
-                const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
-                message.reply(`${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
-            } else {
-                message.reply(`No ${searchCaliber} ammo found`);
-            }
-        }).catch(() => message.reply(`Error: ${searchCaliber}`));
-        return;
-    }
-
-    // !trader
-    if (message.content.toLowerCase() === '!trader') {
-        const query = gql`query { traders { name resetTime } }`;
-        request('https://api.tarkov.dev/graphql', query).then(data => {
-            const mainTraders = data.traders.filter(t => 
-                ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'].includes(t.name)
-            );
-            const traderList = mainTraders.map(t => {
-                if (!t.resetTime) return `${t.name}: Now`;
-                const date = new Date(t.resetTime);
-                const estTime = date.toLocaleString('en-US', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: true });
-                return `${t.name}: ${estTime}`;
-            }).join(', ');
-            message.reply(`Traders: ${traderList}`);
-        }).catch(() => message.reply(`Error fetching traders`));
-        return;
-    }
-
-    // !map [map]
-    if (message.content.toLowerCase().startsWith('!map ')) {
-        const mapName = message.content.substring(5);
-        const query = gql`query { maps(name: "${mapName}") { name enemies } }`;
-        request('https://api.tarkov.dev/graphql', query).then(data => {
-            if (data.maps?.length > 0) {
-                const map = data.maps[0];
-                const bosses = map.enemies?.join(', ') || 'None';
-                message.reply(`${map.name} | Bosses: ${bosses}`);
-            } else {
-                message.reply(`No map: ${mapName}`);
-            }
-        }).catch(() => message.reply(`Error: ${mapName}`));
+        const result = await getTarkovPrice(itemName);
+        message.reply(result);
         return;
     }
     
-    // Meme feature: Responds to “meme” in message
-    if (message.content.toLowerCase().includes('meme')) {
-        try {
-            const response = await fetch('https://meme-api.com/gimme');
-            const data = await response.json();
-            if (data && data.url) {
-                await message.channel.send({ content: data.title, files: [data.url] });
-            } else {
-                await message.channel.send('Could not fetch a meme right now. Try again later.');
-            }
-        } catch (err) {
-            await message.channel.send('Error fetching meme!');
-        }
-        return; // This stops further processing if meme was requested
+    // !bestammo [caliber] - Get best ammo for caliber
+    if (lowerContent.startsWith('!bestammo ')) {
+        const searchCaliber = message.content.substring(10).trim();
+        const result = await getBestAmmo(searchCaliber);
+        message.reply(result);
+        return;
     }
-
-    // If the bot is mentioned, do AI response as before
-    if (message.content.includes(`<@${client.user.id}>`)) {
-        const response = await completion(message.content);
+    
+    // !trader - Get trader reset times
+    if (lowerContent === '!trader') {
+        const result = await getTraderResets();
+        message.reply(result);
+        return;
+    }
+    
+    // !map [mapname] - Get map info
+    if (lowerContent.startsWith('!map ')) {
+        const mapName = message.content.substring(5);
+        const result = await getMapInfo(mapName);
+        message.reply(result);
+        return;
+    }
+    
+    // Meme command - Send with image embed
+    if (lowerContent.includes('meme')) {
+        const meme = await fetchMeme();
+        if (meme) {
+            await message.channel.send({ content: meme.title, files: [meme.url] });
+        } else {
+            await message.channel.send('Could not fetch a meme right now. Try again later.');
+        }
+        return;
+    }
+    
+    // AI response when bot is mentioned
+    if (message.content.includes(`<@${discordClient.user.id}>`)) {
+        const response = await getAIResponse(message.content);
         await message.reply(response);
     }
 });
 
-client.login(process.env.DISCORD_TOKEN);
+// ===== START DISCORD CLIENT =====
+discordClient.login(process.env.DISCORD_TOKEN);
+
+// ============================================================================
+// END OF OPTIMIZED BOT
+// ============================================================================
+
