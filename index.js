@@ -140,12 +140,15 @@ if (message.toLowerCase().startsWith('!map ')) {
     return;
 }
 
-// !trader - ALL TRADERS WITH RESET TIMES
+/// !trader - MAIN 10 TRADERS WITH RESET TIMES
 if (message.toLowerCase() === '!trader') {
-    const query = gql`query { traders { name } }`;
+    const query = gql`query { traders { name resetTime } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
-        const traderList = data.traders.map(t => t.name).join(', ');
-        twitchClient.say(channel, `Traders: ${traderList}`);
+        const mainTraders = data.traders.filter(t => 
+            ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Lightkeeper', 'Ref'].includes(t.name)
+        );
+        const traderList = mainTraders.map(t => `${t.name}: ${t.resetTime || 'N/A'}`).join(', ');
+        twitchClient.say(channel, `Main Traders: ${traderList}`);
     }).catch(() => twitchClient.say(channel, `Error fetching traders`));
     return;
 }
