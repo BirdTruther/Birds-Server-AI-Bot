@@ -158,22 +158,24 @@ if (message.toLowerCase() === '!trader') {
     return;
 }
 
-// !bestammo [caliber] - CLEAN TRADER LEVELS
+// !bestammo [caliber]
 if (message.toLowerCase().startsWith('!bestammo ')) {
     const caliber = message.substring(10).trim();
-    const query = gql`query { itemsByType(type: ammo) { name avg24hPrice sellFor { price source } properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } } }`;
+    const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
     request('https://api.tarkov.dev/graphql', query).then(data => {
+        console.log('[DEBUG] Ammo data received:', data.itemsByType?.length || 0); // Debug log
+        
         const ammoList = data.itemsByType?.filter(item => 
             item.properties && 
             item.properties.caliber && 
             item.properties.caliber.toLowerCase().includes(caliber.toLowerCase())
         ) || [];
         
+        console.log('[DEBUG] Filtered ammo for', caliber, ':', ammoList.length); // Debug log
+        
         if (ammoList.length > 0) {
             const bestAmmo = ammoList.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
             const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
-            
-            // Clean trader name (remove "flea-market" and fix level format)
             const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
             const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
             
@@ -181,7 +183,10 @@ if (message.toLowerCase().startsWith('!bestammo ')) {
         } else {
             twitchClient.say(channel, `No ${caliber} ammo found`);
         }
-    }).catch(() => twitchClient.say(channel, `Error: ${caliber}`));
+    }).catch(err => {
+        console.error('[BESTAMMO ERROR]', err);
+        twitchClient.say(channel, `Error: ${caliber}`);
+    });
     return;
 }
 
