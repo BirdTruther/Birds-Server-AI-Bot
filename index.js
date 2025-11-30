@@ -157,7 +157,34 @@ if (message.toLowerCase() === '!trader') {
     }).catch(() => twitchClient.say(channel, `Error fetching traders`));
     return;
 }
-    
+
+// !bestammo [caliber] - CLEAN TRADER LEVELS
+if (message.toLowerCase().startsWith('!bestammo ')) {
+    const caliber = message.substring(10).trim();
+    const query = gql`query { itemsByType(type: ammo) { name avg24hPrice sellFor { price source } properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } } }`;
+    request('https://api.tarkov.dev/graphql', query).then(data => {
+        const ammoList = data.itemsByType?.filter(item => 
+            item.properties && 
+            item.properties.caliber && 
+            item.properties.caliber.toLowerCase().includes(caliber.toLowerCase())
+        ) || [];
+        
+        if (ammoList.length > 0) {
+            const bestAmmo = ammoList.sort((a, b) => (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0))[0];
+            const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
+            
+            // Clean trader name (remove "flea-market" and fix level format)
+            const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
+            const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
+            
+            twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
+        } else {
+            twitchClient.say(channel, `No ${caliber} ammo found`);
+        }
+    }).catch(() => twitchClient.say(channel, `Error: ${caliber}`));
+    return;
+}
+
     //Auto dungeon join
     if (tags.username.toLowerCase() === 'tangiabot' && 
     (message.toLowerCase().includes('started a tangia dungeon') || 
