@@ -158,7 +158,7 @@ if (message.toLowerCase() === '!trader') {
     return;
 }
 
-/// !bestammo [caliber] - FINAL WORKING VERSION
+// !bestammo [caliber]
 if (message.toLowerCase().startsWith('!bestammo ')) {
     const searchCaliber = message.substring(10).trim().toLowerCase();
     const query = gql`query { itemsByType(type: ammo) { name properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } avg24hPrice sellFor { price source } } }`;
@@ -167,20 +167,10 @@ if (message.toLowerCase().startsWith('!bestammo ')) {
             item.properties && item.properties.caliber
         ) || [];
         
-        // Convert user input to API format (5.56 → Caliber556x45NATO)
-        let apiCaliber = '';
-        if (searchCaliber.includes('5.56')) apiCaliber = 'Caliber556x45NATO';
-        else if (searchCaliber.includes('7.62x39')) apiCaliber = 'Caliber762x39';
-        else if (searchCaliber.includes('9mm') || searchCaliber.includes('9x19')) apiCaliber = 'Caliber9x19';
-        else if (searchCaliber.includes('7.62x54')) apiCaliber = 'Caliber762x54R';
-        else if (searchCaliber.includes('12g')) apiCaliber = 'Caliber12g';
-        else {
-            twitchClient.say(channel, `Try: 5.56, 7.62x39, 9mm, 7.62x54, 12g`);
-            return;
-        }
-        
+        // AUTO-FILTER: Find ANY ammo containing search term in name OR caliber
         const matchingAmmo = ammoList.filter(item => 
-            item.properties.caliber === apiCaliber
+            item.name.toLowerCase().includes(searchCaliber) || 
+            item.properties.caliber.toLowerCase().includes(searchCaliber)
         );
         
         if (matchingAmmo.length > 0) {
@@ -191,7 +181,7 @@ if (message.toLowerCase().startsWith('!bestammo ')) {
             
             twitchClient.say(channel, `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`);
         } else {
-            twitchClient.say(channel, `No ${searchCaliber} ammo found`);
+            twitchClient.say(channel, `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`);
         }
     }).catch(() => twitchClient.say(channel, `Error: ${searchCaliber}`));
     return;
