@@ -2,7 +2,7 @@ Core AI Features
 
     Intelligent Conversations: Responds to mentions (@ThePatrick on Discord, @BotName or !patrick on Twitch) using Perplexity AI's Sonar model.
 
-    Consistent Personality: Friendly, witty, 25-year-old gamer vibe with emojis, pop culture references, and casual lingo. Keeps responses under 2000 characters.
+    Consistent Personality: A custom personality that can be adjusted via the sonar scripting.
 
     Multi-Platform Support: Runs simultaneously on Discord and Twitch with platform-specific handling (e.g., shorter messages for Twitch chat).
 
