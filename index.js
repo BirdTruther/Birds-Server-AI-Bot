@@ -209,7 +209,7 @@ async function getMapInfo(mapName) {
     }
 }
 
-// !item command - finds best place to find item.
+// !item - sorts and finds items location
 async function getTarkovItemLocations(itemName) {
   const queryItem = gql`
     query ($name: String!) {
@@ -280,20 +280,6 @@ async function getTarkovItemLocations(itemName) {
     return 'Error fetching item spawn location. Try again later.';
   }
 }
-
-    // Discord limit check here is optional, depends where you reply
-    if (reply.length > 2000) {
-      reply = reply.slice(0, 1990) + '\n...more locations available';
-    }
-
-    return reply;
-
-  } catch (error) {
-    console.error('[Tarkov Item Locations Error]', error);
-    return 'Error fetching item spawn location. Try again later.';
-  }
-}
-
 
 // ===== MEME SERVICE =====
 async function fetchMeme() {
