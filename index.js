@@ -208,6 +208,7 @@ async function getMapInfo(mapName) {
         return `Error: ${mapName}`;
     }
 }
+
 // !item command - finds best place to find item.
 async function getTarkovItemLocations(itemName) {
   const queryItem = gql`
