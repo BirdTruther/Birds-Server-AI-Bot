@@ -209,6 +209,69 @@ async function getMapInfo(mapName) {
     }
 }
 
+//!item - tells you the best place to find items
+if (message.toLowerCase().startsWith('!item ')) {
+  const itemName = message.substring(6).trim();
+  if (!itemName) {
+    twitchClient.say(channel, 'Please specify an item name! Usage: !item <item name>');
+    return;
+  }
+
+  const itemLocationQuery = gql`
+    query ($name: String!) {
+      itemsByName(name: $name) {
+        name
+        maps {
+          name
+          spawnPoints {
+            name
+            chance
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await request('https://api.tarkov.dev/graphql', itemLocationQuery, { name: itemName });
+    if (!data.itemsByName || data.itemsByName.length === 0) {
+      twitchClient.say(channel, `No item found with name "${itemName}".`);
+      return;
+    }
+
+    const item = data.itemsByName[0];
+    if (!item.maps || item.maps.length === 0) {
+      twitchClient.say(channel, `No spawn location data available for ${item.name}.`);
+      return;
+    }
+
+    let reply = `Best spawn locations for ${item.name}:\n`;
+
+    for (const map of item.maps) {
+      reply += `\n${map.name}:\n`;
+      if (map.spawnPoints && map.spawnPoints.length > 0) {
+        const sortedSpawns = map.spawnPoints.sort((a, b) => (b.chance || 0) - (a.chance || 0));
+        sortedSpawns.slice(0, 5).forEach(spawn => {
+          const chanceText = spawn.chance !== undefined ? ` (Chance: ${(spawn.chance * 100).toFixed(1)}%)` : '';
+          reply += `- ${spawn.name}${chanceText}\n`;
+        });
+      } else {
+        reply += '- No spawn points data\n';
+      }
+    }
+
+    // Twitch has a 500 char limit; so truncate and send chunked if necessary
+    if (reply.length > CONFIG.TWITCH_CHAR_LIMIT) {
+      await sendTwitchChunked(channel, reply);
+    } else {
+      twitchClient.say(channel, reply);
+    }
+  } catch (error) {
+    console.error('[Item Location Error - Twitch]', error);
+    twitchClient.say(channel, 'Error fetching item spawn location. Try again later.');
+  }
+}
+
 // ===== MEME SERVICE =====
 async function fetchMeme() {
     try {
@@ -402,6 +465,71 @@ discordClient.on(Events.MessageCreate, async (message) => {
         message.reply(result);
         return;
     }
+
+//!item - tells you the best place to find items
+if (lowerContent.startsWith('!item ')) {
+  const itemName = message.content.substring(6).trim();
+  if (!itemName) {
+    message.reply('Please specify an item name! Usage: `!item <item name>`');
+    return;
+  }
+
+  const itemLocationQuery = gql`
+    query ($name: String!) {
+      itemsByName(name: $name) {
+        name
+        maps {
+          name
+          spawnPoints {
+            name
+            chance
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await request('https://api.tarkov.dev/graphql', itemLocationQuery, { name: itemName });
+    if (!data.itemsByName || data.itemsByName.length === 0) {
+      message.reply(`No item found with name "${itemName}".`);
+      return;
+    }
+
+    const item = data.itemsByName[0];
+    if (!item.maps || item.maps.length === 0) {
+      message.reply(`No spawn location data available for **${item.name}**.`);
+      return;
+    }
+
+    let reply = `**Best spawn locations for ${item.name}:**\n`;
+
+    for (const map of item.maps) {
+      reply += `\n__${map.name}__:\n`;
+
+      if (map.spawnPoints && map.spawnPoints.length > 0) {
+        const sortedSpawns = map.spawnPoints.sort((a, b) => (b.chance || 0) - (a.chance || 0));
+        sortedSpawns.slice(0, 5).forEach(spawn => {
+          const chanceText = spawn.chance !== undefined ? ` (Chance: ${(spawn.chance * 100).toFixed(1)}%)` : '';
+          reply += `- ${spawn.name}${chanceText}\n`;
+        });
+      } else {
+        reply += '- No spawn points data\n';
+      }
+    }
+
+    // Discord message max length 2000 - truncate if needed
+    if (reply.length > 2000) {
+      reply = reply.slice(0, 1990) + '\n...more locations available';
+    }
+
+    message.reply(reply);
+
+  } catch (error) {
+    console.error('[Item Location Error - Discord]', error);
+    message.reply('Error fetching item spawn location. Try again later.');
+  }
+}
     
     // Meme command - Send with image embed
     if (lowerContent.includes('meme')) {
