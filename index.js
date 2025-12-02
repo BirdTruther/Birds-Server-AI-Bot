@@ -209,6 +209,63 @@ async function getMapInfo(mapName) {
     }
 }
 
+// Get Tarkov item spawn locations from the API
+async function getTarkovItemLocations(itemName) {
+  const query = gql`
+    query ($name: String!) {
+      itemsByName(name: $name) {
+        name
+        maps {
+          name
+          spawnPoints {
+            name
+            chance
+          }
+        }
+      }
+    }
+  `;
+
+  try {
+    const data = await request('https://api.tarkov.dev/graphql', query, { name: itemName });
+    if (!data.itemsByName || data.itemsByName.length === 0) {
+      return `No item found with name "${itemName}".`;
+    }
+    const item = data.itemsByName[0];
+    if (!item.maps || item.maps.length === 0) {
+      return `No spawn location data available for **${item.name}**.`;
+    }
+
+    let reply = `**Best spawn locations for ${item.name}:**\n`;
+
+    for (const map of item.maps) {
+      reply += `\n__${map.name}__:\n`;
+
+      if (map.spawnPoints && map.spawnPoints.length > 0) {
+        const sortedSpawns = map.spawnPoints.sort((a, b) => (b.chance || 0) - (a.chance || 0));
+        sortedSpawns.slice(0, 5).forEach(spawn => {
+          const chanceText = spawn.chance !== undefined ? ` (Chance: ${(spawn.chance * 100).toFixed(1)}%)` : '';
+          reply += `- ${spawn.name}${chanceText}\n`;
+        });
+      } else {
+        reply += '- No spawn points data\n';
+      }
+    }
+
+    // Discord limit check here is optional, depends where you reply
+    if (reply.length > 2000) {
+      reply = reply.slice(0, 1990) + '\n...more locations available';
+    }
+
+    return reply;
+
+  } catch (error) {
+    console.error('[Tarkov Item Locations Error]', error);
+    return 'Error fetching item spawn location. Try again later.';
+  }
+}
+
+
 // ===== MEME SERVICE =====
 async function fetchMeme() {
     try {
@@ -319,6 +376,23 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         twitchClient.say(channel, result);
         return;
     }
+	// !item - best place to find the item
+	if (message.toLowerCase().startsWith('!item ')) {
+  const itemName = message.substring(6).trim();
+  if (!itemName) {
+    twitchClient.say(channel, 'Please specify an item name! Usage: !item <item name>');
+    return;
+  }
+  const reply = await getTarkovItemLocations(itemName);
+  
+  // Twitch char limit (usually 480) - chunk if needed
+  if (reply.length > CONFIG.TWITCH_CHAR_LIMIT) {
+    await sendTwitchChunked(channel, reply);
+  } else {
+    twitchClient.say(channel, reply);
+  }
+}
+
     
     // Auto-join Tangia dungeon/boss fights
     if (tags.username.toLowerCase() === 'tangiabot' && 
@@ -402,7 +476,18 @@ discordClient.on(Events.MessageCreate, async (message) => {
         message.reply(result);
         return;
     }
-    
+	
+    // !item - best place to find the item
+	if (lowerContent.startsWith('!item ')) {
+  const itemName = message.content.substring(6).trim();
+  if (!itemName) {
+    message.reply('Please specify an item name! Usage: `!item <item name>`');
+    return;
+  }
+  const reply = await getTarkovItemLocations(itemName);
+  message.reply(reply);
+}
+
     // Meme command - Send with image embed
     if (lowerContent.includes('meme')) {
         const meme = await fetchMeme();
