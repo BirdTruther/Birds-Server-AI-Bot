@@ -208,49 +208,77 @@ async function getMapInfo(mapName) {
         return `Error: ${mapName}`;
     }
 }
-
-// Get Tarkov item spawn locations from the API
+// !item command - finds best place to find item.
 async function getTarkovItemLocations(itemName) {
-  const query = gql`
+  const queryItem = gql`
     query ($name: String!) {
       itemsByName(name: $name) {
+        id
         name
-        maps {
+      }
+    }
+  `;
+
+  const querySpawns = gql`
+    query ($itemId: String!) {
+      itemSpawns(itemId: $itemId) {
+        map {
           name
-          spawnPoints {
-            name
-            chance
-          }
+        }
+        spawnPoints {
+          name
+          chance
         }
       }
     }
   `;
 
   try {
-    const data = await request('https://api.tarkov.dev/graphql', query, { name: itemName });
-    if (!data.itemsByName || data.itemsByName.length === 0) {
+    // Step 1: get item info (id and name)
+    const itemData = await request('https://api.tarkov.dev/graphql', queryItem, { name: itemName });
+
+    if (!itemData.itemsByName || itemData.itemsByName.length === 0) {
       return `No item found with name "${itemName}".`;
     }
-    const item = data.itemsByName[0];
-    if (!item.maps || item.maps.length === 0) {
+
+    const item = itemData.itemsByName[0];
+
+    // Step 2: get spawn locations by item id
+    const spawnData = await request('https://api.tarkov.dev/graphql', querySpawns, { itemId: item.id });
+
+    if (!spawnData.itemSpawns || spawnData.itemSpawns.length === 0) {
       return `No spawn location data available for **${item.name}**.`;
     }
 
     let reply = `**Best spawn locations for ${item.name}:**\n`;
 
-    for (const map of item.maps) {
-      reply += `\n__${map.name}__:\n`;
+    spawnData.itemSpawns.forEach(spawn => {
+      const mapName = spawn.map?.name || 'Unknown Map';
+      reply += `\n__${mapName}__:\n`;
 
-      if (map.spawnPoints && map.spawnPoints.length > 0) {
-        const sortedSpawns = map.spawnPoints.sort((a, b) => (b.chance || 0) - (a.chance || 0));
-        sortedSpawns.slice(0, 5).forEach(spawn => {
-          const chanceText = spawn.chance !== undefined ? ` (Chance: ${(spawn.chance * 100).toFixed(1)}%)` : '';
-          reply += `- ${spawn.name}${chanceText}\n`;
+      if (spawn.spawnPoints && spawn.spawnPoints.length > 0) {
+        // Sort spawn points by chance descending
+        const sortedSpawns = spawn.spawnPoints.sort((a, b) => (b.chance || 0) - (a.chance || 0));
+        sortedSpawns.slice(0, 5).forEach(spawnPoint => {
+          const chanceText = spawnPoint.chance !== undefined ? ` (Chance: ${(spawnPoint.chance * 100).toFixed(1)}%)` : '';
+          reply += `- ${spawnPoint.name}${chanceText}\n`;
         });
       } else {
         reply += '- No spawn points data\n';
       }
+    });
+
+    if (reply.length > 2000) { 
+      reply = reply.slice(0, 1990) + '\n...more locations available'; 
     }
+
+    return reply;
+
+  } catch (error) {
+    console.error('[Tarkov Item Locations Error]', error);
+    return 'Error fetching item spawn location. Try again later.';
+  }
+}
 
     // Discord limit check here is optional, depends where you reply
     if (reply.length > 2000) {
