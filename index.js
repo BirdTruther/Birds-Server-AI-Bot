@@ -209,6 +209,36 @@ async function getMapInfo(mapName) {
     }
 }
 
+// Get player stats from EFT API
+async function getPlayerStats(playerName) {
+    try {
+        const response = await fetch(`https://eft-api.tech/api/player/${encodeURIComponent(playerName)}`, {
+            headers: { 
+                'Authorization': `Bearer ${process.env.EFT_API_KEY}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            if (response.status === 404) return `Player not found: ${playerName}`;
+            return `Error looking up: ${playerName}`;
+        }
+        
+        const data = await response.json();
+        
+        // Format player stats
+        const pmcKD = data.pmc?.kd ? data.pmc.kd.toFixed(2) : 'N/A';
+        const scavKD = data.scav?.kd ? data.scav.kd.toFixed(2) : 'N/A';
+        const pmcLevel = data.pmc?.level || 'N/A';
+        const pmcSurvivalRate = data.pmc?.survivalRate ? `${data.pmc.survivalRate.toFixed(1)}%` : 'N/A';
+        
+        return `${playerName} | Lvl:${pmcLevel} | PMC K/D:${pmcKD} SR:${pmcSurvivalRate} | SCAV K/D:${scavKD}`;
+    } catch (error) {
+        console.error('[Player Stats Error]', error);
+        return `Error fetching player: ${playerName}`;
+    }
+}
+
 // ===== MEME SERVICE =====
 async function fetchMeme() {
     try {
@@ -319,7 +349,15 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         twitchClient.say(channel, result);
         return;
     }
-    
+
+    // !player [playername] - Get player stats
+    if (lowerMessage.startsWith('!player ')) {
+        const playerName = message.substring(8).trim();
+        const result = await getPlayerStats(playerName);
+        twitchClient.say(channel, result);
+        return;
+    }
+
     // Auto-join Tangia dungeon/boss fights
     if (tags.username.toLowerCase() === 'tangiabot' && 
         (lowerMessage.includes('started a tangia dungeon') || 
@@ -402,7 +440,15 @@ discordClient.on(Events.MessageCreate, async (message) => {
         message.reply(result);
         return;
     }
-    
+
+    // !player [playername] - Get player stats
+    if (lowerContent.startsWith('!player ')) {
+        const playerName = message.content.substring(8).trim();
+        const result = await getPlayerStats(playerName);
+        message.reply(result);
+        return;
+    }
+
     // Meme command - Send with image embed
     if (lowerContent.includes('meme')) {
         const meme = await fetchMeme();
