@@ -220,14 +220,12 @@ async function getPlayerStats(playerName) {
         });
         
         if (!searchResponse.ok) {
-            console.error('[Player Search] Error:', searchResponse.status, await searchResponse.text());
             if (searchResponse.status === 404) return `Player not found: ${playerName}`;
             return `Error searching for: ${playerName}`;
         }
         
         const searchData = await searchResponse.json();
         
-        // Extract AID from the search results
         if (!searchData.success || !searchData.data || searchData.data.length === 0) {
             return `Player not found: ${playerName}`;
         }
@@ -235,7 +233,7 @@ async function getPlayerStats(playerName) {
         const aid = searchData.data[0].aid;
         const nickname = searchData.data[0].Info.Nickname;
         
-        // Step 2: Get player STATS using the stats endpoint
+        // Step 2: Get player stats using the stats endpoint
         const statsResponse = await fetch(`https://eft-api.tech/api/profile/stats/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
@@ -243,17 +241,13 @@ async function getPlayerStats(playerName) {
         });
         
         if (!statsResponse.ok) {
-            console.error('[Player Stats] Error:', statsResponse.status, await statsResponse.text());
             return `Error fetching stats for: ${nickname}`;
         }
         
         const statsData = await statsResponse.json();
-        console.log('[DEBUG] Stats Response:', JSON.stringify(statsData, null, 2));
+        const data = statsData.data;
         
-        // Try to extract stats from response
-        const data = statsData.data || statsData;
-        
-        // Get level from profile endpoint
+        // Step 3: Get level from profile endpoint
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
@@ -264,17 +258,17 @@ async function getPlayerStats(playerName) {
         const memberCategory = profile.data?.info?.memberCategory || 0;
         const level = memberCategory > 1000 ? memberCategory - 1000 : memberCategory;
         
-        // Parse stats based on response structure
-        const pmcKD = data.pmc?.kd || data.PMC?.kd || 'N/A';
-        const pmcSR = data.pmc?.survivalRate || data.PMC?.survivalRate || 'N/A';
-        const scavKD = data.scav?.kd || data.Scav?.kd || 'N/A';
+        // Extract PMC stats
+        const pmcKills = data.pmc?.kills || 0;
+        const pmcDeaths = data.pmc?.deaths || 0;
+        const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
         
-        // Format the values
-        const kdFormatted = typeof pmcKD === 'number' ? pmcKD.toFixed(2) : pmcKD;
-        const scavKDFormatted = typeof scavKD === 'number' ? scavKD.toFixed(2) : scavKD;
-        const srFormatted = typeof pmcSR === 'number' ? `${pmcSR.toFixed(1)}%` : pmcSR;
+        // Extract SCAV stats
+        const scavKills = data.scav?.kills || 0;
+        const scavDeaths = data.scav?.deaths || 0;
+        const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
         
-        return `${nickname} | Lvl:${level} | PMC K/D:${kdFormatted} SR:${srFormatted} | SCAV K/D:${scavKDFormatted}`;
+        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
