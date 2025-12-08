@@ -228,10 +228,13 @@ async function getPlayerStats(playerName) {
         const searchData = await searchResponse.json();
         console.log('[Search Result]', JSON.stringify(searchData, null, 2));
         
-        // Get the AID from search results (adjust based on actual response structure)
-        const aid = searchData.aid || searchData[0]?.aid || searchData.data?.aid;
+        // Extract AID from the search results
+        if (!searchData.success || !searchData.data || searchData.data.length === 0) {
+            return `Player not found: ${playerName}`;
+        }
         
-        if (!aid) return `Could not find account ID for: ${playerName}`;
+        const aid = searchData.data[0].aid;
+        const nickname = searchData.data[0].Info.Nickname;
         
         // Step 2: Get full player profile using the AID
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
@@ -242,20 +245,24 @@ async function getPlayerStats(playerName) {
         
         if (!profileResponse.ok) {
             console.error('[Player Profile] Error:', profileResponse.status, await profileResponse.text());
-            return `Error fetching profile for: ${playerName}`;
+            return `Error fetching profile for: ${nickname}`;
         }
         
         const profile = await profileResponse.json();
         console.log('[Profile Data]', JSON.stringify(profile, null, 2));
         
-        // Format player stats (adjust field names based on actual response)
-        const nickname = profile.info?.nickname || profile.nickname || playerName;
-        const level = profile.info?.level || 'N/A';
-        const pmcKD = profile.pmcStats?.kd ? profile.pmcStats.kd.toFixed(2) : 'N/A';
-        const scavKD = profile.scavStats?.kd ? profile.scavStats.kd.toFixed(2) : 'N/A';
-        const survivalRate = profile.pmcStats?.survivalRate ? `${profile.pmcStats.survivalRate.toFixed(1)}%` : 'N/A';
+        // Format player stats (adjust field names based on actual API response)
+        const level = profile.info?.level || profile.Info?.Level || 'N/A';
+        const pmcKD = profile.pmcStats?.kd || profile.PMC?.KD || 'N/A';
+        const scavKD = profile.scavStats?.kd || profile.Scav?.KD || 'N/A';
+        const survivalRate = profile.pmcStats?.survivalRate || profile.PMC?.SurvivalRate || 'N/A';
         
-        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} SR:${survivalRate} | SCAV K/D:${scavKD}`;
+        // Format the stats properly
+        const kdFormatted = typeof pmcKD === 'number' ? pmcKD.toFixed(2) : pmcKD;
+        const scavKDFormatted = typeof scavKD === 'number' ? scavKD.toFixed(2) : scavKD;
+        const srFormatted = typeof survivalRate === 'number' ? `${survivalRate.toFixed(1)}%` : survivalRate;
+        
+        return `${nickname} | Lvl:${level} | PMC K/D:${kdFormatted} SR:${srFormatted} | SCAV K/D:${scavKDFormatted}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
