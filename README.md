@@ -14,7 +14,7 @@ Utility Commands
 
     Rate Limiting: Twitch responses are split into sentence-based chunks under 480 characters with 1.5-second delays to avoid spam warnings.
 
-    Use the bot to find quick info about Escape From Tarkov! !price | !map | !trader | !bestammo
+    Use the bot to find quick info about Escape From Tarkov! !price | !map | !trader | !bestammo | !player
 
 Game Automation
 
