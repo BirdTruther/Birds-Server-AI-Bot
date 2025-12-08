@@ -212,27 +212,47 @@ async function getMapInfo(mapName) {
 // Get player stats from EFT API
 async function getPlayerStats(playerName) {
     try {
-        const response = await fetch(`https://eft-api.tech/api/player/${encodeURIComponent(playerName)}`, {
+        // Try search endpoint first (most likely)
+        let response = await fetch(`https://eft-api.tech/api/players/search?nickname=${encodeURIComponent(playerName)}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`,
                 'Content-Type': 'application/json'
             }
         });
         
+        // If that fails, try alternate endpoint structures
         if (!response.ok) {
+            response = await fetch(`https://eft-api.tech/api/search?nickname=${encodeURIComponent(playerName)}`, {
+                headers: { 
+                    'Authorization': `Bearer ${process.env.EFT_API_KEY}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+        
+        if (!response.ok) {
+            console.error('[Player Stats] HTTP Error:', response.status, await response.text());
             if (response.status === 404) return `Player not found: ${playerName}`;
+            if (response.status === 401) return `API authentication failed - check your API key`;
             return `Error looking up: ${playerName}`;
         }
         
         const data = await response.json();
+        console.log('[Player Stats] Full Response:', JSON.stringify(data, null, 2)); // Debug log
         
-        // Format player stats
-        const pmcKD = data.pmc?.kd ? data.pmc.kd.toFixed(2) : 'N/A';
-        const scavKD = data.scav?.kd ? data.scav.kd.toFixed(2) : 'N/A';
-        const pmcLevel = data.pmc?.level || 'N/A';
-        const pmcSurvivalRate = data.pmc?.survivalRate ? `${data.pmc.survivalRate.toFixed(1)}%` : 'N/A';
+        // Handle array response (search results)
+        const player = Array.isArray(data) ? data[0] : data;
         
-        return `${playerName} | Lvl:${pmcLevel} | PMC K/D:${pmcKD} SR:${pmcSurvivalRate} | SCAV K/D:${scavKD}`;
+        if (!player) return `No results for: ${playerName}`;
+        
+        // Format player stats - adjust field names based on actual response
+        const pmcKD = player.pmc?.kd ? player.pmc.kd.toFixed(2) : 'N/A';
+        const scavKD = player.scav?.kd ? player.scav.kd.toFixed(2) : 'N/A';
+        const pmcLevel = player.pmc?.level || player.level || 'N/A';
+        const pmcSurvivalRate = player.pmc?.survivalRate ? `${player.pmc.survivalRate.toFixed(1)}%` : 'N/A';
+        const nickname = player.nickname || player.name || playerName;
+        
+        return `${nickname} | Lvl:${pmcLevel} | PMC K/D:${pmcKD} SR:${pmcSurvivalRate} | SCAV K/D:${scavKD}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
