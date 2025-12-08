@@ -249,17 +249,29 @@ async function getPlayerStats(playerName) {
         
         const profile = await profileResponse.json();
         
-        // Extract level - it's in memberCategory field
-        // memberCategory appears to be level + 1000 (1026 = level 26 based on experience)
+        // Debug: Log the entire info section
+        console.log('[DEBUG] Info:', JSON.stringify(profile.data?.info, null, 2));
+        
+        // Extract level
         const memberCategory = profile.data?.info?.memberCategory || 0;
         const level = memberCategory > 1000 ? memberCategory - 1000 : memberCategory;
+        console.log('[DEBUG] Level - memberCategory:', memberCategory, 'calculated level:', level);
         
         // Get PMC stats
         const pmcStats = profile.data?.pmcStats?.overAllCounters?.Items || [];
+        console.log('[DEBUG] PMC Stats Array Length:', pmcStats.length);
+        
+        // Debug: Show all PMC stat keys
+        pmcStats.slice(0, 10).forEach(item => {
+            console.log('[DEBUG] PMC Stat:', JSON.stringify(item.Key), '=', item.Value);
+        });
+        
         const pmcKills = pmcStats.find(item => item.Key?.[0] === 'Kills')?.Value || 0;
         const pmcDeaths = pmcStats.find(item => item.Key?.[0] === 'Deaths')?.Value || 0;
         const pmcSessions = pmcStats.find(item => item.Key?.[0] === 'Sessions' && item.Key?.[1] === 'Pmc')?.Value || 0;
         const pmcSurvived = pmcStats.find(item => item.Key?.[0] === 'Survived' && item.Key?.[1] === 'Pmc' && item.Key?.[2] === 'ExitStatus')?.Value || 0;
+        
+        console.log('[DEBUG] PMC Stats - Kills:', pmcKills, 'Deaths:', pmcDeaths, 'Sessions:', pmcSessions, 'Survived:', pmcSurvived);
         
         // Calculate PMC K/D and survival rate
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
@@ -267,11 +279,17 @@ async function getPlayerStats(playerName) {
         
         // Get SCAV stats
         const scavStats = profile.data?.scavStats?.overAllCounters?.Items || [];
+        console.log('[DEBUG] SCAV Stats Array Length:', scavStats.length);
+        
         const scavKills = scavStats.find(item => item.Key?.[0] === 'Kills')?.Value || 0;
         const scavDeaths = scavStats.find(item => item.Key?.[0] === 'Deaths')?.Value || 0;
         
+        console.log('[DEBUG] SCAV Stats - Kills:', scavKills, 'Deaths:', scavDeaths);
+        
         // Calculate SCAV K/D
         const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
+        
+        console.log('[DEBUG] Final Output - Level:', level, 'PMC K/D:', pmcKD, 'SR:', pmcSR, 'SCAV K/D:', scavKD);
         
         return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} SR:${pmcSR}% | SCAV K/D:${scavKD}`;
     } catch (error) {
