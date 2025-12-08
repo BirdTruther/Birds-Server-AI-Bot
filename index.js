@@ -235,63 +235,46 @@ async function getPlayerStats(playerName) {
         const aid = searchData.data[0].aid;
         const nickname = searchData.data[0].Info.Nickname;
         
-        // Step 2: Get full player profile using the AID  
+        // Step 2: Get player STATS using the stats endpoint
+        const statsResponse = await fetch(`https://eft-api.tech/api/profile/stats/${aid}`, {
+            headers: { 
+                'Authorization': `Bearer ${process.env.EFT_API_KEY}`
+            }
+        });
+        
+        if (!statsResponse.ok) {
+            console.error('[Player Stats] Error:', statsResponse.status, await statsResponse.text());
+            return `Error fetching stats for: ${nickname}`;
+        }
+        
+        const statsData = await statsResponse.json();
+        console.log('[DEBUG] Stats Response:', JSON.stringify(statsData, null, 2));
+        
+        // Try to extract stats from response
+        const data = statsData.data || statsData;
+        
+        // Get level from profile endpoint
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
             }
         });
         
-        if (!profileResponse.ok) {
-            console.error('[Player Profile] Error:', profileResponse.status, await profileResponse.text());
-            return `Error fetching profile for: ${nickname}`;
-        }
-        
         const profile = await profileResponse.json();
-        
-        // Debug: Log the entire info section
-        console.log('[DEBUG] Info:', JSON.stringify(profile.data?.info, null, 2));
-        
-        // Extract level
         const memberCategory = profile.data?.info?.memberCategory || 0;
         const level = memberCategory > 1000 ? memberCategory - 1000 : memberCategory;
-        console.log('[DEBUG] Level - memberCategory:', memberCategory, 'calculated level:', level);
         
-        // Get PMC stats
-        const pmcStats = profile.data?.pmcStats?.overAllCounters?.Items || [];
-        console.log('[DEBUG] PMC Stats Array Length:', pmcStats.length);
+        // Parse stats based on response structure
+        const pmcKD = data.pmc?.kd || data.PMC?.kd || 'N/A';
+        const pmcSR = data.pmc?.survivalRate || data.PMC?.survivalRate || 'N/A';
+        const scavKD = data.scav?.kd || data.Scav?.kd || 'N/A';
         
-        // Debug: Show all PMC stat keys
-        pmcStats.slice(0, 10).forEach(item => {
-            console.log('[DEBUG] PMC Stat:', JSON.stringify(item.Key), '=', item.Value);
-        });
+        // Format the values
+        const kdFormatted = typeof pmcKD === 'number' ? pmcKD.toFixed(2) : pmcKD;
+        const scavKDFormatted = typeof scavKD === 'number' ? scavKD.toFixed(2) : scavKD;
+        const srFormatted = typeof pmcSR === 'number' ? `${pmcSR.toFixed(1)}%` : pmcSR;
         
-        const pmcKills = pmcStats.find(item => item.Key?.[0] === 'Kills')?.Value || 0;
-        const pmcDeaths = pmcStats.find(item => item.Key?.[0] === 'Deaths')?.Value || 0;
-        const pmcSessions = pmcStats.find(item => item.Key?.[0] === 'Sessions' && item.Key?.[1] === 'Pmc')?.Value || 0;
-        const pmcSurvived = pmcStats.find(item => item.Key?.[0] === 'Survived' && item.Key?.[1] === 'Pmc' && item.Key?.[2] === 'ExitStatus')?.Value || 0;
-        
-        console.log('[DEBUG] PMC Stats - Kills:', pmcKills, 'Deaths:', pmcDeaths, 'Sessions:', pmcSessions, 'Survived:', pmcSurvived);
-        
-        // Calculate PMC K/D and survival rate
-        const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
-        const pmcSR = pmcSessions > 0 ? ((pmcSurvived / pmcSessions) * 100).toFixed(1) : '0.0';
-        
-        // Get SCAV stats
-        const scavStats = profile.data?.scavStats?.overAllCounters?.Items || [];
-        console.log('[DEBUG] SCAV Stats Array Length:', scavStats.length);
-        
-        const scavKills = scavStats.find(item => item.Key?.[0] === 'Kills')?.Value || 0;
-        const scavDeaths = scavStats.find(item => item.Key?.[0] === 'Deaths')?.Value || 0;
-        
-        console.log('[DEBUG] SCAV Stats - Kills:', scavKills, 'Deaths:', scavDeaths);
-        
-        // Calculate SCAV K/D
-        const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
-        
-        console.log('[DEBUG] Final Output - Level:', level, 'PMC K/D:', pmcKD, 'SR:', pmcSR, 'SCAV K/D:', scavKD);
-        
-        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} SR:${pmcSR}% | SCAV K/D:${scavKD}`;
+        return `${nickname} | Lvl:${level} | PMC K/D:${kdFormatted} SR:${srFormatted} | SCAV K/D:${scavKDFormatted}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
