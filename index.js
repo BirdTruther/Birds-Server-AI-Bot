@@ -247,7 +247,7 @@ async function getPlayerStats(playerName) {
         const statsData = await statsResponse.json();
         const data = statsData.data;
         
-        // Step 3: Get level from profile endpoint
+        // Step 3: Get level from profile endpoint (for XP)
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
@@ -255,8 +255,10 @@ async function getPlayerStats(playerName) {
         });
         
         const profile = await profileResponse.json();
-        const memberCategory = profile.data?.info?.memberCategory || 0;
-        const level = memberCategory > 1000 ? memberCategory - 1000 : memberCategory;
+        const experience = profile.data?.info?.experience || data.experience || 0;
+        
+        // Calculate level from XP using Tarkov's level table
+        const level = calculateLevel(experience);
         
         // Extract PMC stats
         const pmcKills = data.pmc?.kills || 0;
@@ -268,11 +270,39 @@ async function getPlayerStats(playerName) {
         const scavDeaths = data.scav?.deaths || 0;
         const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
         
-        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD}`;
+        // Create profile URL
+        const profileUrl = `https://eft-api.tech/profile?aid=${aid}`;
+        
+        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
     }
+}
+
+// Calculate Tarkov level from experience points
+function calculateLevel(xp) {
+    const levels = [
+        0, 1000, 4017, 8432, 14256, 21477, 30023, 39936, 51204, 63723, 77563,
+        93279, 115302, 143253, 177337, 217885, 264432, 316851, 374400, 437465,
+        505161, 577978, 656347, 741150, 836066, 944133, 1066259, 1199423, 1343743,
+        1499338, 1666320, 1846664, 2043349, 2258436, 2492126, 2750217, 3032022,
+        3337766, 3663831, 4010401, 4377662, 4765799, 5182399, 5627732, 6102063,
+        6630287, 7189442, 7779792, 8401607, 9055144, 9740666, 10458431, 11219666,
+        12024744, 12874041, 13767918, 14706741, 15690872, 16720667, 17816442,
+        19041492, 20360945, 21792266, 23350443, 25098462, 27100775, 29581231,
+        33028574, 37953544, 44260543, 51901513, 60887711, 71228846, 82933459,
+        96009180, 110462910, 126300949, 144924572, 172016256
+    ];
+    
+    // Find the highest level where cumulative XP <= player's XP
+    for (let i = levels.length - 1; i >= 0; i--) {
+        if (xp >= levels[i]) {
+            return i + 1; // Level is index + 1 (since array starts at level 1)
+        }
+    }
+    
+    return 1; // Default to level 1 if XP is 0
 }
 
 // ===== MEME SERVICE =====
