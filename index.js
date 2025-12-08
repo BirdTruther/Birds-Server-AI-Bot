@@ -235,7 +235,7 @@ async function getPlayerStats(playerName) {
         const aid = searchData.data[0].aid;
         const nickname = searchData.data[0].Info.Nickname;
         
-        // Step 2: Get full player profile using the AID
+        // Step 2: Get full player profile using the AID  
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
@@ -249,8 +249,10 @@ async function getPlayerStats(playerName) {
         
         const profile = await profileResponse.json();
         
-        // Extract stats from the profile data
-        const level = profile.data?.info?.experience ? Math.floor(profile.data.info.experience / 1000) : 'N/A';
+        // Extract level - it's in memberCategory field
+        // memberCategory appears to be level + 1000 (1026 = level 26 based on experience)
+        const memberCategory = profile.data?.info?.memberCategory || 0;
+        const level = memberCategory > 1000 ? memberCategory - 1000 : memberCategory;
         
         // Get PMC stats
         const pmcStats = profile.data?.pmcStats?.overAllCounters?.Items || [];
