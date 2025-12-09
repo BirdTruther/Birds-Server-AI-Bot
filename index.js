@@ -113,7 +113,9 @@ async function getTarkovPrice(itemName) {
             if (item.properties?.penetrationPower) {
                 stats = ` | PEN:${item.properties.penetrationPower} DMG:${item.properties.damage}`;
             }
-            return `${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}${stats}`;
+            // Add wiki link to the response
+            const wikiLink = item.link ? ` | ${item.link}` : '';
+            return `${item.shortName || item.name} | Flea:${fleaPrice} | Sell:${traders}${stats}${wikiLink}`;
         }
         return `No item found: ${itemName}`;
     } catch (error) {
