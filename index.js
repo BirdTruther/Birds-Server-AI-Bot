@@ -247,26 +247,35 @@ async function getPlayerStats(playerName) {
         }
         
         const statsData = await statsResponse.json();
-        const data = statsData.data;
+        const data = statsData.data || statsData; // Handle different response structures
         
-        // Step 3: Get level from profile endpoint (for XP)
-        const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
-            headers: { 
-                'Authorization': `Bearer ${process.env.EFT_API_KEY}`
+        // Step 3: Get level from profile endpoint (for XP) WITH ERROR HANDLING
+        let experience = 0;
+        try {
+            const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
+                headers: { 
+                    'Authorization': `Bearer ${process.env.EFT_API_KEY}`
+                }
+            });
+            
+            if (profileResponse.ok) {
+                const profile = await profileResponse.json();
+                experience = profile.data?.info?.experience || 0;
             }
-        });
-        
-        const profile = await profileResponse.json();
-        const experience = profile.data?.info?.experience || data.experience || 0;
+        } catch (profileError) {
+            console.log('[Profile Fetch Warning]', profileError.message);
+            // Continue without level if profile fails
+        }
         
         // Calculate level from XP using Tarkov's level table
         const level = calculateLevel(experience);
         
-        // Extract ONLY PMC stats with proper seconds-to-hours conversion
-        const pmcTimeSeconds = data.pmc?.timePlayedSeconds || data.pmc?.timePlayedInMinutes || 0;
+        // Extract ONLY PMC stats - try multiple possible field names
+        const pmcData = data.pmc || data.Pmc || {};
+        const pmcTimeSeconds = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
         const pmcHours = Math.round(pmcTimeSeconds / 3600); // Convert seconds to hours
-        const pmcKills = data.pmc?.kills || 0;
-        const pmcDeaths = data.pmc?.deaths || 0;
+        const pmcKills = pmcData.kills || 0;
+        const pmcDeaths = pmcData.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
         
         // Create profile URL
