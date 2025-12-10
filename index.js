@@ -247,7 +247,7 @@ async function getPlayerStats(playerName) {
         }
         
         const statsData = await statsResponse.json();
-        const data = statsData.data || statsData; // Handle different response structures
+        const data = statsData.data || statsData;
         
         // Step 3: Get level from profile endpoint (for XP) WITH ERROR HANDLING
         let experience = 0;
@@ -264,16 +264,15 @@ async function getPlayerStats(playerName) {
             }
         } catch (profileError) {
             console.log('[Profile Fetch Warning]', profileError.message);
-            // Continue without level if profile fails
         }
         
         // Calculate level from XP using Tarkov's level table
         const level = calculateLevel(experience);
         
-        // Extract ONLY PMC stats - try multiple possible field names
+        // Extract ONLY PMC stats - API returns DAYS, convert to hours
         const pmcData = data.pmc || data.Pmc || {};
-        const pmcTimeSeconds = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
-        const pmcHours = Math.round(pmcTimeSeconds / 3600); // Convert seconds to hours
+        const pmcDays = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
+        const pmcHours = Math.round(pmcDays * 24); // Convert days to hours
         const pmcKills = pmcData.kills || 0;
         const pmcDeaths = pmcData.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
