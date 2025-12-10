@@ -247,40 +247,35 @@ async function getPlayerStats(playerName) {
         }
         
         const statsData = await statsResponse.json();
-        const data = statsData.data || statsData;
+        const data = statsData.data;
         
-        // Step 3: Get level from profile endpoint (for XP) WITH ERROR HANDLING
-        let experience = 0;
-        try {
-            const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
-                headers: { 
-                    'Authorization': `Bearer ${process.env.EFT_API_KEY}`
-                }
-            });
-            
-            if (profileResponse.ok) {
-                const profile = await profileResponse.json();
-                experience = profile.data?.info?.experience || 0;
+        // Step 3: Get level from profile endpoint (for XP)
+        const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
+            headers: { 
+                'Authorization': `Bearer ${process.env.EFT_API_KEY}`
             }
-        } catch (profileError) {
-            console.log('[Profile Fetch Warning]', profileError.message);
-        }
+        });
+        
+        const profile = await profileResponse.json();
+        const experience = profile.data?.info?.experience || data.experience || 0;
         
         // Calculate level from XP using Tarkov's level table
         const level = calculateLevel(experience);
         
-        // Extract ONLY PMC stats - API returns SECONDS
-        const pmcData = data.pmc || data.Pmc || {};
-        const pmcTimeSeconds = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
-        const pmcHours = Math.round(pmcTimeSeconds / 3600); // Seconds → Hours
-        const pmcKills = pmcData.kills || 0;
-        const pmcDeaths = pmcData.deaths || 0;
+        // Extract PMC stats
+        const pmcKills = data.pmc?.kills || 0;
+        const pmcDeaths = data.pmc?.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
+        
+        // Extract SCAV stats
+        const scavKills = data.scav?.kills || 0;
+        const scavDeaths = data.scav?.deaths || 0;
+        const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
         
         // Create profile URL
         const profileUrl = `https://eft-api.tech/profile?aid=${aid}`;
         
-        return `${nickname} | Lvl:${level} | PMC:${pmcHours}h K/D:${pmcKD} | ${profileUrl}`;
+        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
