@@ -269,10 +269,10 @@ async function getPlayerStats(playerName) {
         // Calculate level from XP using Tarkov's level table
         const level = calculateLevel(experience);
         
-        // Extract ONLY PMC stats - API returns DAYS, convert to hours
+        // Extract ONLY PMC stats - API returns SECONDS
         const pmcData = data.pmc || data.Pmc || {};
-        const pmcDays = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
-        const pmcHours = Math.round(pmcDays * 24); // Convert days to hours
+        const pmcTimeSeconds = pmcData.timePlayedSeconds || pmcData.timePlayedInMinutes || pmcData.timePlayed || 0;
+        const pmcHours = Math.round(pmcTimeSeconds / 3600); // Seconds → Hours
         const pmcKills = pmcData.kills || 0;
         const pmcDeaths = pmcData.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
