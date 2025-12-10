@@ -262,20 +262,17 @@ async function getPlayerStats(playerName) {
         // Calculate level from XP using Tarkov's level table
         const level = calculateLevel(experience);
         
-        // Extract PMC stats
+        // Extract ONLY PMC stats with hours conversion
+        const pmcTimeMinutes = data.pmc?.timePlayedInMinutes || 0;
+        const pmcHours = Math.round(pmcTimeMinutes / 60); // Convert minutes to hours
         const pmcKills = data.pmc?.kills || 0;
         const pmcDeaths = data.pmc?.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
         
-        // Extract SCAV stats
-        const scavKills = data.scav?.kills || 0;
-        const scavDeaths = data.scav?.deaths || 0;
-        const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
-        
         // Create profile URL
         const profileUrl = `https://eft-api.tech/profile?aid=${aid}`;
         
-        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
+        return `${nickname} | Lvl:${level} | PMC:${pmcHours}h K/D:${pmcKD} | ${profileUrl}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         return `Error fetching player: ${playerName}`;
