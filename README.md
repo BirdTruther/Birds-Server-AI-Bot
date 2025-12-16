@@ -1,31 +1,51 @@
-Core AI Features
+Bot Overview
 
-    Intelligent Conversations: Responds to mentions (@ThePatrick on Discord, @BotName or !patrick on Twitch) using Perplexity AI's Sonar model.
+Name: Birds-Server-AI-Bot
+Platforms: Discord + Twitch
+AI Personality: "ThePatrick" - a toxic gamer persona powered by Perplexity's Sonar model
+Core Features
+Tarkov Integration Commands
 
-    Consistent Personality: A custom personality that can be adjusted via the sonar scripting.
+    !price [item] - Item prices with flea market & trader data
 
-    Multi-Platform Support: Runs simultaneously on Discord and Twitch with platform-specific handling (e.g., shorter messages for Twitch chat).
+    !bestammo [caliber] - Best ammo by penetration power
 
-Utility Commands
+    !trader - Trader reset times (EST timezone)
 
-    Meme Generator: Type "meme" in either Discord or Twitch chat to receive a random meme image with title via Meme-API.
+    !map [mapname] - Map info with boss spawns
 
-    Source Code Link: !code or !github in Twitch chat posts the GitHub repo: https://github.com/BirdTruther/Birds-Server-AI-Bot.
+    !player [name] - Player stats via EFT API (PMC/SCAV K/D, level)
 
-    Rate Limiting: Twitch responses are split into sentence-based chunks under 480 characters with 1.5-second delays to avoid spam warnings.
+General Commands
 
-    Use the bot to find quick info about Escape From Tarkov! !price | !map | !trader | !bestammo | !player
+    !code / !github - Share GitHub repo link
 
-Game Automation
+    meme - Fetch random meme from meme-api.com
 
-    Smart Triggering: Listens for TangiaBot messages containing "started a tangia dungeon" or "started a tangia boss fight" with "!join" mention, then delays 1 second before responding.
+    @BotName or !patrick - AI responses
 
-Technical Details
+Auto-Features
 
-    Dependencies: discord.js (v14), tmi.js (Twitch), @ai-sdk/perplexity, ai, dotenv, node-fetch.
+    Tangia Auto-Join: Automatically joins dungeon/boss fights when TangiaBot announces them (1s delay)
 
-    Configuration: Uses .env for tokens (DISCORD_TOKEN, PERPLEXITY_TOKEN, TWITCH_BOT_USERNAME, TWITCH_OAUTH_TOKEN, TWITCH_CHANNEL).
+Technical Stack
 
-    Logging: Console logs all messages and actions for debugging.
+    Discord.js with Gateway intents for messages
 
-    Safety: Ignores bot's own messages to prevent loops; handles errors gracefully.
+    tmi.js for Twitch chat
+
+    Perplexity AI (Sonar model) for conversational responses
+
+    GraphQL queries to tarkov.dev API
+
+    REST API calls to eft-api.tech for player stats
+
+Key Configurations
+
+    Twitch char limit: 480 (with smart chunking at sentence boundaries)
+
+    Message delay: 1.5s between Twitch messages
+
+    Tracked traders: Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
+
+    Player level calculation using Tarkov's 79-level XP table
