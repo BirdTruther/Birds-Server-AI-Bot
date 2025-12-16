@@ -22,14 +22,55 @@ const CONFIG = {
     GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot'
 };
 
+// ===== MESSAGE MEMORY SYSTEM =====
+// Keep last 5 messages per platform for context
+const messageHistory = {
+    discord: [],
+    twitch: []
+};
+
+const MAX_MEMORY = 5;
+
+function addMessageToMemory(platform, username, content) {
+    const history = messageHistory[platform];
+    
+    history.push({
+        username,
+        content,
+        timestamp: new Date()
+    });
+    
+    // Keep only last MAX_MEMORY messages
+    if (history.length > MAX_MEMORY) {
+        history.shift();
+    }
+}
+
+function getMemoryContext(platform) {
+    const history = messageHistory[platform];
+    
+    if (history.length === 0) {
+        return 'No previous messages in this conversation.';
+    }
+    
+    return history.map(msg => `${msg.username}: ${msg.content}`).join('\n');
+}
+
+function clearMemory(platform) {
+    messageHistory[platform] = [];
+    console.log(`[MEMORY] Cleared ${platform} conversation history`);
+}
+
 // ===== AI SERVICE (Perplexity) =====
 const perplexity = createPerplexity({
     apiKey: process.env.PERPLEXITY_TOKEN
 });
 
 // Generate AI response with ThePatrick personality
-async function getAIResponse(message) {
+async function getAIResponse(message, platform = 'discord', username = 'user') {
     try {
+        const memoryContext = getMemoryContext(platform);
+        
         const { text } = await generateText({
             model: perplexity('sonar'),
             messages: [
@@ -37,6 +78,9 @@ async function getAIResponse(message) {
                     role: "system",
                     content: `
                     Your name is ThePatrick. 25yo toxic gamer asshole who's been flaming noobs in this Discord for years.
+
+                    **CONVERSATION CONTEXT (Last 5 messages):**
+                    ${memoryContext}
 
                     **Twitch: Under 400 chars. Short AF - chat scrolls fast!**
                     
@@ -378,6 +422,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (self) return; // Ignore bot's own messages
     
     console.log(`[TWITCH] ${tags.username}: ${message}`);
+    addMessageToMemory('twitch', tags.username, message); // ADD TO MEMORY
     
     const lowerMessage = message.toLowerCase();
     
@@ -452,7 +497,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     // AI response when bot is mentioned (@BotName or !patrick)
     if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
         lowerMessage.startsWith('!patrick')) {
-        const response = await getAIResponse(message);
+        const response = await getAIResponse(message, 'twitch', tags.username);
         await sendTwitchChunked(channel, response);
     }
 });
@@ -475,6 +520,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return; // Ignore bot messages
     
     console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
+    addMessageToMemory('discord', message.author.username, message.content); // ADD TO MEMORY
     
     const lowerContent = message.content.toLowerCase();
     
@@ -530,7 +576,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     
     // AI response when bot is mentioned
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
-        const response = await getAIResponse(message.content);
+        const response = await getAIResponse(message.content, 'discord', message.author.username);
         await message.reply(response);
     }
 });
@@ -541,4 +587,3 @@ discordClient.login(process.env.DISCORD_TOKEN);
 // ============================================================================
 // END OF OPTIMIZED BOT
 // ============================================================================
-
