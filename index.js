@@ -260,70 +260,136 @@ async function getMapInfo(mapName) {
     }
 }
 
-// Get player stats from EFT API
 async function getPlayerStats(playerName) {
     try {
-        // Step 1: Search for player by nickname to get their AID
+        console.log(`[EFT] Searching player: ${playerName}`);
+
         const searchResponse = await fetch(`https://eft-api.tech/api/users/${encodeURIComponent(playerName)}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
             }
         });
-        
+
+        console.log(`[EFT] /users status: ${searchResponse.status}`);
+
+        let searchText;
+        try {
+            searchText = await searchResponse.text();   // read raw text once
+        } catch (e) {
+            searchText = '<no body>';
+        }
+        console.log(`[EFT] /users body: ${searchText.slice(0, 300)}`);
+
+        // if it was ok, parse JSON from the text we already got
+        let searchData = null;
+        if (searchResponse.ok) {
+            try {
+                searchData = JSON.parse(searchText);
+            } catch (e) {
+                console.error('[EFT] /users JSON parse error', e);
+                return `Error reading EFT response for: ${playerName}`;
+            }
+        }
+
         if (!searchResponse.ok) {
             if (searchResponse.status === 404) return `Player not found: ${playerName}`;
-            return `Error searching for: ${playerName}`;
+            if (searchResponse.status === 503) return `EFT API is unavailable or overloaded right now (503) while searching for: ${playerName}`;
+            return `Error searching for: ${playerName} (HTTP ${searchResponse.status})`;
         }
-        
-        const searchData = await searchResponse.json();
-        
-        if (!searchData.success || !searchData.data || searchData.data.length === 0) {
+
+        if (!searchData || !searchData.success || !searchData.data || searchData.data.length === 0) {
             return `Player not found: ${playerName}`;
         }
-        
+
         const aid = searchData.data[0].aid;
         const nickname = searchData.data[0].Info.Nickname;
-        
-        // Step 2: Get player stats using the stats endpoint
+
+        // ===== STATS REQUEST =====
+        console.log(`[EFT] Fetching stats for AID ${aid}`);
+
         const statsResponse = await fetch(`https://eft-api.tech/api/profile/stats/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
             }
         });
-        
-        if (!statsResponse.ok) {
-            return `Error fetching stats for: ${nickname}`;
+
+        console.log(`[EFT] /profile/stats status: ${statsResponse.status}`);
+
+        let statsText;
+        try {
+            statsText = await statsResponse.text();
+        } catch (e) {
+            statsText = '<no body>';
         }
-        
-        const statsData = await statsResponse.json();
+        console.log(`[EFT] /profile/stats body: ${statsText.slice(0, 300)}`);
+
+        let statsData = null;
+        if (statsResponse.ok) {
+            try {
+                statsData = JSON.parse(statsText);
+            } catch (e) {
+                console.error('[EFT] /profile/stats JSON parse error', e);
+                return `Error reading stats for: ${nickname}`;
+            }
+        }
+
+        if (!statsResponse.ok) {
+            if (statsResponse.status === 503) {
+                return `EFT API is unavailable or overloaded right now (503) when fetching stats for: ${nickname}`;
+            }
+            return `Error fetching stats for: ${nickname} (HTTP ${statsResponse.status})`;
+        }
+
         const data = statsData.data;
-        
-        // Step 3: Get level from profile endpoint (for XP)
+
+        // ===== PROFILE REQUEST =====
+        console.log(`[EFT] Fetching profile for AID ${aid}`);
+
         const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
             headers: { 
                 'Authorization': `Bearer ${process.env.EFT_API_KEY}`
             }
         });
-        
-        const profile = await profileResponse.json();
-        const experience = profile.data?.info?.experience || data.experience || 0;
-        
-        // Calculate level from XP using Tarkov's level table
+
+        console.log(`[EFT] /profile status: ${profileResponse.status}`);
+
+        let profileText;
+        try {
+            profileText = await profileResponse.text();
+        } catch (e) {
+            profileText = '<no body>';
+        }
+        console.log(`[EFT] /profile body: ${profileText.slice(0, 300)}`);
+
+        let profile = null;
+        if (profileResponse.ok) {
+            try {
+                profile = JSON.parse(profileText);
+            } catch (e) {
+                console.error('[EFT] /profile JSON parse error', e);
+            }
+        } else if (profileResponse.status === 503) {
+            // Don’t hard‑fail stats if profile is 503 – just drop level
+            console.warn('[EFT] Profile endpoint 503; falling back to stats data only');
+        }
+
+        const experience =
+            profile?.data?.info?.experience ||
+            data.experience ||
+            0;
+
         const level = calculateLevel(experience);
-        
-        // Extract PMC stats
+
         const pmcKills = data.pmc?.kills || 0;
         const pmcDeaths = data.pmc?.deaths || 0;
         const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
-        
-        // Extract SCAV stats
+
         const scavKills = data.scav?.kills || 0;
         const scavDeaths = data.scav?.deaths || 0;
         const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
-        
-        // Create profile URL
+
         const profileUrl = `https://eft-api.tech/profile?aid=${aid}`;
-        
+
         return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
