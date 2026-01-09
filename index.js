@@ -10,6 +10,7 @@ const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
+const axios = require('axios');
 require('dotenv').config();
 
 // ===== CONFIGURATION CONSTANTS =====
@@ -259,7 +260,7 @@ async function getMapInfo(mapName) {
         return `Error: ${mapName}`;
     }
 }
-
+// Get Player Stats
 async function getPlayerStats(playerName) {
     try {
         console.log(`[EFT] Searching player: ${playerName}`);
@@ -422,19 +423,39 @@ function calculateLevel(xp) {
     return 1; // Default to level 1 if XP is 0
 }
 
-// ===== MEME SERVICE =====
-async function fetchMeme() {
-    try {
-        const response = await fetch('https://meme-api.com/gimme');
-        const data = await response.json();
-        if (data?.url) {
-            return { title: data.title, url: data.url };
+// Get current in-game time for all maps
+async function getMapTimes() {
+    const query = gql`{
+        maps {
+            name
+            normalizedName
+            enemies
+            raidDuration
         }
-        return null;
+    }`;
+    
+    try {
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        return data.maps || [];
     } catch (error) {
-        console.error('[Meme Fetch Error]', error);
-        return null;
+        console.error('[Map Times Error]', error);
+        return [];
     }
+}
+
+// Calculate current Tarkov in-game time (7:1 speed ratio)
+function getCurrentTarkovTime() {
+    const realSeconds = Date.now() / 1000;
+    const tarkovSeconds = realSeconds * 7; // 7x speed
+    const tarkovMinutes = (tarkovSeconds / 60) % 1440; // 1440 mins in a day
+    const hours = Math.floor(tarkovMinutes / 60);
+    const minutes = Math.floor(tarkovMinutes % 60);
+    return { hours, minutes };
+}
+
+// Check if time is in cultist active range (22:00-07:00)
+function isCultistTime(hour) {
+    return hour >= 22 || hour < 7;
 }
 
 // ===== TWITCH UTILITIES =====
@@ -650,6 +671,80 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const response = await getAIResponse(message.content, 'discord', message.author.username);
         await message.reply(response);
     }
+});
+
+// ===== CULTIST MONITORING SYSTEM =====
+const CULTIST_CONFIG = {
+    CHANNEL_ID: '1001340004259352678', // Replace with your channel ID
+    CHECK_INTERVAL_MS: 300000, // Check every 5 minutes
+    CULTIST_MAPS: ['Customs', 'Shoreline', 'Woods', 'Factory', 'Ground Zero']
+};
+
+let lastCultistStates = {
+    server1: {},
+    server2: {}
+};
+
+async function checkCultistActivity() {
+    try {
+        const maps = await getMapTimes();
+        const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
+        
+        if (!channel) {
+            console.error('[CULTIST] Channel not found!');
+            return;
+        }
+        
+        // Calculate both server instance times (12 hours apart)
+        const { hours: server1Hours, minutes: server1Minutes } = getCurrentTarkovTime();
+        const server1Time = `${server1Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
+        const server1Active = isCultistTime(server1Hours);
+        
+        // Server 2 is exactly 12 hours offset
+        const server2Hours = (server1Hours + 12) % 24;
+        const server2Time = `${server2Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
+        const server2Active = isCultistTime(server2Hours);
+        
+        // Check each map that spawns cultists
+        maps.forEach(map => {
+            if (!CULTIST_CONFIG.CULTIST_MAPS.includes(map.name)) return;
+            if (!map.enemies || !map.enemies.includes('Cultist')) return;
+            
+            const mapKey = map.normalizedName;
+            
+            // Check Server Instance 1
+            if (server1Active && !lastCultistStates.server1[mapKey]) {
+                channel.send(`🌙 **Cultists active on ${map.name} (Server 1)!** In-game time: ${server1Time}`);
+                lastCultistStates.server1[mapKey] = true;
+                console.log(`[CULTIST] Server 1 active on ${map.name} at ${server1Time}`);
+            } else if (!server1Active && lastCultistStates.server1[mapKey]) {
+                channel.send(`☀️ **Cultists despawned on ${map.name} (Server 1).** In-game time: ${server1Time}`);
+                lastCultistStates.server1[mapKey] = false;
+                console.log(`[CULTIST] Server 1 inactive on ${map.name} at ${server1Time}`);
+            }
+            
+            // Check Server Instance 2
+            if (server2Active && !lastCultistStates.server2[mapKey]) {
+                channel.send(`🌙 **Cultists active on ${map.name} (Server 2)!** In-game time: ${server2Time}`);
+                lastCultistStates.server2[mapKey] = true;
+                console.log(`[CULTIST] Server 2 active on ${map.name} at ${server2Time}`);
+            } else if (!server2Active && lastCultistStates.server2[mapKey]) {
+                channel.send(`☀️ **Cultists despawned on ${map.name} (Server 2).** In-game time: ${server2Time}`);
+                lastCultistStates.server2[mapKey] = false;
+                console.log(`[CULTIST] Server 2 inactive on ${map.name} at ${server2Time}`);
+            }
+        });
+    } catch (error) {
+        console.error('[CULTIST] Monitoring error:', error);
+    }
+}
+
+// Start monitoring when Discord bot is ready
+discordClient.once('ready', () => {
+    console.log('[CULTIST] Starting monitoring system...');
+    checkCultistActivity();
+    setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
+    console.log(`[CULTIST] Monitoring every ${CULTIST_CONFIG.CHECK_INTERVAL_MS / 60000} minutes`);
 });
 
 // ===== START DISCORD CLIENT =====
