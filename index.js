@@ -420,7 +420,7 @@ function calculateLevel(xp) {
     return 1;
 }
 
-// Get map data from tarkov.dev API
+// Get map time from tarkov.dev API
 async function getMapTimes() {
     const query = gql`{
         maps {
@@ -442,11 +442,17 @@ async function getMapTimes() {
 
 // Calculate current Tarkov in-game time (7:1 speed ratio)
 function getCurrentTarkovTime() {
-    const realSeconds = Date.now() / 1000;
-    const tarkovSeconds = realSeconds * 7;
-    const tarkovMinutes = (tarkovSeconds / 60) % 1440;
-    const hours = Math.floor(tarkovMinutes / 60);
-    const minutes = Math.floor(tarkovMinutes % 60);
+    const oneDay = 24 * 60 * 60 * 1000; // milliseconds in a day
+    const russia = 3 * 60 * 60 * 1000; // 3 hours in milliseconds (Moscow UTC+3)
+    const tarkovRatio = 7;
+    
+    const now = Date.now();
+    const tarkovTime = (russia + (now * tarkovRatio)) % oneDay;
+    
+    const totalMinutes = Math.floor(tarkovTime / (60 * 1000));
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    
     return { hours, minutes };
 }
 
