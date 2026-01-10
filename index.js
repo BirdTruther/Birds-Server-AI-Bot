@@ -87,7 +87,7 @@ async function getAIResponse(message, platform = 'discord', username = 'user') {
                     
                     Style:
                     - Cuss like a sailor, heavy sarcasm, sweaty gamer energy
-                    - "Git gud," "bro you’re trash," ego checks, KD flexes
+                    - "Git gud," "bro you're trash," ego checks, KD flexes
                     - Use edgy humor without slurs or hate speech
                     - Emojis for savage energy 💀🤡😂🔥😤
                     - **BOLD** burns, *italics* fake sympathy
@@ -98,7 +98,7 @@ async function getAIResponse(message, platform = 'discord', username = 'user') {
                     - "Mic check? Sounds like your $20 Walmart headset finally gave up 💀"
                     - "K/D ratio? Looks like a warmup bot took your spot 😂"
                     - "Voice chat broke? **Unplug your toaster PC** and try again, champ 😤"
-                    - "LFG? Only if you don’t grief the squad like last match 🤡"
+                    - "LFG? Only if you don't grief the squad like last match 🤡"
                     - "That build? Looks like you let an AI pick perks for you. *Tragic.*"
                     
                     Triggers:
@@ -109,11 +109,11 @@ async function getAIResponse(message, platform = 'discord', username = 'user') {
                     
                     Rules:
                     - No slurs, hate speech, or real-world harassment
-                    - No sexual content or targeting people’s families
-                    - Don’t be nice or robotic, but stay playful and entertainment-focused
+                    - No sexual content or targeting people's families
+                    - Don't be nice or robotic, but stay playful and entertainment-focused
                     - Never self-@, never use [citations], never write long walls of text
                     
-                    Be the toxic voice chat goblin everyone complains about, but secretly keeps around because you’re funny and clutch.
+                    Be the toxic voice chat goblin everyone complains about, but secretly keeps around because you're funny and clutch.
                     `
                 },
                 {
@@ -260,6 +260,7 @@ async function getMapInfo(mapName) {
         return `Error: ${mapName}`;
     }
 }
+
 // Get Player Stats
 async function getPlayerStats(playerName) {
     try {
@@ -275,13 +276,12 @@ async function getPlayerStats(playerName) {
 
         let searchText;
         try {
-            searchText = await searchResponse.text();   // read raw text once
+            searchText = await searchResponse.text();
         } catch (e) {
             searchText = '<no body>';
         }
         console.log(`[EFT] /users body: ${searchText.slice(0, 300)}`);
 
-        // if it was ok, parse JSON from the text we already got
         let searchData = null;
         if (searchResponse.ok) {
             try {
@@ -370,7 +370,6 @@ async function getPlayerStats(playerName) {
                 console.error('[EFT] /profile JSON parse error', e);
             }
         } else if (profileResponse.status === 503) {
-            // Don’t hard‑fail stats if profile is 503 – just drop level
             console.warn('[EFT] Profile endpoint 503; falling back to stats data only');
         }
 
@@ -413,17 +412,16 @@ function calculateLevel(xp) {
         96009180, 110462910, 126300949, 144924572, 172016256
     ];
     
-    // Find the highest level where cumulative XP <= player's XP
     for (let i = levels.length - 1; i >= 0; i--) {
         if (xp >= levels[i]) {
-            return i + 1; // Level is index + 1 (since array starts at level 1)
+            return i + 1;
         }
     }
     
-    return 1; // Default to level 1 if XP is 0
+    return 1;
 }
 
-// Get current in-game time for all maps
+// Get map data from tarkov.dev API
 async function getMapTimes() {
     const query = gql`{
         maps {
@@ -446,8 +444,8 @@ async function getMapTimes() {
 // Calculate current Tarkov in-game time (7:1 speed ratio)
 function getCurrentTarkovTime() {
     const realSeconds = Date.now() / 1000;
-    const tarkovSeconds = realSeconds * 7; // 7x speed
-    const tarkovMinutes = (tarkovSeconds / 60) % 1440; // 1440 mins in a day
+    const tarkovSeconds = realSeconds * 7;
+    const tarkovMinutes = (tarkovSeconds / 60) % 1440;
     const hours = Math.floor(tarkovMinutes / 60);
     const minutes = Math.floor(tarkovMinutes % 60);
     return { hours, minutes };
@@ -456,6 +454,21 @@ function getCurrentTarkovTime() {
 // Check if time is in cultist active range (22:00-07:00)
 function isCultistTime(hour) {
     return hour >= 22 || hour < 7;
+}
+
+// ===== MEME SERVICE =====
+async function fetchMeme() {
+    try {
+        const response = await fetch('https://meme-api.com/gimme');
+        const data = await response.json();
+        if (data?.url) {
+            return { title: data.title, url: data.url };
+        }
+        return null;
+    } catch (error) {
+        console.error('[Meme Fetch Error]', error);
+        return null;
+    }
 }
 
 // ===== TWITCH UTILITIES =====
@@ -473,7 +486,6 @@ async function sendTwitchChunked(channel, text) {
         return;
     }
     
-    // Split at sentence boundaries for cleaner messages
     const sentences = text.match(/[^.!?]+[.!?]+/g) || [text];
     let currentChunk = '';
     
@@ -511,20 +523,18 @@ twitchClient.on('connected', (address, port) => {
 
 // ===== TWITCH MESSAGE HANDLER =====
 twitchClient.on('message', async (channel, tags, message, self) => {
-    if (self) return; // Ignore bot's own messages
+    if (self) return;
     
     console.log(`[TWITCH] ${tags.username}: ${message}`);
-    addMessageToMemory('twitch', tags.username, message); // ADD TO MEMORY
+    addMessageToMemory('twitch', tags.username, message);
     
     const lowerMessage = message.toLowerCase();
     
-    // !code or !github - Share repo link
     if (lowerMessage.includes('!code') || lowerMessage.includes('!github')) {
         twitchClient.say(channel, `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`);
         return;
     }
     
-    // !price [item] - Get Tarkov item price
     if (lowerMessage.startsWith('!price ')) {
         const itemName = message.substring(7);
         const result = await getTarkovPrice(itemName);
@@ -532,7 +542,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
     
-    // !bestammo [caliber] - Get best ammo for caliber
     if (lowerMessage.startsWith('!bestammo ')) {
         const searchCaliber = message.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
@@ -540,14 +549,12 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
     
-    // !trader - Get trader reset times
     if (lowerMessage === '!trader') {
         const result = await getTraderResets();
         twitchClient.say(channel, result);
         return;
     }
     
-    // !map [mapname] - Get map info
     if (lowerMessage.startsWith('!map ')) {
         const mapName = message.substring(5);
         const result = await getMapInfo(mapName);
@@ -555,7 +562,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
 
-    // !player [playername] - Get player stats
     if (lowerMessage.startsWith('!player ')) {
         const playerName = message.substring(8).trim();
         const result = await getPlayerStats(playerName);
@@ -563,7 +569,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
 
-    // Auto-join Tangia dungeon/boss fights
     if (tags.username.toLowerCase() === 'tangiabot' && 
         (lowerMessage.includes('started a tangia dungeon') || 
          lowerMessage.includes('started a tangia boss fight')) && 
@@ -575,7 +580,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
     
-    // Meme command
     if (lowerMessage.includes('meme')) {
         const meme = await fetchMeme();
         if (meme) {
@@ -586,7 +590,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
     
-    // AI response when bot is mentioned (@BotName or !patrick)
     if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
         lowerMessage.startsWith('!patrick')) {
         const response = await getAIResponse(message, 'twitch', tags.username);
@@ -609,14 +612,13 @@ discordClient.on('ready', (readyClient) => {
 
 // ===== DISCORD MESSAGE HANDLER =====
 discordClient.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot) return; // Ignore bot messages
+    if (message.author.bot) return;
     
     console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
-    addMessageToMemory('discord', message.author.username, message.content); // ADD TO MEMORY
+    addMessageToMemory('discord', message.author.username, message.content);
     
     const lowerContent = message.content.toLowerCase();
     
-    // !price [item] - Get Tarkov item price
     if (lowerContent.startsWith('!price ')) {
         const itemName = message.content.substring(7);
         const result = await getTarkovPrice(itemName);
@@ -624,7 +626,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
-    // !bestammo [caliber] - Get best ammo for caliber
     if (lowerContent.startsWith('!bestammo ')) {
         const searchCaliber = message.content.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
@@ -632,14 +633,12 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
-    // !trader - Get trader reset times
     if (lowerContent === '!trader') {
         const result = await getTraderResets();
         message.reply(result);
         return;
     }
     
-    // !map [mapname] - Get map info
     if (lowerContent.startsWith('!map ')) {
         const mapName = message.content.substring(5);
         const result = await getMapInfo(mapName);
@@ -647,7 +646,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // !player [playername] - Get player stats
     if (lowerContent.startsWith('!player ')) {
         const playerName = message.content.substring(8).trim();
         const result = await getPlayerStats(playerName);
@@ -655,7 +653,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Meme command - Send with image embed
     if (lowerContent.includes('meme')) {
         const meme = await fetchMeme();
         if (meme) {
@@ -666,7 +663,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
-    // AI response when bot is mentioned
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
         const response = await getAIResponse(message.content, 'discord', message.author.username);
         await message.reply(response);
@@ -675,8 +671,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
 // ===== CULTIST MONITORING SYSTEM =====
 const CULTIST_CONFIG = {
-    CHANNEL_ID: '1001340004259352678', // Replace with your channel ID
-    CHECK_INTERVAL_MS: 300000, // Check every 5 minutes
+    CHANNEL_ID: '1001340004259352678',
+    CHECK_INTERVAL_MS: 300000,
     CULTIST_MAPS: ['Customs', 'Shoreline', 'Woods', 'Factory', 'Ground Zero']
 };
 
@@ -695,24 +691,20 @@ async function checkCultistActivity() {
             return;
         }
         
-        // Calculate both server instance times (12 hours apart)
         const { hours: server1Hours, minutes: server1Minutes } = getCurrentTarkovTime();
         const server1Time = `${server1Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
         const server1Active = isCultistTime(server1Hours);
         
-        // Server 2 is exactly 12 hours offset
         const server2Hours = (server1Hours + 12) % 24;
         const server2Time = `${server2Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
         const server2Active = isCultistTime(server2Hours);
         
-        // Check each map that spawns cultists
         maps.forEach(map => {
             if (!CULTIST_CONFIG.CULTIST_MAPS.includes(map.name)) return;
             if (!map.enemies || !map.enemies.includes('Cultist')) return;
             
             const mapKey = map.normalizedName;
             
-            // Check Server Instance 1
             if (server1Active && !lastCultistStates.server1[mapKey]) {
                 channel.send(`🌙 **Cultists active on ${map.name} (Server 1)!** In-game time: ${server1Time}`);
                 lastCultistStates.server1[mapKey] = true;
@@ -723,7 +715,6 @@ async function checkCultistActivity() {
                 console.log(`[CULTIST] Server 1 inactive on ${map.name} at ${server1Time}`);
             }
             
-            // Check Server Instance 2
             if (server2Active && !lastCultistStates.server2[mapKey]) {
                 channel.send(`🌙 **Cultists active on ${map.name} (Server 2)!** In-game time: ${server2Time}`);
                 lastCultistStates.server2[mapKey] = true;
@@ -739,7 +730,6 @@ async function checkCultistActivity() {
     }
 }
 
-// Start monitoring when Discord bot is ready
 discordClient.once('ready', () => {
     console.log('[CULTIST] Starting monitoring system...');
     checkCultistActivity();
