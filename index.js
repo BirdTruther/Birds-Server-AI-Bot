@@ -10,7 +10,6 @@ const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
-const axios = require('axios');
 require('dotenv').config();
 
 // ===== CONFIGURATION CONSTANTS =====
