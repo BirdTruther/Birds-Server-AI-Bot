@@ -10,6 +10,7 @@ const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
+const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
 // ===== CONFIGURATION CONSTANTS =====
@@ -603,22 +604,21 @@ async function checkCultistActivity() {
         
         // Check Server Instance 1
         if (server1Active && !lastCultistStates.server1.active) {
-            channel.send(`🌙 **Cultists are now active! (Server 1)** In-game time: ${server1Time}`);
+            channel.send(`<@&${CULTIST_ROLE_ID}> 🌙 **Cultists are now active! (Server 1)** In-game time: ${server1Time}`);
             lastCultistStates.server1.active = true;
             console.log(`[CULTIST] Server 1 active at ${server1Time}`);
         } else if (!server1Active && lastCultistStates.server1.active) {
-            channel.send(`☀️ **Cultists despawned. (Server 1)** In-game time: ${server1Time}`);
+            channel.send(`<@&${CULTIST_ROLE_ID}> ☀️ **Cultists despawned. (Server 1)** In-game time: ${server1Time}`);
             lastCultistStates.server1.active = false;
             console.log(`[CULTIST] Server 1 inactive at ${server1Time}`);
         }
         
-        // Check Server Instance 2
         if (server2Active && !lastCultistStates.server2.active) {
-            channel.send(`🌙 **Cultists are now active! (Server 2)** In-game time: ${server2Time}`);
+            channel.send(`<@&${CULTIST_ROLE_ID}> 🌙 **Cultists are now active! (Server 2)** In-game time: ${server2Time}`);
             lastCultistStates.server2.active = true;
             console.log(`[CULTIST] Server 2 active at ${server2Time}`);
         } else if (!server2Active && lastCultistStates.server2.active) {
-            channel.send(`☀️ **Cultists despawned. (Server 2)** In-game time: ${server2Time}`);
+            channel.send(`<@&${CULTIST_ROLE_ID}> ☀️ **Cultists despawned. (Server 2)** In-game time: ${server2Time}`);
             lastCultistStates.server2.active = false;
             console.log(`[CULTIST] Server 2 inactive at ${server2Time}`);
         }
