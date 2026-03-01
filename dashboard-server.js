@@ -55,13 +55,17 @@ app.post('/api/cultist/toggle', (req, res) => {
 
 // Bot status endpoint
 app.get('/api/bot/status', (req, res) => {
+  const uptimeSeconds = process.uptime();
+  const uptimeStr = new Date(uptimeSeconds * 1000).toISOString().substr(11, 8);
+  
   res.json({
     status: 'ONLINE',
-    uptime: process.uptime().toFixed(1) + 's',
+    uptime: uptimeStr,  // Shows HH:MM:SS
     lastCheck: new Date().toLocaleTimeString(),
-    memory: process.memoryUsage().rss / 1024 / 1024 + ' MB'
+    memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB'
   });
 });
+
 
 app.listen(PORT, () => {
   console.log(`Dashboard on http://localhost:${PORT}/`);
