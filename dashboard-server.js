@@ -53,6 +53,16 @@ app.post('/api/cultist/toggle', (req, res) => {
   res.json({ success: true, enabled });
 });
 
+// Bot status endpoint
+app.get('/api/bot/status', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    uptime: process.uptime().toFixed(1) + 's',
+    lastCheck: new Date().toLocaleTimeString(),
+    memory: process.memoryUsage().rss / 1024 / 1024 + ' MB'
+  });
+});
+
 app.listen(PORT, () => {
   console.log(`Dashboard on http://localhost:${PORT}/`);
 });
