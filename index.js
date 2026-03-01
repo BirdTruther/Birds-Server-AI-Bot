@@ -597,7 +597,13 @@ async function checkCultistActivity() {
     console.log('[CULTIST] Monitoring disabled by dashboard');
     return;
   }
-        
+    try {
+    const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
+    
+    if (!channel) {
+      console.error('[CULTIST] Channel not found!');
+      return;
+    }     
         const { hours: server1Hours, minutes: server1Minutes } = getCurrentTarkovTime();
         const server1Time = `${server1Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
         const server1Active = isCultistTime(server1Hours);
