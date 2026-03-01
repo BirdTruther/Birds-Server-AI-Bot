@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ThePatrick Bot Dashboard</title>
+    <style>
+        :root {
+            --color-bg-primary: #0f172a;
+            --color-bg-secondary: #1e293b;
+            --color-text-primary: #f1f5f9;
+            --color-text-secondary: #cbd5e1;
+            --color-primary: #0284c7;
+            --color-primary-hover: #0369a1;
+            --color-success: #22c55e;
+            --color-danger: #ef4444;
+            --color-warning: #f59e0b;
+            --radius: 8px;
+            --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, var(--color-bg-primary) 0%, #020617 100%);
+            color: var(--color-text-primary);
+            line-height: 1.6;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 0;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(135deg, var(--color-primary), #06b6d4);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .subtitle {
+            color: var(--color-text-secondary);
+            font-size: 1.1rem;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: var(--color-bg-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: var(--radius);
+            padding: 25px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            border-color: var(--color-primary);
+            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.2);
+            transform: translateY(-2px);
+        }
+
+        .card-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .card-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card-icon {
+            font-size: 1.5rem;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .status-badge.active {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--color-success);
+            border: 1px solid var(--color-success);
+        }
+
+        .status-badge.inactive {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--color-danger);
+            border: 1px solid var(--color-danger);
+        }
+
+        .status-info {
+            margin: 20px 0;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 6px;
+            border-left: 4px solid var(--color-primary);
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 10px 0;
+            font-size: 0.95rem;
+        }
+
+        .status-label {
+            color: var(--color-text-secondary);
+            font-weight: 500;
+        }
+
+        .status-value {
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+
+        .control-section {
+            margin-top: 25px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .control-label {
+            display: block;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: var(--color-text-primary);
+        }
+
+        .toggle-switch {
+            position: relative;
+            display: inline-block;
+            width: 60px;
+            height: 34px;
+        }
+
+        .toggle-switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: 0.4s;
+            border-radius: 34px;
+            background-color: rgba(239, 68, 68, 0.5);
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 26px;
+            width: 26px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: 0.4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--color-success);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(26px);
+        }
+
+        .button {
+            display: inline-block;
+            padding: 10px 20px;
+            margin: 10px 5px 10px 0;
+            border: none;
+            border-radius: var(--radius);
+            font-size: 0.95rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .button-primary {
+            background: var(--color-primary);
+            color: white;
+        }
+
+        .button-primary:hover {
+            background: var(--color-primary-hover);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
+        }
+
+        .button-primary:active {
+            transform: translateY(0);
+        }
+
+        .button-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--color-text-primary);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .button-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+
+        .alert {
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: var(--radius);
+            font-weight: 500;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        .alert.show {
+            display: block;
+        }
+
+        .alert-success {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--color-success);
+            border: 1px solid var(--color-success);
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--color-danger);
+            border: 1px solid var(--color-danger);
+        }
+
+        .alert-warning {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--color-warning);
+            border: 1px solid var(--color-warning);
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-10px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--color-primary);
+            animation: spin 0.8s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .server-group {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+
+        .server-group-title {
+            font-weight: 600;
+            color: var(--color-primary);
+            margin-bottom: 10px;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-box {
+            background: rgba(2, 132, 199, 0.1);
+            padding: 12px;
+            border-radius: 6px;
+            border-left: 3px solid var(--color-primary);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--color-text-secondary);
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: var(--color-primary);
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--color-text-secondary);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 1.8rem;
+            }
+
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 ThePatrick Bot Dashboard</h1>
+            <p class="subtitle">ThePatrick's Birds Server AI Bot Control Panel</p>
+        </header>
+
+        <div id="alerts"></div>
+
+        <div class="dashboard-grid">
+            <!-- Cultist Monitoring Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">🌙</span>
+                        Cultist Monitor
+                    </div>
+                    <span id="cultist-status" class="status-badge inactive">OFFLINE</span>
+                </div>
+
+                <div class="status-info">
+                    <div class="status-item">
+                        <span class="status-label">Monitoring:</span>
+                        <span class="status-value" id="cultist-monitoring">Disabled</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Server 1:</span>
+                        <span class="status-value" id="cultist-s1-status">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Server 2:</span>
+                        <span class="status-value" id="cultist-s2-status">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Tarkov Time:</span>
+                        <span class="status-value" id="tarkov-time">--:--</span>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <label class="control-label">
+                        <span style="display: block; margin-bottom: 10px;">Toggle Monitoring</span>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="cultist-toggle">
+                            <span class="slider"></span>
+                        </label>
+                    </label>
+                </div>
+
+                <div>
+                    <button class="button button-primary" id="refresh-cultist-btn">🔄 Refresh Status</button>
+                    <button class="button button-secondary" id="reset-cultist-btn">⚙️ Reset</button>
+                </div>
+            </div>
+
+            <!-- Bot Status Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">⚡</span>
+                        Bot Status
+                    </div>
+                    <span id="bot-status" class="status-badge inactive">OFFLINE</span>
+                </div>
+
+                <div class="status-info">
+                    <div class="status-item">
+                        <span class="status-label">Connection:</span>
+                        <span class="status-value" id="bot-connection">Unknown</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Uptime:</span>
+                        <span class="status-value" id="bot-uptime">--</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Last Check:</span>
+                        <span class="status-value" id="last-check">Never</span>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <button class="button button-primary" id="check-bot-btn">🔍 Check Status</button>
+                </div>
+            </div>
+
+            <!-- Quick Actions Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">⚙️</span>
+                        Quick Actions
+                    </div>
+                </div>
+
+                <div class="status-info">
+                    <p style="color: var(--color-text-secondary); margin-bottom: 15px;">Common bot control operations</p>
+                </div>
+
+                <div class="control-section">
+                    <button class="button button-primary" id="reload-commands-btn">🔄 Reload Commands</button>
+                    <button class="button button-primary" id="clear-memory-btn">🧠 Clear Memory</button>
+                    <button class="button button-secondary" id="view-logs-btn">📋 View Logs</button>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p>Dashboard v1.0 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>💻 Built with ❤️ and Mountain Dew</p>
+        </footer>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3001/api';
+
+        class BotDashboard {
+            constructor() {
+                this.cultistEnabled = false;
+                this.initializeEventListeners();
+                this.startAutoRefresh();
+                this.updateFooterTime();
+            }
+
+            initializeEventListeners() {
+                document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
+                document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
+                document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
+                document.getElementById('check-bot-btn').addEventListener('click', () => this.checkBotStatus());
+                document.getElementById('reload-commands-btn').addEventListener('click', () => this.reloadCommands());
+                document.getElementById('clear-memory-btn').addEventListener('click', () => this.clearMemory());
+                document.getElementById('view-logs-btn').addEventListener('click', () => this.viewLogs());
+            }
+
+            startAutoRefresh() {
+                this.refreshCultistStatus();
+                setInterval(() => this.refreshCultistStatus(), 10000);
+                setInterval(() => this.updateFooterTime(), 1000);
+            }
+
+            updateFooterTime() {
+                const now = new Date();
+                const time = now.toLocaleTimeString();
+                document.getElementById('footer-time').textContent = time;
+            }
+
+            async toggleCultist(event) {
+                const enabled = event.target.checked;
+                this.showAlert(`Cultist monitoring ${enabled ? 'enabled' : 'disabled'}`, 'warning');
+                
+                try {
+                    const response = await fetch(`${API_BASE}/cultist/toggle`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to toggle cultist');
+
+                    const data = await response.json();
+                    this.cultistEnabled = data.enabled;
+                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Enabled' : 'Disabled';
+                    this.showAlert(`Cultist monitoring ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
+                } catch (error) {
+                    console.error('Toggle error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                    event.target.checked = !event.target.checked;
+                }
+            }
+
+            async refreshCultistStatus() {
+                try {
+                    const response = await fetch(`${API_BASE}/cultist/status`);
+                    if (!response.ok) throw new Error('Failed to fetch status');
+
+                    const data = await response.json();
+                    
+                    document.getElementById('cultist-status').textContent = data.enabled ? 'ACTIVE' : 'INACTIVE';
+                    document.getElementById('cultist-status').className = `status-badge ${data.enabled ? 'active' : 'inactive'}`;
+                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Enabled' : 'Disabled';
+                    document.getElementById('cultist-toggle').checked = data.enabled;
+                    
+                    document.getElementById('cultist-s1-status').textContent = data.server1Active ? '🌙 Active' : '☀️ Inactive';
+                    document.getElementById('cultist-s2-status').textContent = data.server2Active ? '🌙 Active' : '☀️ Inactive';
+                    document.getElementById('tarkov-time').textContent = `${data.server1Time}`;
+
+                    this.cultistEnabled = data.enabled;
+                } catch (error) {
+                    console.error('Status error:', error);
+                    document.getElementById('cultist-status').textContent = 'ERROR';
+                    document.getElementById('cultist-status').className = 'status-badge inactive';
+                }
+            }
+
+            async resetCultist() {
+                if (!confirm('Reset cultist monitoring state?')) return;
+
+                try {
+                    const response = await fetch(`${API_BASE}/cultist/reset`, { method: 'POST' });
+                    if (!response.ok) throw new Error('Reset failed');
+
+                    this.showAlert('Cultist monitoring reset', 'success');
+                    await this.refreshCultistStatus();
+                } catch (error) {
+                    console.error('Reset error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                }
+            }
+
+            async checkBotStatus() {
+                try {
+                    const response = await fetch(`${API_BASE}/bot/status`);
+                    if (!response.ok) throw new Error('Failed to fetch bot status');
+
+                    const data = response.json();
+                    document.getElementById('bot-status').textContent = 'ONLINE';
+                    document.getElementById('bot-status').className = 'status-badge active';
+                    document.getElementById('bot-connection').textContent = 'Connected';
+                    document.getElementById('last-check').textContent = new Date().toLocaleTimeString();
+                    this.showAlert('Bot is online and responding', 'success');
+                } catch (error) {
+                    console.error('Bot check error:', error);
+                    document.getElementById('bot-status').textContent = 'OFFLINE';
+                    document.getElementById('bot-status').className = 'status-badge inactive';
+                    this.showAlert(`Bot offline: ${error.message}`, 'error');
+                }
+            }
+
+            async reloadCommands() {
+                try {
+                    const response = await fetch(`${API_BASE}/bot/reload`, { method: 'POST' });
+                    if (!response.ok) throw new Error('Reload failed');
+
+                    this.showAlert('Bot commands reloaded', 'success');
+                } catch (error) {
+                    console.error('Reload error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                }
+            }
+
+            async clearMemory() {
+                if (!confirm('Clear bot message memory?')) return;
+
+                try {
+                    const response = await fetch(`${API_BASE}/bot/memory/clear`, { method: 'POST' });
+                    if (!response.ok) throw new Error('Clear failed');
+
+                    this.showAlert('Message memory cleared', 'success');
+                } catch (error) {
+                    console.error('Clear error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                }
+            }
+
+            async viewLogs() {
+                try {
+                    const response = await fetch(`${API_BASE}/bot/logs`);
+                    if (!response.ok) throw new Error('Failed to fetch logs');
+
+                    const data = await response.json();
+                    alert(`Latest logs:\n${data.logs?.slice(-10).join('\n') || 'No logs available'}`);
+                } catch (error) {
+                    console.error('Logs error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                }
+            }
+
+            showAlert(message, type = 'info') {
+                const alertsContainer = document.getElementById('alerts');
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type} show`;
+                alert.textContent = message;
+
+                alertsContainer.appendChild(alert);
+
+                setTimeout(() => {
+                    alert.remove();
+                }, 4000);
+            }
+        }
+
+        // Initialize dashboard when page loads
+        document.addEventListener('DOMContentLoaded', () => {
+            new BotDashboard();
+        });
+    </script>
+</body>
+</html>
