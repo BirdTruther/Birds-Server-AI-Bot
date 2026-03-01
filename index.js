@@ -1,7 +1,5 @@
-// ============================================================================
-// BIRDS-SERVER-AI-BOT - Optimized Single-File Version
+// BIRDS-SERVER-AI-BOT
 // Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
-// ============================================================================
 
 // ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits } = require('discord.js');
@@ -639,6 +637,3 @@ discordClient.once('ready', () => {
 // ===== START DISCORD CLIENT =====
 discordClient.login(process.env.DISCORD_TOKEN);
 
-// ============================================================================
-// END OF OPTIMIZED BOT
-// ============================================================================
