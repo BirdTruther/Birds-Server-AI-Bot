@@ -2,10 +2,9 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 
-// Shared state
 let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
 
-// Tarkov time functions
+// Real Tarkov time functions
 function getCurrentTarkovTime() {
   const oneDay = 24 * 60 * 60 * 1000;
   const russia = 3 * 60 * 60 * 1000;
@@ -22,7 +21,7 @@ function isCultistTime(hour) {
   return hour >= 22 || hour < 7;
 }
 
-// Update dashboard every 30 seconds
+// Update status every 30s
 setInterval(() => {
   const { hours, minutes } = getCurrentTarkovTime();
   const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
@@ -43,7 +42,6 @@ app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'dashboard.html'));
 });
 
-// API endpoints
 app.get('/api/cultist/status', (req, res) => {
   res.json(cultistState);
 });
@@ -58,6 +56,3 @@ app.post('/api/cultist/toggle', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Dashboard on http://localhost:${PORT}/`);
 });
-
-// Export for bot to use
-module.exports = { cultistState };
