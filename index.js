@@ -21,6 +21,14 @@ const CONFIG = {
     GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot'
 };
 
+// Share cultist state with dashboard
+let cultistState = {
+  enabled: true,
+  server1Active: false,
+  server2Active: false,
+  server1Time: '--:--'
+};
+
 // ===== MESSAGE MEMORY SYSTEM =====
 const messageHistory = {
     discord: [],
@@ -584,13 +592,11 @@ let lastCultistStates = {
 };
 
 async function checkCultistActivity() {
-    try {
-        const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
-        
-        if (!channel) {
-            console.error('[CULTIST] Channel not found!');
-            return;
-        }
+  // Only run if dashboard says it's enabled
+  if (!cultistState.enabled) {
+    console.log('[CULTIST] Monitoring disabled by dashboard');
+    return;
+  }
         
         const { hours: server1Hours, minutes: server1Minutes } = getCurrentTarkovTime();
         const server1Time = `${server1Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
