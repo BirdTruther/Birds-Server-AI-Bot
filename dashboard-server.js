@@ -1,9 +1,8 @@
 const express = require('express');
 const cors = require('cors');
+const path = require('path');
 
 const app = express();
-
-//Port Selection
 const PORT = 3001;
 
 app.use(cors());
@@ -15,5 +14,5 @@ app.get('/', (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Dashboard server running on http://localhost:${PORT}`);
+  console.log(`Dashboard running at http://localhost:${PORT}/`);
 });
