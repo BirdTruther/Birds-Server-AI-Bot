@@ -9,6 +9,7 @@ const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
+const { logCommand: dbLogCommand } = require('./database.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -16,17 +17,24 @@ const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
 // ===== DASHBOARD LOGGING HELPER =====
-function logCommand(platform, username, command, message, response = null, error = false) {
+function logCommand(platform, username, command, message, response = null, error = false, image_url = null) {
+  const logEntry = {
+    platform,
+    username,
+    command,
+    message,
+    response: response ? response.substring(0, 200) : null,
+    error,
+    image_url
+  };
+  
+  // Log to SQLite database
+  dbLogCommand(logEntry);
+  
+  // Also send to dashboard if available (for real-time updates)
   if (typeof global.dashboardLogCommand === 'function') {
     try {
-      global.dashboardLogCommand({
-        platform,
-        username,
-        command,
-        message,
-        response: response ? response.substring(0, 200) : null,
-        error
-      });
+      global.dashboardLogCommand(logEntry);
     } catch (err) {
       console.error('[LOG ERROR]', err);
     }
@@ -725,17 +733,26 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 // Write Buffer directly to file
                 fs.writeFileSync(filepath, imageData);
                 
-                // Send the file
-                await message.reply({ 
+                // Send the file and capture the Discord CDN URL
+                const sentMessage = await message.reply({ 
                     content: `Here's your image for: "${prompt}" 🎨`,
                     files: [filepath]
                 });
+                
+                // Extract Discord CDN link from the sent message
+                let imageUrl = null;
+                if (sentMessage.attachments.size > 0) {
+                    const attachment = sentMessage.attachments.first();
+                    imageUrl = attachment.url;
+                    console.log('[IMAGE] Discord CDN URL:', imageUrl);
+                }
                 
                 // Clean up the temp file
                 fs.unlinkSync(filepath);
                 console.log('[IMAGE] Temp file cleaned up');
                 
-                logCommand('discord', message.author.username, 'image-gen', prompt, 'Image generated');
+                // Log with Discord CDN link
+                logCommand('discord', message.author.username, 'image-gen', prompt, `Image generated: ${imageUrl || 'URL not captured'}`, false, imageUrl);
             } catch (error) {
                 console.error('[IMAGE] Error generating image:', error);
                 const errorMsg = "Yo, something broke while making your image. Try again? 🤖💥";
