@@ -297,60 +297,257 @@
             }
         }
 
-        .loading {
-            display: inline-block;
-            width: 16px;
-            height: 16px;
-            border: 3px solid rgba(255, 255, 255, 0.3);
-            border-radius: 50%;
-            border-top-color: var(--color-primary);
-            animation: spin 0.8s linear infinite;
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            animation: fadeIn 0.3s ease;
         }
 
-        @keyframes spin {
-            to { transform: rotate(360deg); }
+        .modal.show {
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
 
-        .server-group {
-            background: rgba(255, 255, 255, 0.03);
-            padding: 15px;
-            border-radius: 6px;
-            margin: 15px 0;
+        .modal-content {
+            background: var(--color-bg-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            width: 90%;
+            max-width: 900px;
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+            animation: slideUp 0.3s ease;
         }
 
-        .server-group-title {
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideUp {
+            from {
+                transform: translateY(50px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .modal-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
             font-weight: 600;
-            color: var(--color-primary);
-            margin-bottom: 10px;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-        }
-
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
+            display: flex;
+            align-items: center;
             gap: 10px;
-            margin-top: 15px;
         }
 
-        .stat-box {
-            background: rgba(2, 132, 199, 0.1);
-            padding: 12px;
-            border-radius: 6px;
-            border-left: 3px solid var(--color-primary);
-        }
-
-        .stat-label {
-            font-size: 0.8rem;
+        .modal-close {
+            background: none;
+            border: none;
             color: var(--color-text-secondary);
-            text-transform: uppercase;
+            font-size: 1.8rem;
+            cursor: pointer;
+            padding: 0;
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--color-text-primary);
+        }
+
+        .modal-body {
+            padding: 20px 25px;
+            overflow-y: auto;
+            flex: 1;
+        }
+
+        .modal-footer {
+            padding: 15px 25px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* Logs Styles */
+        .logs-controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .logs-filter {
+            padding: 8px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            color: var(--color-text-primary);
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .logs-filter:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .logs-filter.active {
+            background: var(--color-primary);
+            border-color: var(--color-primary);
+        }
+
+        .logs-search {
+            flex: 1;
+            min-width: 200px;
+            padding: 8px 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            color: var(--color-text-primary);
+            font-size: 0.9rem;
+        }
+
+        .logs-search:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .logs-container {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: var(--radius);
+            padding: 15px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.85rem;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .log-entry {
+            padding: 10px;
+            margin-bottom: 8px;
+            background: rgba(255, 255, 255, 0.03);
+            border-left: 3px solid var(--color-primary);
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .log-entry:hover {
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .log-entry.discord {
+            border-left-color: #5865F2;
+        }
+
+        .log-entry.twitch {
+            border-left-color: #9146FF;
+        }
+
+        .log-entry.error {
+            border-left-color: var(--color-danger);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
             margin-bottom: 5px;
         }
 
-        .stat-value {
-            font-size: 1.2rem;
+        .log-meta {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        .log-time {
+            color: var(--color-text-secondary);
+        }
+
+        .log-platform {
+            padding: 2px 8px;
+            border-radius: 4px;
             font-weight: 600;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .log-platform.discord {
+            background: rgba(88, 101, 242, 0.2);
+            color: #5865F2;
+        }
+
+        .log-platform.twitch {
+            background: rgba(145, 70, 255, 0.2);
+            color: #9146FF;
+        }
+
+        .log-username {
             color: var(--color-primary);
+            font-weight: 600;
+        }
+
+        .log-command {
+            color: var(--color-warning);
+            font-weight: 600;
+        }
+
+        .log-message {
+            color: var(--color-text-primary);
+            margin-top: 5px;
+            padding-left: 10px;
+            border-left: 2px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .log-response {
+            color: var(--color-text-secondary);
+            margin-top: 5px;
+            font-size: 0.8rem;
+            font-style: italic;
+        }
+
+        .logs-empty {
+            text-align: center;
+            padding: 40px;
+            color: var(--color-text-secondary);
+        }
+
+        .logs-stats {
+            display: flex;
+            gap: 20px;
+            font-size: 0.85rem;
+            color: var(--color-text-secondary);
         }
 
         footer {
@@ -371,8 +568,17 @@
                 grid-template-columns: 1fr;
             }
 
-            .stats-grid {
-                grid-template-columns: 1fr;
+            .modal-content {
+                width: 95%;
+                max-height: 90vh;
+            }
+
+            .logs-controls {
+                flex-direction: column;
+            }
+
+            .logs-search {
+                width: 100%;
             }
         }
     </style>
@@ -489,12 +695,51 @@
         </footer>
     </div>
 
+    <!-- Logs Modal -->
+    <div id="logs-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span>📋</span>
+                    Command Logs
+                </div>
+                <button class="modal-close" id="close-logs-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="logs-controls">
+                    <button class="logs-filter active" data-platform="all">All</button>
+                    <button class="logs-filter" data-platform="discord">Discord</button>
+                    <button class="logs-filter" data-platform="twitch">Twitch</button>
+                    <input type="text" class="logs-search" id="logs-search" placeholder="Search logs...">
+                    <button class="button button-primary" id="refresh-logs-btn">🔄 Refresh</button>
+                    <button class="button button-secondary" id="clear-logs-btn">🗑️ Clear All</button>
+                </div>
+                <div class="logs-container" id="logs-container">
+                    <div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="logs-stats">
+                    <span>Total: <strong id="logs-total">0</strong></span>
+                    <span>Showing: <strong id="logs-showing">0</strong></span>
+                    <span id="logs-auto-refresh">Auto-refresh: ON</span>
+                </div>
+                <button class="button button-secondary" id="close-logs-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
 
         class BotDashboard {
             constructor() {
                 this.cultistEnabled = false;
+                this.logsModal = document.getElementById('logs-modal');
+                this.logsAutoRefresh = null;
+                this.currentLogsPlatform = 'all';
+                this.logsSearchTerm = '';
+                
                 this.initializeEventListeners();
                 this.startAutoRefresh();
                 this.updateFooterTime();
@@ -507,7 +752,30 @@
                 document.getElementById('check-bot-btn').addEventListener('click', () => this.checkBotStatus());
                 document.getElementById('reload-commands-btn').addEventListener('click', () => this.reloadCommands());
                 document.getElementById('clear-memory-btn').addEventListener('click', () => this.clearMemory());
-                document.getElementById('view-logs-btn').addEventListener('click', () => this.viewLogs());
+                document.getElementById('view-logs-btn').addEventListener('click', () => this.openLogsModal());
+                document.getElementById('close-logs-modal').addEventListener('click', () => this.closeLogsModal());
+                document.getElementById('close-logs-btn').addEventListener('click', () => this.closeLogsModal());
+                document.getElementById('refresh-logs-btn').addEventListener('click', () => this.fetchLogs());
+                document.getElementById('clear-logs-btn').addEventListener('click', () => this.clearLogs());
+                document.getElementById('logs-search').addEventListener('input', (e) => {
+                    this.logsSearchTerm = e.target.value.toLowerCase();
+                    this.filterDisplayedLogs();
+                });
+
+                // Platform filter buttons
+                document.querySelectorAll('.logs-filter').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        document.querySelectorAll('.logs-filter').forEach(b => b.classList.remove('active'));
+                        e.target.classList.add('active');
+                        this.currentLogsPlatform = e.target.dataset.platform;
+                        this.fetchLogs();
+                    });
+                });
+
+                // Close modal on outside click
+                this.logsModal.addEventListener('click', (e) => {
+                    if (e.target === this.logsModal) this.closeLogsModal();
+                });
             }
 
             startAutoRefresh() {
@@ -590,10 +858,11 @@
                     const response = await fetch(`${API_BASE}/bot/status`);
                     if (!response.ok) throw new Error('Failed to fetch bot status');
 
-                    const data = response.json();
+                    const data = await response.json();
                     document.getElementById('bot-status').textContent = 'ONLINE';
                     document.getElementById('bot-status').className = 'status-badge active';
                     document.getElementById('bot-connection').textContent = 'Connected';
+                    document.getElementById('bot-uptime').textContent = data.uptime;
                     document.getElementById('last-check').textContent = new Date().toLocaleTimeString();
                     this.showAlert('Bot is online and responding', 'success');
                 } catch (error) {
@@ -605,40 +874,134 @@
             }
 
             async reloadCommands() {
-                try {
-                    const response = await fetch(`${API_BASE}/bot/reload`, { method: 'POST' });
-                    if (!response.ok) throw new Error('Reload failed');
-
-                    this.showAlert('Bot commands reloaded', 'success');
-                } catch (error) {
-                    console.error('Reload error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                }
+                this.showAlert('Command reload feature coming soon', 'warning');
             }
 
             async clearMemory() {
                 if (!confirm('Clear bot message memory?')) return;
+                this.showAlert('Memory clear feature coming soon', 'warning');
+            }
 
-                try {
-                    const response = await fetch(`${API_BASE}/bot/memory/clear`, { method: 'POST' });
-                    if (!response.ok) throw new Error('Clear failed');
+            // Logs Modal Functions
+            async openLogsModal() {
+                this.logsModal.classList.add('show');
+                await this.fetchLogs();
+                
+                // Start auto-refresh every 5 seconds
+                this.logsAutoRefresh = setInterval(() => this.fetchLogs(), 5000);
+            }
 
-                    this.showAlert('Message memory cleared', 'success');
-                } catch (error) {
-                    console.error('Clear error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
+            closeLogsModal() {
+                this.logsModal.classList.remove('show');
+                
+                // Stop auto-refresh
+                if (this.logsAutoRefresh) {
+                    clearInterval(this.logsAutoRefresh);
+                    this.logsAutoRefresh = null;
                 }
             }
 
-            async viewLogs() {
+            async fetchLogs() {
                 try {
-                    const response = await fetch(`${API_BASE}/bot/logs`);
+                    const response = await fetch(`${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=100`);
                     if (!response.ok) throw new Error('Failed to fetch logs');
 
                     const data = await response.json();
-                    alert(`Latest logs:\n${data.logs?.slice(-10).join('\n') || 'No logs available'}`);
+                    this.displayLogs(data.logs);
+                    
+                    document.getElementById('logs-total').textContent = data.total;
+                    document.getElementById('logs-showing').textContent = data.count;
                 } catch (error) {
                     console.error('Logs error:', error);
+                    document.getElementById('logs-container').innerHTML = 
+                        `<div class="logs-empty">Error loading logs: ${error.message}</div>`;
+                }
+            }
+
+            displayLogs(logs) {
+                const container = document.getElementById('logs-container');
+                
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>';
+                    return;
+                }
+
+                // Store for filtering
+                this.allLogs = logs;
+                this.filterDisplayedLogs();
+            }
+
+            filterDisplayedLogs() {
+                const container = document.getElementById('logs-container');
+                
+                if (!this.allLogs || this.allLogs.length === 0) {
+                    container.innerHTML = '<div class="logs-empty">No logs available.</div>';
+                    return;
+                }
+
+                let filteredLogs = this.allLogs;
+                
+                // Apply search filter
+                if (this.logsSearchTerm) {
+                    filteredLogs = filteredLogs.filter(log => {
+                        const searchableText = `${log.username} ${log.command} ${log.message || ''} ${log.response || ''}`.toLowerCase();
+                        return searchableText.includes(this.logsSearchTerm);
+                    });
+                }
+
+                if (filteredLogs.length === 0) {
+                    container.innerHTML = '<div class="logs-empty">No logs match your filter.</div>';
+                    return;
+                }
+
+                const logsHTML = filteredLogs.map(log => this.renderLogEntry(log)).join('');
+                container.innerHTML = logsHTML;
+            }
+
+            renderLogEntry(log) {
+                const time = new Date(log.timestamp).toLocaleTimeString('en-US', { 
+                    hour: '2-digit', 
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                
+                const statusClass = log.error ? 'error' : log.platform;
+                const messageText = log.message || log.command;
+                const responseText = log.response ? `<div class="log-response">→ ${this.escapeHtml(log.response)}</div>` : '';
+                
+                return `
+                    <div class="log-entry ${statusClass}">
+                        <div class="log-header">
+                            <div class="log-meta">
+                                <span class="log-time">${time}</span>
+                                <span class="log-platform ${log.platform}">${log.platform}</span>
+                                <span class="log-username">${this.escapeHtml(log.username)}</span>
+                            </div>
+                            <span class="log-command">${this.escapeHtml(log.command)}</span>
+                        </div>
+                        <div class="log-message">${this.escapeHtml(messageText)}</div>
+                        ${responseText}
+                    </div>
+                `;
+            }
+
+            escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+
+            async clearLogs() {
+                if (!confirm('Clear all logs? This cannot be undone.')) return;
+
+                try {
+                    const response = await fetch(`${API_BASE}/bot/logs/clear`, { method: 'POST' });
+                    if (!response.ok) throw new Error('Failed to clear logs');
+
+                    this.showAlert('Logs cleared successfully', 'success');
+                    await this.fetchLogs();
+                } catch (error) {
+                    console.error('Clear logs error:', error);
                     this.showAlert(`Error: ${error.message}`, 'error');
                 }
             }
