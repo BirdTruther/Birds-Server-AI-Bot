@@ -141,22 +141,19 @@ async function generateImage(prompt) {
         });
         
         console.log('[IMAGE] Result received');
-        console.log('[IMAGE] Result keys:', Object.keys(result));
         console.log('[IMAGE] Files in response:', result.files?.length || 0);
         
-        // Images are returned in result.files array
+        // Images are returned in result.files array with uint8Array property
         if (result.files && result.files.length > 0) {
             for (const file of result.files) {
                 if (file.mediaType && file.mediaType.startsWith('image/')) {
-                    console.log('[IMAGE] Image found in files array');
-                    console.log('[IMAGE] Media type:', file.mediaType);
-                    // file.data is a Uint8Array, convert to Buffer
-                    return Buffer.from(file.data);
+                    console.log('[IMAGE] Image found - Media type:', file.mediaType);
+                    // Convert Uint8Array to Buffer
+                    return Buffer.from(file.uint8Array);
                 }
             }
         }
         
-        console.log('[IMAGE] Full result structure:', JSON.stringify(result, null, 2));
         throw new Error('No image data in response');
     } catch (error) {
         console.error('[IMAGE Error]', error);
@@ -722,16 +719,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 const filename = `generated_${timestamp}.png`;
                 const filepath = path.join(__dirname, filename);
                 
-                // Write image data to file
-                if (typeof imageData === 'string') {
-                    // If it's base64 or similar string data
-                    fs.writeFileSync(filepath, imageData, 'base64');
-                } else if (Buffer.isBuffer(imageData)) {
-                    // If it's already a buffer
-                    fs.writeFileSync(filepath, imageData);
-                } else {
-                    throw new Error('Unknown image data format');
-                }
+                // Write Buffer directly to file
+                fs.writeFileSync(filepath, imageData);
                 
                 // Send the file
                 await message.reply({ 
