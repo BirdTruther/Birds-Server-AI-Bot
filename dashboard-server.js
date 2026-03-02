@@ -4,6 +4,26 @@ const path = require('path');
 
 let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
 
+// Command logs storage (circular buffer, max 500 entries)
+const MAX_LOGS = 500;
+let commandLogs = [];
+
+function addLog(entry) {
+  commandLogs.push({
+    ...entry,
+    timestamp: new Date().toISOString(),
+    id: Date.now() + Math.random() // Unique ID for each log
+  });
+  
+  // Keep only last 500 logs
+  if (commandLogs.length > MAX_LOGS) {
+    commandLogs = commandLogs.slice(-MAX_LOGS);
+  }
+}
+
+// Export function for bot to use
+global.dashboardLogCommand = addLog;
+
 // Real Tarkov time functions
 function getCurrentTarkovTime() {
   const oneDay = 24 * 60 * 60 * 1000;
@@ -60,12 +80,41 @@ app.get('/api/bot/status', (req, res) => {
   
   res.json({
     status: 'ONLINE',
-    uptime: uptimeStr,  // Shows HH:MM:SS
+    uptime: uptimeStr,
     lastCheck: new Date().toLocaleTimeString(),
     memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB'
   });
 });
 
+// Logs endpoint
+app.get('/api/bot/logs', (req, res) => {
+  const { platform, limit } = req.query;
+  
+  let filteredLogs = commandLogs;
+  
+  // Filter by platform if specified
+  if (platform && platform !== 'all') {
+    filteredLogs = commandLogs.filter(log => log.platform === platform);
+  }
+  
+  // Limit results (default 100, max 500)
+  const maxResults = Math.min(parseInt(limit) || 100, 500);
+  const result = filteredLogs.slice(-maxResults).reverse(); // Most recent first
+  
+  res.json({
+    success: true,
+    count: result.length,
+    total: commandLogs.length,
+    logs: result
+  });
+});
+
+// Clear logs endpoint
+app.post('/api/bot/logs/clear', (req, res) => {
+  commandLogs = [];
+  console.log('[API] Logs cleared');
+  res.json({ success: true, message: 'Logs cleared' });
+});
 
 app.listen(PORT, () => {
   console.log(`Dashboard on http://localhost:${PORT}/`);
