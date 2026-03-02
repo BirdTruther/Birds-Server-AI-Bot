@@ -1,8 +1,28 @@
 {
+  "name": "birds-server-ai-bot",
+  "version": "1.0.0",
+  "description": "Discord and Twitch bot with Tarkov integration and web dashboard",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dashboard": "node dashboard-server.js"
+  },
   "dependencies": {
     "@ai-sdk/perplexity": "^2.0.11",
     "ai": "^5.0.60",
     "discord.js": "^14.22.1",
-    "dotenv": "^17.2.3"
-  }
+    "dotenv": "^17.2.3",
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "tmi.js": "^1.8.5"
+  },
+  "keywords": [
+    "discord",
+    "twitch",
+    "bot",
+    "tarkov",
+    "escape-from-tarkov"
+  ],
+  "author": "BirdTruther",
+  "license": "GPL-3.0"
 }
