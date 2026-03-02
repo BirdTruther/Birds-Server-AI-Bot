@@ -11,6 +11,7 @@ const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
 const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
@@ -714,10 +715,12 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 const prompt = extractImagePrompt(message.content);
                 const imageData = await generateImage(prompt);
                 
-                // Handle the image data - save temporarily and send
+                // Use system temp directory for file storage
                 const timestamp = Date.now();
                 const filename = `generated_${timestamp}.png`;
-                const filepath = path.join(__dirname, filename);
+                const filepath = path.join(os.tmpdir(), filename);
+                
+                console.log('[IMAGE] Saving to temp file:', filepath);
                 
                 // Write Buffer directly to file
                 fs.writeFileSync(filepath, imageData);
@@ -730,6 +733,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 
                 // Clean up the temp file
                 fs.unlinkSync(filepath);
+                console.log('[IMAGE] Temp file cleaned up');
                 
                 logCommand('discord', message.author.username, 'image-gen', prompt, 'Image generated');
             } catch (error) {
