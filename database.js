@@ -1,34 +1,68 @@
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-// Initialize SQLite database
-const db = new Database(path.join(__dirname, 'bot-logs.db'));
+// Ensure data directory exists with proper permissions
+const dataDir = path.join(__dirname, 'data');
+if (!fs.existsSync(dataDir)) {
+  try {
+    fs.mkdirSync(dataDir, { recursive: true, mode: 0o755 });
+    console.log('[DATABASE] Created data directory:', dataDir);
+  } catch (err) {
+    console.error('[DATABASE] Failed to create data directory:', err);
+    console.error('[DATABASE] Falling back to current directory');
+  }
+}
+
+// Initialize SQLite database in data directory (or fallback to current dir)
+const dbPath = fs.existsSync(dataDir) 
+  ? path.join(dataDir, 'bot-logs.db')
+  : path.join(__dirname, 'bot-logs.db');
+
+let db;
+try {
+  db = new Database(dbPath);
+  console.log('[DATABASE] SQLite initialized -', dbPath);
+} catch (err) {
+  console.error('[DATABASE] Failed to open database:', err);
+  console.error('[DATABASE] Please ensure the directory has write permissions');
+  process.exit(1);
+}
 
 // Enable WAL mode for better concurrent access
-db.pragma('journal_mode = WAL');
+try {
+  db.pragma('journal_mode = WAL');
+} catch (err) {
+  console.warn('[DATABASE] Could not enable WAL mode:', err);
+}
 
 // Create logs table if it doesn't exist
-db.exec(`
-  CREATE TABLE IF NOT EXISTS command_logs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    timestamp TEXT NOT NULL,
-    platform TEXT NOT NULL,
-    username TEXT NOT NULL,
-    command TEXT NOT NULL,
-    message TEXT NOT NULL,
-    response TEXT,
-    image_url TEXT,
-    error INTEGER DEFAULT 0
-  )
-`);
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS command_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      platform TEXT NOT NULL,
+      username TEXT NOT NULL,
+      command TEXT NOT NULL,
+      message TEXT NOT NULL,
+      response TEXT,
+      image_url TEXT,
+      error INTEGER DEFAULT 0
+    )
+  `);
 
-// Create index for faster queries
-db.exec(`
-  CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
-  CREATE INDEX IF NOT EXISTS idx_platform ON command_logs(platform);
-`);
+  // Create index for faster queries
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_platform ON command_logs(platform);
+  `);
+} catch (err) {
+  console.error('[DATABASE] Failed to create tables:', err);
+  process.exit(1);
+}
 
-console.log('[DATABASE] SQLite initialized - bot-logs.db');
+console.log('[DATABASE] Tables initialized successfully');
 
 // Insert log entry
 const insertLog = db.prepare(`
@@ -120,9 +154,29 @@ function cleanupOldLogs() {
 setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000);
 
 // Graceful shutdown
-process.on('exit', () => db.close());
+process.on('exit', () => {
+  try {
+    db.close();
+  } catch (err) {
+    console.error('[DATABASE] Error closing database:', err);
+  }
+});
+
 process.on('SIGINT', () => {
-  db.close();
+  try {
+    db.close();
+  } catch (err) {
+    console.error('[DATABASE] Error closing database:', err);
+  }
+  process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+  try {
+    db.close();
+  } catch (err) {
+    console.error('[DATABASE] Error closing database:', err);
+  }
   process.exit(0);
 });
 
