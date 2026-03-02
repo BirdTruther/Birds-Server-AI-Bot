@@ -1,31 +1,43 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
-// Ensure data directory exists with proper permissions
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
+// Try multiple paths in order of preference
+const possiblePaths = [
+  path.join(__dirname, 'data', 'bot-logs.db'),       // Best: local data directory
+  path.join(__dirname, 'bot-logs.db'),                // Good: current directory
+  path.join(os.tmpdir(), 'birds-bot-logs.db'),       // Fallback: system tmp (survives until reboot)
+  path.join('/var/tmp', 'birds-bot-logs.db')         // Last resort: var tmp (survives reboots)
+];
+
+let db = null;
+let dbPath = null;
+
+// Try each path until one works
+for (const tryPath of possiblePaths) {
   try {
-    fs.mkdirSync(dataDir, { recursive: true, mode: 0o755 });
-    console.log('[DATABASE] Created data directory:', dataDir);
+    // Try to create directory if needed
+    const dir = path.dirname(tryPath);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true, mode: 0o755 });
+    }
+    
+    // Try to open database
+    db = new Database(tryPath);
+    dbPath = tryPath;
+    console.log('[DATABASE] SQLite opened successfully:', dbPath);
+    break;
   } catch (err) {
-    console.error('[DATABASE] Failed to create data directory:', err);
-    console.error('[DATABASE] Falling back to current directory');
+    console.warn(`[DATABASE] Could not use ${tryPath}:`, err.message);
+    continue;
   }
 }
 
-// Initialize SQLite database in data directory (or fallback to current dir)
-const dbPath = fs.existsSync(dataDir) 
-  ? path.join(dataDir, 'bot-logs.db')
-  : path.join(__dirname, 'bot-logs.db');
-
-let db;
-try {
-  db = new Database(dbPath);
-  console.log('[DATABASE] SQLite initialized -', dbPath);
-} catch (err) {
-  console.error('[DATABASE] Failed to open database:', err);
-  console.error('[DATABASE] Please ensure the directory has write permissions');
+if (!db) {
+  console.error('[DATABASE] FATAL: Could not open database at any location');
+  console.error('[DATABASE] Tried paths:', possiblePaths);
+  console.error('[DATABASE] Please check systemd service user permissions');
   process.exit(1);
 }
 
@@ -33,7 +45,7 @@ try {
 try {
   db.pragma('journal_mode = WAL');
 } catch (err) {
-  console.warn('[DATABASE] Could not enable WAL mode:', err);
+  console.warn('[DATABASE] Could not enable WAL mode:', err.message);
 }
 
 // Create logs table if it doesn't exist
@@ -57,12 +69,12 @@ try {
     CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_platform ON command_logs(platform);
   `);
+  
+  console.log('[DATABASE] Tables initialized successfully');
 } catch (err) {
   console.error('[DATABASE] Failed to create tables:', err);
   process.exit(1);
 }
-
-console.log('[DATABASE] Tables initialized successfully');
 
 // Insert log entry
 const insertLog = db.prepare(`
@@ -154,34 +166,30 @@ function cleanupOldLogs() {
 setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000);
 
 // Graceful shutdown
-process.on('exit', () => {
+function closeDatabase() {
   try {
-    db.close();
+    if (db) {
+      db.close();
+      console.log('[DATABASE] Closed successfully');
+    }
   } catch (err) {
     console.error('[DATABASE] Error closing database:', err);
   }
-});
+}
 
+process.on('exit', closeDatabase);
 process.on('SIGINT', () => {
-  try {
-    db.close();
-  } catch (err) {
-    console.error('[DATABASE] Error closing database:', err);
-  }
+  closeDatabase();
   process.exit(0);
 });
-
 process.on('SIGTERM', () => {
-  try {
-    db.close();
-  } catch (err) {
-    console.error('[DATABASE] Error closing database:', err);
-  }
+  closeDatabase();
   process.exit(0);
 });
 
 module.exports = {
   db,
+  dbPath,
   logCommand,
   getLogs,
   getLogCount,
