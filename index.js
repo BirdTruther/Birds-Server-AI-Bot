@@ -103,7 +103,7 @@ ${memoryContext}
         console.log(`[AI] Using persona: ${currentPersona.name}`);
         
         const { text } = await generateText({
-            model: google('gemini-1.5-flash-latest'),
+            model: google('gemini-2.5-flash'),
             messages: [
                 {
                     role: "system",
