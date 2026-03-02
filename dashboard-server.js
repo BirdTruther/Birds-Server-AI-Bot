@@ -4,6 +4,15 @@ const path = require('path');
 
 let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
 
+// Persona state management
+let botPersona = {
+  current: 'aggressive',
+  lastChanged: new Date().toISOString()
+};
+
+// Export function for bot to access current persona
+global.getBotPersona = () => botPersona.current;
+
 // Command logs storage (circular buffer, max 500 entries)
 const MAX_LOGS = 500;
 let commandLogs = [];
@@ -12,16 +21,14 @@ function addLog(entry) {
   commandLogs.push({
     ...entry,
     timestamp: new Date().toISOString(),
-    id: Date.now() + Math.random() // Unique ID for each log
+    id: Date.now() + Math.random()
   });
   
-  // Keep only last 500 logs
   if (commandLogs.length > MAX_LOGS) {
     commandLogs = commandLogs.slice(-MAX_LOGS);
   }
 }
 
-// Export function for bot to use
 global.dashboardLogCommand = addLog;
 
 // Real Tarkov time functions
@@ -86,20 +93,51 @@ app.get('/api/bot/status', (req, res) => {
   });
 });
 
+// Persona endpoints
+app.get('/api/persona/current', (req, res) => {
+  res.json({
+    success: true,
+    persona: botPersona.current,
+    lastChanged: botPersona.lastChanged
+  });
+});
+
+app.post('/api/persona/set', (req, res) => {
+  const { persona } = req.body;
+  
+  const validPersonas = ['aggressive', 'sassy', 'nice', 'conspiracy', 'sleepy'];
+  
+  if (!validPersonas.includes(persona)) {
+    return res.status(400).json({
+      success: false,
+      error: 'Invalid persona. Valid options: ' + validPersonas.join(', ')
+    });
+  }
+  
+  botPersona.current = persona;
+  botPersona.lastChanged = new Date().toISOString();
+  
+  console.log(`[API] Persona changed to: ${persona}`);
+  
+  res.json({
+    success: true,
+    persona: botPersona.current,
+    lastChanged: botPersona.lastChanged
+  });
+});
+
 // Logs endpoint
 app.get('/api/bot/logs', (req, res) => {
   const { platform, limit } = req.query;
   
   let filteredLogs = commandLogs;
   
-  // Filter by platform if specified
   if (platform && platform !== 'all') {
     filteredLogs = commandLogs.filter(log => log.platform === platform);
   }
   
-  // Limit results (default 100, max 500)
   const maxResults = Math.min(parseInt(limit) || 100, 500);
-  const result = filteredLogs.slice(-maxResults).reverse(); // Most recent first
+  const result = filteredLogs.slice(-maxResults).reverse();
   
   res.json({
     success: true,
@@ -118,4 +156,5 @@ app.post('/api/bot/logs/clear', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`Dashboard on http://localhost:${PORT}/`);
+  console.log(`Current persona: ${botPersona.current}`);
 });
