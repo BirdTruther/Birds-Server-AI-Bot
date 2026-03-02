@@ -11,6 +11,24 @@ const { request, gql } = require('graphql-request');
 const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
+// ===== DASHBOARD LOGGING HELPER =====
+function logCommand(platform, username, command, message, response = null, error = false) {
+  if (typeof global.dashboardLogCommand === 'function') {
+    try {
+      global.dashboardLogCommand({
+        platform,
+        username,
+        command,
+        message,
+        response: response ? response.substring(0, 200) : null,
+        error
+      });
+    } catch (err) {
+      console.error('[LOG ERROR]', err);
+    }
+  }
+}
+
 // ===== CONFIGURATION CONSTANTS =====
 const CONFIG = {
     TWITCH_CHAR_LIMIT: 480,
@@ -442,7 +460,9 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     const lowerMessage = message.toLowerCase();
     
     if (lowerMessage.includes('!code') || lowerMessage.includes('!github')) {
-        twitchClient.say(channel, `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`);
+        const response = `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`;
+        twitchClient.say(channel, response);
+        logCommand('twitch', tags.username, '!code', message, response);
         return;
     }
     
@@ -450,6 +470,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         const itemName = message.substring(7);
         const result = await getTarkovPrice(itemName);
         twitchClient.say(channel, result);
+        logCommand('twitch', tags.username, '!price', itemName, result);
         return;
     }
     
@@ -457,12 +478,14 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         const searchCaliber = message.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
         twitchClient.say(channel, result);
+        logCommand('twitch', tags.username, '!bestammo', searchCaliber, result);
         return;
     }
     
     if (lowerMessage === '!trader') {
         const result = await getTraderResets();
         twitchClient.say(channel, result);
+        logCommand('twitch', tags.username, '!trader', message, result);
         return;
     }
     
@@ -470,6 +493,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         const mapName = message.substring(5);
         const result = await getMapInfo(mapName);
         twitchClient.say(channel, result);
+        logCommand('twitch', tags.username, '!map', mapName, result);
         return;
     }
 
@@ -477,6 +501,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         const playerName = message.substring(8).trim();
         const result = await getPlayerStats(playerName);
         twitchClient.say(channel, result);
+        logCommand('twitch', tags.username, '!player', playerName, result);
         return;
     }
 
@@ -487,6 +512,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         setTimeout(() => {
             twitchClient.say(channel, '!join');
             console.log('[DUNGEON/BOSS] Auto-joined!');
+            logCommand('twitch', 'BOT', 'auto-join', 'Tangia event detected', '!join');
         }, CONFIG.DUNGEON_AUTO_JOIN_DELAY);
         return;
     }
@@ -495,8 +521,11 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         const meme = await fetchMeme();
         if (meme) {
             twitchClient.say(channel, `${meme.title} ${meme.url}`);
+            logCommand('twitch', tags.username, 'meme', message, meme.title);
         } else {
-            twitchClient.say(channel, 'Could not fetch a meme right now. Try again later.');
+            const errorMsg = 'Could not fetch a meme right now. Try again later.';
+            twitchClient.say(channel, errorMsg);
+            logCommand('twitch', tags.username, 'meme', message, errorMsg, true);
         }
         return;
     }
@@ -505,6 +534,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         lowerMessage.startsWith('!patrick')) {
         const response = await getAIResponse(message, 'twitch', tags.username);
         await sendTwitchChunked(channel, response);
+        logCommand('twitch', tags.username, '@mention', message, response);
     }
 });
 
@@ -534,6 +564,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const itemName = message.content.substring(7);
         const result = await getTarkovPrice(itemName);
         message.reply(result);
+        logCommand('discord', message.author.username, '!price', itemName, result);
         return;
     }
     
@@ -541,12 +572,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const searchCaliber = message.content.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
         message.reply(result);
+        logCommand('discord', message.author.username, '!bestammo', searchCaliber, result);
         return;
     }
     
     if (lowerContent === '!trader') {
         const result = await getTraderResets();
         message.reply(result);
+        logCommand('discord', message.author.username, '!trader', message.content, result);
         return;
     }
     
@@ -554,6 +587,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const mapName = message.content.substring(5);
         const result = await getMapInfo(mapName);
         message.reply(result);
+        logCommand('discord', message.author.username, '!map', mapName, result);
         return;
     }
 
@@ -561,6 +595,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const playerName = message.content.substring(8).trim();
         const result = await getPlayerStats(playerName);
         message.reply(result);
+        logCommand('discord', message.author.username, '!player', playerName, result);
         return;
     }
 
@@ -568,8 +603,11 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const meme = await fetchMeme();
         if (meme) {
             await message.channel.send({ content: meme.title, files: [meme.url] });
+            logCommand('discord', message.author.username, 'meme', message.content, meme.title);
         } else {
-            await message.channel.send('Could not fetch a meme right now. Try again later.');
+            const errorMsg = 'Could not fetch a meme right now. Try again later.';
+            await message.channel.send(errorMsg);
+            logCommand('discord', message.author.username, 'meme', message.content, errorMsg, true);
         }
         return;
     }
@@ -577,6 +615,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
         const response = await getAIResponse(message.content, 'discord', message.author.username);
         await message.reply(response);
+        logCommand('discord', message.author.username, '@mention', message.content, response);
     }
 });
 
@@ -648,4 +687,3 @@ discordClient.once('ready', () => {
 
 // ===== START DISCORD CLIENT =====
 discordClient.login(process.env.DISCORD_TOKEN);
-
