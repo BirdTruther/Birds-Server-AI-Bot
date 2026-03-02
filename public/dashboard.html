@@ -255,6 +255,35 @@
             transform: none !important;
         }
 
+        /* Persona styles */
+        .persona-select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: var(--radius);
+            color: var(--color-text-primary);
+            font-size: 0.95rem;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        .persona-select:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .persona-description {
+            background: rgba(255, 255, 255, 0.03);
+            padding: 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            color: var(--color-text-secondary);
+            margin-bottom: 15px;
+            line-height: 1.5;
+        }
+
         .alert {
             padding: 15px;
             margin: 15px 0;
@@ -593,6 +622,39 @@
         <div id="alerts"></div>
 
         <div class="dashboard-grid">
+            <!-- AI Persona Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">🎭</span>
+                        AI Persona
+                    </div>
+                    <span id="persona-status" class="status-badge active">ACTIVE</span>
+                </div>
+
+                <div class="status-info">
+                    <p style="color: var(--color-text-secondary); margin-bottom: 15px;">Control ThePatrick's personality and response style</p>
+                </div>
+
+                <div class="control-section">
+                    <label class="control-label">Select Persona</label>
+                    <select id="persona-select" class="persona-select">
+                        <option value="aggressive">😤 Aggressive/Mean</option>
+                        <option value="sassy">💅 Sassy & Stupid</option>
+                        <option value="nice">😊 Nice & Smart</option>
+                        <option value="conspiracy">👁️ Paranoid Conspiracy</option>
+                        <option value="sleepy">😴 Sleepy/High Patrick</option>
+                    </select>
+
+                    <div id="persona-description" class="persona-description">
+                        Classic toxic gamer - ego checks, 'git gud' energy, heavy sarcasm
+                    </div>
+
+                    <button class="button button-primary" id="apply-persona-btn">✅ Apply Persona</button>
+                    <button class="button button-secondary" id="preview-persona-btn">👁️ Preview</button>
+                </div>
+            </div>
+
             <!-- Cultist Monitoring Card -->
             <div class="card">
                 <div class="card-header">
@@ -690,7 +752,7 @@
         </div>
 
         <footer>
-            <p>Dashboard v1.0 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>Dashboard v1.1 | Last updated: <span id="footer-time">--:--:--</span></p>
             <p>💻 Built with ❤️ and Mountain Dew</p>
         </footer>
     </div>
@@ -732,6 +794,14 @@
     <script>
         const API_BASE = '/api';
 
+        const PERSONA_DESCRIPTIONS = {
+            aggressive: "Classic toxic gamer - ego checks, 'git gud' energy, heavy sarcasm",
+            sassy: "Confident but hilariously wrong - makes up facts with full conviction",
+            nice: "Actually helpful and wholesome - 'GG bro' vibes with solid advice",
+            conspiracy: "Everything is a BSG conspiracy - 'wake up sheeple' about Tarkov",
+            sleepy: "Chill and forgetful - correct info delivered in the most confusing way"
+        };
+
         class BotDashboard {
             constructor() {
                 this.cultistEnabled = false;
@@ -739,13 +809,18 @@
                 this.logsAutoRefresh = null;
                 this.currentLogsPlatform = 'all';
                 this.logsSearchTerm = '';
+                this.currentPersona = 'aggressive';
                 
                 this.initializeEventListeners();
                 this.startAutoRefresh();
                 this.updateFooterTime();
+                this.loadCurrentPersona();
             }
 
             initializeEventListeners() {
+                document.getElementById('persona-select').addEventListener('change', (e) => this.updatePersonaDescription(e));
+                document.getElementById('apply-persona-btn').addEventListener('click', () => this.applyPersona());
+                document.getElementById('preview-persona-btn').addEventListener('click', () => this.previewPersona());
                 document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
                 document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
@@ -788,6 +863,59 @@
                 const now = new Date();
                 const time = now.toLocaleTimeString();
                 document.getElementById('footer-time').textContent = time;
+            }
+
+            // Persona Functions
+            async loadCurrentPersona() {
+                try {
+                    const response = await fetch(`${API_BASE}/persona/current`);
+                    if (!response.ok) throw new Error('Failed to load persona');
+
+                    const data = await response.json();
+                    this.currentPersona = data.persona;
+                    document.getElementById('persona-select').value = data.persona;
+                    this.updatePersonaDescription({ target: { value: data.persona } });
+                } catch (error) {
+                    console.error('Load persona error:', error);
+                }
+            }
+
+            updatePersonaDescription(event) {
+                const persona = event.target.value;
+                const description = PERSONA_DESCRIPTIONS[persona] || 'Select a persona';
+                document.getElementById('persona-description').textContent = description;
+            }
+
+            async applyPersona() {
+                const selectedPersona = document.getElementById('persona-select').value;
+                
+                if (selectedPersona === this.currentPersona) {
+                    this.showAlert('This persona is already active', 'warning');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${API_BASE}/persona/set`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ persona: selectedPersona })
+                    });
+
+                    if (!response.ok) throw new Error('Failed to set persona');
+
+                    const data = await response.json();
+                    this.currentPersona = data.persona;
+                    this.showAlert(`Persona changed to: ${selectedPersona}`, 'success');
+                } catch (error) {
+                    console.error('Apply persona error:', error);
+                    this.showAlert(`Error: ${error.message}`, 'error');
+                }
+            }
+
+            previewPersona() {
+                const selectedPersona = document.getElementById('persona-select').value;
+                const description = PERSONA_DESCRIPTIONS[selectedPersona];
+                alert(`Preview: ${selectedPersona}\n\n${description}\n\nClick 'Apply Persona' to activate this personality.`);
             }
 
             async toggleCultist(event) {
