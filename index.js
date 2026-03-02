@@ -10,6 +10,7 @@ const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch
 const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
 const { logCommand: dbLogCommand } = require('./database.js');
+const { addToMemory, getSmartContext, clearChannelMemory } = require('./memory.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -74,31 +75,6 @@ function checkImageRateLimit(userId) {
     
     imageRateLimits.set(userId, now);
     return { allowed: true };
-}
-
-// ===== MESSAGE MEMORY SYSTEM =====
-const messageHistory = {
-    discord: [],
-    twitch: []
-};
-
-const MAX_MEMORY = 5;
-
-function addMessageToMemory(platform, username, content) {
-    const history = messageHistory[platform];
-    history.push({ username, content, timestamp: new Date() });
-    if (history.length > MAX_MEMORY) history.shift();
-}
-
-function getMemoryContext(platform) {
-    const history = messageHistory[platform];
-    if (history.length === 0) return 'No previous messages in this conversation.';
-    return history.map(msg => `${msg.username}: ${msg.content}`).join('\n');
-}
-
-function clearMemory(platform) {
-    messageHistory[platform] = [];
-    console.log(`[MEMORY] Cleared ${platform} conversation history`);
 }
 
 // ===== IMAGE GENERATION DETECTION =====
@@ -181,9 +157,10 @@ function getCurrentPersona() {
     return PERSONAS.aggressive;
 }
 
-async function getAIResponse(message, platform = 'discord', username = 'user') {
+async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user') {
     try {
-        const memoryContext = getMemoryContext(platform);
+        // Get smart context from SQLite memory system
+        const memoryContext = getSmartContext(platform, channelId);
         const currentPersona = getCurrentPersona();
         
         const platformNote = platform === 'twitch' 
@@ -192,12 +169,14 @@ async function getAIResponse(message, platform = 'discord', username = 'user') {
         
         const systemPrompt = `${currentPersona.systemPrompt}
 
-**CONVERSATION CONTEXT (Last 5 messages):**
+**Recent Conversation:**
 ${memoryContext}
 
-**Platform:** ${platformNote}`;
+**Platform:** ${platformNote}
+**Current User:** ${username}`;
         
         console.log(`[AI] Using persona: ${currentPersona.name}`);
+        console.log(`[AI] Context length: ${memoryContext.length} chars`);
         console.log(`[AI] Using model: gemini-2.5-flash`);
         
         const { text } = await generateText({
@@ -213,7 +192,12 @@ ${memoryContext}
                 }
             ]
         });
+        
         console.log('[AI Response]', text);
+        
+        // Store bot response in memory
+        addToMemory(platform, channelId, 'ThePatrick', text, true);
+        
         return text;
     } catch (error) {
         console.error('[AI Error]', error);
@@ -542,7 +526,8 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (self) return;
     
     console.log(`[TWITCH] ${tags.username}: ${message}`);
-    addMessageToMemory('twitch', tags.username, message);
+    // Store in memory with channel as channelId
+    addToMemory('twitch', channel, tags.username, message);
     
     const lowerMessage = message.toLowerCase();
     
@@ -619,7 +604,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     
     if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
         lowerMessage.startsWith('!patrick')) {
-        const response = await getAIResponse(message, 'twitch', tags.username);
+        const response = await getAIResponse(message, 'twitch', channel, tags.username);
         await sendTwitchChunked(channel, response);
         logCommand('twitch', tags.username, '@mention', message, response);
     }
@@ -643,7 +628,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     
     console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
-    addMessageToMemory('discord', message.author.username, message.content);
+    // Store in memory with channel ID
+    addToMemory('discord', message.channelId, message.author.username, message.content);
     
     const lowerContent = message.content.toLowerCase();
     
@@ -761,7 +747,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
             }
         } else {
             // Regular text chat response
-            const response = await getAIResponse(message.content, 'discord', message.author.username);
+            const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
             await message.reply(response);
             logCommand('discord', message.author.username, '@mention', message.content, response);
         }
