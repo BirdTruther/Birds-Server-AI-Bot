@@ -557,6 +557,8 @@
             margin-top: 5px;
             padding-left: 10px;
             border-left: 2px solid rgba(255, 255, 255, 0.1);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
 
         .log-response {
@@ -564,6 +566,31 @@
             margin-top: 5px;
             font-size: 0.8rem;
             font-style: italic;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .log-image-link {
+            margin-top: 8px;
+            padding: 8px;
+            background: rgba(2, 132, 199, 0.1);
+            border-radius: 4px;
+            border-left: 3px solid var(--color-primary);
+        }
+
+        .log-image-link a {
+            color: var(--color-primary);
+            text-decoration: none;
+            font-weight: 500;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            word-break: break-all;
+        }
+
+        .log-image-link a:hover {
+            color: #06b6d4;
+            text-decoration: underline;
         }
 
         .logs-empty {
@@ -752,7 +779,7 @@
         </div>
 
         <footer>
-            <p>Dashboard v1.1 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>Dashboard v1.2 | Last updated: <span id="footer-time">--:--:--</span></p>
             <p>💻 Built with ❤️ and Mountain Dew</p>
         </footer>
     </div>
@@ -1097,6 +1124,10 @@
                 const messageText = log.message || log.command;
                 const responseText = log.response ? `<div class="log-response">→ ${this.escapeHtml(log.response)}</div>` : '';
                 
+                // Handle image URL display
+                const imageUrlHtml = log.image_url ? 
+                    `<div class="log-image-link"><a href="${this.escapeHtml(log.image_url)}" target="_blank" rel="noopener">🖼️ View Generated Image</a></div>` : '';
+                
                 return `
                     <div class="log-entry ${statusClass}">
                         <div class="log-header">
@@ -1109,6 +1140,7 @@
                         </div>
                         <div class="log-message">${this.escapeHtml(messageText)}</div>
                         ${responseText}
+                        ${imageUrlHtml}
                     </div>
                 `;
             }
