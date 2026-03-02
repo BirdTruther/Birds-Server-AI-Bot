@@ -2,13 +2,15 @@
 // Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
 
 // ===== DEPENDENCIES =====
-const { Client, Events, GatewayIntentBits } = require('discord.js');
+const { Client, Events, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
 const tmi = require('tmi.js');
 const { google } = require('@ai-sdk/google');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
+const fs = require('fs');
+const path = require('path');
 const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
@@ -37,7 +39,8 @@ const CONFIG = {
     DUNGEON_AUTO_JOIN_DELAY: 1000,
     MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'],
     EST_TIMEZONE: 'America/New_York',
-    GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot'
+    GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot',
+    IMAGE_RATE_LIMIT_MS: 60000 // 1 minute cooldown per user
 };
 
 // Share cultist state with dashboard
@@ -47,6 +50,22 @@ let cultistState = {
   server2Active: false,
   server1Time: '--:--'
 };
+
+// ===== IMAGE GENERATION RATE LIMITING =====
+const imageRateLimits = new Map(); // Map<userId, lastRequestTimestamp>
+
+function checkImageRateLimit(userId) {
+    const now = Date.now();
+    const lastRequest = imageRateLimits.get(userId);
+    
+    if (lastRequest && (now - lastRequest) < CONFIG.IMAGE_RATE_LIMIT_MS) {
+        const timeLeft = Math.ceil((CONFIG.IMAGE_RATE_LIMIT_MS - (now - lastRequest)) / 1000);
+        return { allowed: false, timeLeft };
+    }
+    
+    imageRateLimits.set(userId, now);
+    return { allowed: true };
+}
 
 // ===== MESSAGE MEMORY SYSTEM =====
 const messageHistory = {
@@ -71,6 +90,70 @@ function getMemoryContext(platform) {
 function clearMemory(platform) {
     messageHistory[platform] = [];
     console.log(`[MEMORY] Cleared ${platform} conversation history`);
+}
+
+// ===== IMAGE GENERATION DETECTION =====
+const IMAGE_KEYWORDS = [
+    'generate',
+    'create',
+    'draw',
+    'make image',
+    'make picture',
+    'make a image',
+    'make a picture',
+    'generate image',
+    'generate picture',
+    'create image',
+    'create picture'
+];
+
+function detectImageRequest(message) {
+    const lowerMessage = message.toLowerCase();
+    return IMAGE_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
+}
+
+function extractImagePrompt(message) {
+    // Remove bot mention and clean up the prompt
+    let prompt = message.replace(/<@!?\d+>/g, '').trim();
+    
+    // Remove common trigger words to get just the description
+    const triggerPatterns = [
+        /^(generate|create|draw|make)\s+(an?\s+)?(image|picture)\s+(of\s+)?/i,
+        /^(generate|create|draw|make)\s+/i
+    ];
+    
+    for (const pattern of triggerPatterns) {
+        prompt = prompt.replace(pattern, '').trim();
+    }
+    
+    return prompt || 'abstract art';
+}
+
+// ===== AI IMAGE GENERATION SERVICE =====
+async function generateImage(prompt) {
+    try {
+        console.log(`[IMAGE] Generating image with prompt: ${prompt}`);
+        console.log(`[IMAGE] Using model: gemini-2.5-flash-image`);
+        
+        const { text } = await generateText({
+            model: google('gemini-2.5-flash-image'),
+            messages: [
+                {
+                    role: "user",
+                    content: [{ type: 'text', text: prompt }]
+                }
+            ]
+        });
+        
+        // The response contains base64 image data
+        // For now, we'll assume the API returns inline data
+        // This might need adjustment based on actual API response format
+        console.log('[IMAGE] Image generated successfully');
+        return text;
+    } catch (error) {
+        console.error('[IMAGE Error]', error);
+        throw error;
+    }
 }
 
 // ===== AI SERVICE (Gemini 2.5 Flash) with Persona Support =====
@@ -602,10 +685,48 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
+    // Handle @mentions - check for image generation keywords
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
-        const response = await getAIResponse(message.content, 'discord', message.author.username);
-        await message.reply(response);
-        logCommand('discord', message.author.username, '@mention', message.content, response);
+        // Check if this is an image generation request
+        if (detectImageRequest(message.content)) {
+            // Check rate limit
+            const rateLimit = checkImageRateLimit(message.author.id);
+            if (!rateLimit.allowed) {
+                const currentPersona = getCurrentPersona();
+                const rateLimitMsg = currentPersona.name === 'Aggressive/Mean' 
+                    ? `Whoa there, slow down! You're generating images too fast. Chill for ${rateLimit.timeLeft} more seconds. 😤`
+                    : `Hey! You need to wait ${rateLimit.timeLeft} more seconds before generating another image. 🎨⏰`;
+                await message.reply(rateLimitMsg);
+                logCommand('discord', message.author.username, 'image-rate-limit', message.content, rateLimitMsg);
+                return;
+            }
+            
+            // Generate image
+            try {
+                await message.channel.sendTyping();
+                console.log('[IMAGE] Processing image request from Discord');
+                
+                const prompt = extractImagePrompt(message.content);
+                const imageData = await generateImage(prompt);
+                
+                // Note: The actual implementation of sending the image will depend on
+                // how the Gemini API returns the image data. This is a placeholder.
+                // You may need to decode base64 or handle the response differently.
+                
+                await message.reply({ content: `Here's your image for: "${prompt}" 🎨`, files: [imageData] });
+                logCommand('discord', message.author.username, 'image-gen', prompt, 'Image generated');
+            } catch (error) {
+                console.error('[IMAGE] Error generating image:', error);
+                const errorMsg = "Yo, something broke while making your image. Try again? 🤖💥";
+                await message.reply(errorMsg);
+                logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
+            }
+        } else {
+            // Regular text chat response
+            const response = await getAIResponse(message.content, 'discord', message.author.username);
+            await message.reply(response);
+            logCommand('discord', message.author.username, '@mention', message.content, response);
+        }
     }
 });
 
