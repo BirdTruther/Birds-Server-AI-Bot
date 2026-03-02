@@ -8,6 +8,7 @@ const { createPerplexity } = require('@ai-sdk/perplexity');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
+const PERSONAS = require('./personas.js');
 const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
@@ -72,53 +73,43 @@ function clearMemory(platform) {
     console.log(`[MEMORY] Cleared ${platform} conversation history`);
 }
 
-// ===== AI SERVICE (Perplexity) =====
+// ===== AI SERVICE (Perplexity) with Persona Support =====
 const perplexity = createPerplexity({ apiKey: process.env.PERPLEXITY_TOKEN });
+
+function getCurrentPersona() {
+    // Get current persona from dashboard
+    if (typeof global.getBotPersona === 'function') {
+        const personaKey = global.getBotPersona();
+        return PERSONAS[personaKey] || PERSONAS.aggressive;
+    }
+    // Default to aggressive if dashboard not available
+    return PERSONAS.aggressive;
+}
 
 async function getAIResponse(message, platform = 'discord', username = 'user') {
     try {
         const memoryContext = getMemoryContext(platform);
+        const currentPersona = getCurrentPersona();
+        
+        const platformNote = platform === 'twitch' 
+            ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.' 
+            : 'Discord – can go a bit longer but still keep it punchy.';
+        
+        const systemPrompt = `${currentPersona.systemPrompt}
+
+**CONVERSATION CONTEXT (Last 5 messages):**
+${memoryContext}
+
+**Platform:** ${platformNote}`;
+        
+        console.log(`[AI] Using persona: ${currentPersona.name}`);
+        
         const { text } = await generateText({
             model: perplexity('sonar'),
             messages: [
                 {
                     role: "system",
-                    content: `Your name is ThePatrick. 25yo toxic gamer asshole who's been flaming noobs in this Discord for years.
-                    
-**CONVERSATION CONTEXT (Last 5 messages):**
-${memoryContext}
-
-**Platform:** ${platform === 'twitch' ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.' : 'Discord – can go a bit longer but still keep it punchy.'}
-
-Style:
-- Cuss like a sailor, heavy sarcasm, sweaty gamer energy
-- "Git gud," "bro you're trash," ego checks, KD flexes
-- Use edgy humor without slurs or hate speech
-- Emojis for savage energy 💀🤡😂🔥😤
-- **BOLD** burns, *italics* fake sympathy
-- Short. Punchy. No essays.
-- Flex wins, clown bad plays, hype clutch moments
-
-Examples:
-- "Mic check? Sounds like your $20 Walmart headset finally gave up 💀"
-- "K/D ratio? Looks like a warmup bot took your spot 😂"
-- "Voice chat broke? **Unplug your toaster PC** and try again, champ 😤"
-- "LFG? Only if you don't grief the squad like last match 🤡"
-- "That build? Looks like you let an AI pick perks for you. *Tragic.*"
-
-Triggers:
-- Setup questions → hardware/skill roasts + quick tip
-- Game complaints → "git gud" style reply + light insult
-- Brags → counter-flex harder but still playful
-- Help requests → sarcastic fix + one burn, then a real answer
-
-Rules:
-- No slurs, hate speech, or real-world harassment
-- No sexual content or targeting people's families
-- Don't be nice or robotic, but stay playful and entertainment-focused
-- Never self-@, never use [citations], never write long walls of text
-
-Be the toxic voice chat goblin everyone complains about, but secretly keeps around because you're funny and clutch.`
+                    content: systemPrompt
                 },
                 {
                     role: "user",
