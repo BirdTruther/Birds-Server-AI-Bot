@@ -135,36 +135,29 @@ async function generateImage(prompt) {
         console.log(`[IMAGE] Generating image with prompt: ${prompt}`);
         console.log(`[IMAGE] Using model: gemini-2.5-flash-image`);
         
-        // Use generateText with responseModalities config to get image output
         const result = await generateText({
             model: google('gemini-2.5-flash-image'),
-            messages: [
-                {
-                    role: "user",
-                    content: prompt
-                }
-            ],
-            // Tell Gemini we want IMAGE output, not text
-            experimental_output: {
-                type: 'image'
-            }
+            prompt: prompt
         });
         
-        console.log('[IMAGE] Result received:', typeof result);
+        console.log('[IMAGE] Result received');
         console.log('[IMAGE] Result keys:', Object.keys(result));
+        console.log('[IMAGE] Files in response:', result.files?.length || 0);
         
-        // The image should be in result.experimental_output or similar
-        // This may need adjustment based on actual API response
-        if (result.experimental_output) {
-            console.log('[IMAGE] Image data found in experimental_output');
-            return result.experimental_output;
-        } else if (result.image) {
-            console.log('[IMAGE] Image data found in image field');
-            return result.image;
-        } else {
-            console.log('[IMAGE] Full result:', JSON.stringify(result, null, 2));
-            throw new Error('No image data in response');
+        // Images are returned in result.files array
+        if (result.files && result.files.length > 0) {
+            for (const file of result.files) {
+                if (file.mediaType && file.mediaType.startsWith('image/')) {
+                    console.log('[IMAGE] Image found in files array');
+                    console.log('[IMAGE] Media type:', file.mediaType);
+                    // file.data is a Uint8Array, convert to Buffer
+                    return Buffer.from(file.data);
+                }
+            }
         }
+        
+        console.log('[IMAGE] Full result structure:', JSON.stringify(result, null, 2));
+        throw new Error('No image data in response');
     } catch (error) {
         console.error('[IMAGE Error]', error);
         throw error;
