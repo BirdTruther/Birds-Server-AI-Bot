@@ -4,7 +4,7 @@
 // ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits } = require('discord.js');
 const tmi = require('tmi.js');
-const { createPerplexity } = require('@ai-sdk/perplexity');
+const { google } = require('@ai-sdk/google');
 const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
@@ -73,9 +73,7 @@ function clearMemory(platform) {
     console.log(`[MEMORY] Cleared ${platform} conversation history`);
 }
 
-// ===== AI SERVICE (Perplexity) with Persona Support =====
-const perplexity = createPerplexity({ apiKey: process.env.PERPLEXITY_TOKEN });
-
+// ===== AI SERVICE (Gemini) with Persona Support =====
 function getCurrentPersona() {
     // Get current persona from dashboard
     if (typeof global.getBotPersona === 'function') {
@@ -105,7 +103,9 @@ ${memoryContext}
         console.log(`[AI] Using persona: ${currentPersona.name}`);
         
         const { text } = await generateText({
-            model: perplexity('sonar'),
+            model: google('gemini-1.5-flash', {
+                apiKey: process.env.GEMINI_API_KEY
+            }),
             messages: [
                 {
                     role: "system",
