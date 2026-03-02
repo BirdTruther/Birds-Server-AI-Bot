@@ -43,13 +43,15 @@ A real-time web dashboard running on `http://localhost:3001` with:
   - Platform indicators (Discord/Twitch)
   - Username and command tracking
   - Full message and response display
+  - Clickable Discord CDN image links for generated images
   - Error highlighting
-  - Auto-scrolling live updates
+  - SQLite persistence across restarts
 - **Persona Switcher** - Change bot personality on-the-fly:
-  - Aggressive/Mean (default "ThePatrick" persona)
-  - Friendly/Helpful
-  - Sarcastic
-  - Professional
+  - Aggressive/Mean (classic toxic gamer)
+  - Sassy & Stupid (confidently incorrect)
+  - Nice & Smart (actually helpful)
+  - Paranoid Conspiracy (everything's a conspiracy)
+  - Sleepy/High Patrick (forgetful but correct)
   - Changes apply immediately to all new conversations
 - **Cultist Tracker** - Live Tarkov time conversion with spawn notifications
   - Tracks Cultist spawn windows (22:00-07:00 in-game time)
@@ -64,8 +66,9 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Discord.js** - Discord bot framework with Gateway intents
 - **tmi.js** - Twitch chat integration
 - **Express.js** - Web dashboard server
+- **Better-sqlite3** - SQLite database for logs and conversation memory
 - **Google Gemini AI** - Powered by `@ai-sdk/google`
-  - **Gemini 2.5 Flash** - Text chat responses with conversation memory
+  - **Gemini 2.5 Flash** - Text chat responses with smart conversation memory
   - **Gemini 2.5 Flash Image** - AI image generation
 
 ### APIs
@@ -82,6 +85,7 @@ A real-time web dashboard running on `http://localhost:3001` with:
   "dotenv": "^17.2.3",
   "express": "^4.18.2",
   "cors": "^2.8.5",
+  "better-sqlite3": "latest",
   "tmi.js": "^1.8.5",
   "graphql-request": "latest",
   "node-fetch": "latest"
@@ -145,15 +149,34 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Dashboard Port** - 3001 (configurable in `dashboard-server.js`)
 - **Status Update Interval** - 30 seconds for Cultist tracker
 - **Image Generation** - 60 second cooldown per user
-- **Conversation Memory** - Last 5 messages per platform
+- **Conversation Memory** - Smart SQLite-based context selection
+
+### Smart Memory System
+
+The bot uses an intelligent conversation memory system (`memory.js`) that:
+
+- **Stores conversations** in SQLite database per channel/platform
+- **Smart context selection** - Only sends last 8 relevant messages to AI
+- **Reduces token usage** - Filters messages older than 24 hours
+- **Per-channel tracking** - Separate memory for each Discord channel and Twitch stream
+- **Auto-cleanup** - Removes messages older than 7 days
+- **Persists across restarts** - Conversation history saved in database
+
+**Memory Configuration:**
+- Max context messages sent to AI: 8 (down from unlimited)
+- Max message age: 24 hours
+- Messages kept per channel: 1000
+- Auto-cleanup interval: Every hour
 
 ### AI Personas
 
-The bot includes multiple switchable personalities defined in `personas.js`:
-- **Aggressive/Mean** - The default "ThePatrick" persona with attitude
-- **Friendly/Helpful** - Supportive and encouraging responses
-- **Sarcastic** - Witty and dry humor
-- **Professional** - Formal and informative
+The bot includes multiple switchable personalities defined in `personas.js`. All personas are **general-purpose gamers** that respond to any topic (not just Tarkov):
+
+- **Aggressive/Mean** - Classic toxic gamer energy with heavy sarcasm
+- **Sassy & Stupid** - Confidently incorrect about everything
+- **Nice & Smart** - Actually helpful with accurate information
+- **Paranoid Conspiracy** - Everything is a conspiracy or hidden agenda
+- **Sleepy/High Patrick** - Forgetful and rambling but eventually correct
 
 Personas can be switched via the web dashboard and apply immediately to new conversations.
 
@@ -174,7 +197,14 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - AI image generation with rate limiting
 - Tarkov API integrations
 - Auto-join functionality
-- Message memory system (5 messages per platform)
+- Smart conversation memory system
+
+### Memory System (`memory.js`)
+- SQLite-based conversation storage
+- Per-channel context tracking
+- Smart message filtering and selection
+- Automatic cleanup of old conversations
+- Token usage optimization
 
 ### Dashboard Server (`dashboard-server.js`)
 - Express web server
@@ -184,13 +214,20 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - Cultist tracking state management
 - Real-time Tarkov time calculations
 
+### Database (`database.js`)
+- SQLite database initialization
+- Command logging with full message history
+- Discord CDN image URL tracking
+- Automatic cleanup of old logs
+
 ### Personas (`personas.js`)
 - Multiple AI personality definitions
-- Customizable system prompts
+- General-purpose gamer personalities
 - Platform-specific response guidelines
+- Responds to any topic, not just gaming
 
 ### Public Assets (`public/`)
-- `dashboard.html` - Frontend interface with live updates
+- `dashboard.html` - Frontend interface with live updates and clickable image links
 
 ## API Endpoints
 
@@ -200,25 +237,28 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - `GET /api/cultist/status` - Returns current Cultist tracker state
 - `POST /api/cultist/toggle` - Enable/disable Cultist notifications
 - `GET /api/bot/status` - Returns bot uptime and system stats
-- `GET /api/persona` - Get current bot persona
-- `POST /api/persona` - Change bot persona (body: `{persona: "key"}`)
-- `GET /api/commands` - Get command log history
+- `GET /api/persona/current` - Get current bot persona
+- `POST /api/persona/set` - Change bot persona (body: `{persona: "key"}`)
+- `GET /api/bot/logs` - Get command log history from SQLite
+- `POST /api/bot/logs/clear` - Clear all command logs
 
 ## Image Generation
 
-The bot uses Google's Gemini 2.5 Flash Image model ("nano banana") for AI image generation:
+The bot uses Google's Gemini 2.5 Flash Image model for AI image generation:
 
 - **Trigger keywords:** generate, create, draw, make image/picture
 - **Platform:** Discord only (no Twitch support)
 - **Rate limiting:** 1 image per user per 60 seconds
-- **File handling:** Temporary files stored in `/tmp` directory
+- **File handling:** Temporary files stored in system temp directory
 - **Format:** PNG images
+- **Dashboard logging:** Discord CDN URLs saved as clickable links
 
 ### Technical Implementation
 - Uses Vercel AI SDK with Google provider
 - Images returned in `result.files` array as `Uint8Array`
 - Converted to Buffer and saved temporarily for Discord upload
 - Automatic cleanup after sending
+- Discord CDN URL captured and logged in SQLite database
 
 ## Contributing
 
