@@ -135,21 +135,36 @@ async function generateImage(prompt) {
         console.log(`[IMAGE] Generating image with prompt: ${prompt}`);
         console.log(`[IMAGE] Using model: gemini-2.5-flash-image`);
         
-        const { text } = await generateText({
+        // Use generateText with responseModalities config to get image output
+        const result = await generateText({
             model: google('gemini-2.5-flash-image'),
             messages: [
                 {
                     role: "user",
-                    content: [{ type: 'text', text: prompt }]
+                    content: prompt
                 }
-            ]
+            ],
+            // Tell Gemini we want IMAGE output, not text
+            experimental_output: {
+                type: 'image'
+            }
         });
         
-        // The response contains base64 image data
-        // For now, we'll assume the API returns inline data
-        // This might need adjustment based on actual API response format
-        console.log('[IMAGE] Image generated successfully');
-        return text;
+        console.log('[IMAGE] Result received:', typeof result);
+        console.log('[IMAGE] Result keys:', Object.keys(result));
+        
+        // The image should be in result.experimental_output or similar
+        // This may need adjustment based on actual API response
+        if (result.experimental_output) {
+            console.log('[IMAGE] Image data found in experimental_output');
+            return result.experimental_output;
+        } else if (result.image) {
+            console.log('[IMAGE] Image data found in image field');
+            return result.image;
+        } else {
+            console.log('[IMAGE] Full result:', JSON.stringify(result, null, 2));
+            throw new Error('No image data in response');
+        }
     } catch (error) {
         console.error('[IMAGE Error]', error);
         throw error;
@@ -709,11 +724,31 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 const prompt = extractImagePrompt(message.content);
                 const imageData = await generateImage(prompt);
                 
-                // Note: The actual implementation of sending the image will depend on
-                // how the Gemini API returns the image data. This is a placeholder.
-                // You may need to decode base64 or handle the response differently.
+                // Handle the image data - save temporarily and send
+                const timestamp = Date.now();
+                const filename = `generated_${timestamp}.png`;
+                const filepath = path.join(__dirname, filename);
                 
-                await message.reply({ content: `Here's your image for: "${prompt}" 🎨`, files: [imageData] });
+                // Write image data to file
+                if (typeof imageData === 'string') {
+                    // If it's base64 or similar string data
+                    fs.writeFileSync(filepath, imageData, 'base64');
+                } else if (Buffer.isBuffer(imageData)) {
+                    // If it's already a buffer
+                    fs.writeFileSync(filepath, imageData);
+                } else {
+                    throw new Error('Unknown image data format');
+                }
+                
+                // Send the file
+                await message.reply({ 
+                    content: `Here's your image for: "${prompt}" 🎨`,
+                    files: [filepath]
+                });
+                
+                // Clean up the temp file
+                fs.unlinkSync(filepath);
+                
                 logCommand('discord', message.author.username, 'image-gen', prompt, 'Image generated');
             } catch (error) {
                 console.error('[IMAGE] Error generating image:', error);
