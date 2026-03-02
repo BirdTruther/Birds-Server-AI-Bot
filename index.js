@@ -73,7 +73,7 @@ function clearMemory(platform) {
     console.log(`[MEMORY] Cleared ${platform} conversation history`);
 }
 
-// ===== AI SERVICE (Gemini 2.0 Flash) with Persona Support =====
+// ===== AI SERVICE (Gemini 2.5 Flash) with Persona Support =====
 function getCurrentPersona() {
     // Get current persona from dashboard
     if (typeof global.getBotPersona === 'function') {
@@ -101,10 +101,10 @@ ${memoryContext}
 **Platform:** ${platformNote}`;
         
         console.log(`[AI] Using persona: ${currentPersona.name}`);
-        console.log(`[AI] Using model: gemini-2.0-flash`);
+        console.log(`[AI] Using model: gemini-2.5-flash`);
         
         const { text } = await generateText({
-            model: google('gemini-2.0-flash'),
+            model: google('gemini-2.5-flash'),
             messages: [
                 {
                     role: "system",
