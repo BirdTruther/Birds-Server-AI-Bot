@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const { getLogs, getLogCount, clearLogs, logCommand: dbLogCommand } = require('./database.js');
 
 let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
 
@@ -13,20 +14,48 @@ let botPersona = {
 // Export function for bot to access current persona
 global.getBotPersona = () => botPersona.current;
 
-// Command logs storage (circular buffer, max 500 entries)
+// Command logs storage (in-memory cache for real-time updates, max 500 entries)
 const MAX_LOGS = 500;
 let commandLogs = [];
+
+// Load existing logs from database on startup
+function loadLogsFromDatabase() {
+  try {
+    const dbLogs = getLogs('all', MAX_LOGS);
+    // Convert DB logs to dashboard format
+    commandLogs = dbLogs.map(log => ({
+      platform: log.platform,
+      username: log.username,
+      command: log.command,
+      message: log.message,
+      response: log.response,
+      image_url: log.image_url,
+      error: log.error === 1,
+      timestamp: log.timestamp,
+      id: log.id
+    })).reverse(); // Reverse to maintain chronological order
+    console.log(`[DASHBOARD] Loaded ${commandLogs.length} logs from database`);
+  } catch (error) {
+    console.error('[DASHBOARD] Error loading logs from database:', error);
+  }
+}
+
+// Load logs on startup
+loadLogsFromDatabase();
 
 function addLog(entry) {
   commandLogs.push({
     ...entry,
-    timestamp: new Date().toISOString(),
-    id: Date.now() + Math.random()
+    timestamp: entry.timestamp || new Date().toISOString(),
+    id: entry.id || Date.now() + Math.random()
   });
   
   if (commandLogs.length > MAX_LOGS) {
     commandLogs = commandLogs.slice(-MAX_LOGS);
   }
+  
+  // Also save to database (this happens in index.js via dbLogCommand now)
+  // But keep this as a backup for any direct dashboard logging
 }
 
 global.dashboardLogCommand = addLog;
@@ -126,32 +155,60 @@ app.post('/api/persona/set', (req, res) => {
   });
 });
 
-// Logs endpoint
+// Logs endpoint - now pulls from database
 app.get('/api/bot/logs', (req, res) => {
   const { platform, limit } = req.query;
   
-  let filteredLogs = commandLogs;
+  const maxResults = Math.min(parseInt(limit) || 100, 1000);
   
-  if (platform && platform !== 'all') {
-    filteredLogs = commandLogs.filter(log => log.platform === platform);
+  try {
+    // Get logs from database instead of memory
+    const dbLogs = getLogs(platform || 'all', maxResults);
+    const totalCount = getLogCount();
+    
+    // Format logs for dashboard
+    const formattedLogs = dbLogs.map(log => ({
+      platform: log.platform,
+      username: log.username,
+      command: log.command,
+      message: log.message,
+      response: log.response,
+      image_url: log.image_url,
+      error: log.error === 1,
+      timestamp: log.timestamp,
+      id: log.id
+    }));
+    
+    res.json({
+      success: true,
+      count: formattedLogs.length,
+      total: totalCount,
+      logs: formattedLogs
+    });
+  } catch (error) {
+    console.error('[API] Error fetching logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch logs'
+    });
   }
-  
-  const maxResults = Math.min(parseInt(limit) || 100, 500);
-  const result = filteredLogs.slice(-maxResults).reverse();
-  
-  res.json({
-    success: true,
-    count: result.length,
-    total: commandLogs.length,
-    logs: result
-  });
 });
 
-// Clear logs endpoint
+// Clear logs endpoint - now clears database
 app.post('/api/bot/logs/clear', (req, res) => {
-  commandLogs = [];
-  console.log('[API] Logs cleared');
-  res.json({ success: true, message: 'Logs cleared' });
+  try {
+    const success = clearLogs();
+    if (success) {
+      commandLogs = []; // Also clear in-memory cache
+      console.log('[API] Logs cleared (database + memory)');
+      res.json({ success: true, message: 'Logs cleared' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to clear logs' });
+    }
+  } catch (error) {
+    console.error('[API] Error clearing logs:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear logs' });
+  }
 });
 
 app.listen(PORT, () => {
