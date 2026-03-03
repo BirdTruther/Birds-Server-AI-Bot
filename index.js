@@ -754,6 +754,68 @@ discordClient.on(Events.MessageCreate, async (message) => {
     }
 });
 
+// ===== REPLY-TO-BOT HANDLER =====
+discordClient.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot || !message.reference) return;
+    
+    try {
+        const repliedTo = await message.channel.messages.fetch(message.reference.messageId);
+        if (repliedTo.author.id !== discordClient.user.id) return;
+        
+        console.log(`[REPLY-TO-BOT] ${message.author.username}: ${message.content}`);
+        addToMemory('discord', message.channelId, message.author.username, message.content);
+        
+        const lowerContent = message.content.toLowerCase();
+        
+        // Handle commands in replies
+        if (lowerContent.startsWith('!price ')) {
+            const itemName = message.content.substring(7);
+            const result = await getTarkovPrice(itemName);
+            message.reply(result);
+            logCommand('discord', message.author.username, '!price-reply', itemName, result);
+            return;
+        }
+        
+        if (lowerContent.startsWith('!bestammo ')) {
+            const searchCaliber = message.content.substring(10).trim();
+            const result = await getBestAmmo(searchCaliber);
+            message.reply(result);
+            logCommand('discord', message.author.username, '!bestammo-reply', searchCaliber, result);
+            return;
+        }
+        
+        if (lowerContent === '!trader') {
+            const result = await getTraderResets();
+            message.reply(result);
+            logCommand('discord', message.author.username, '!trader-reply', message.content, result);
+            return;
+        }
+        
+        if (lowerContent.startsWith('!map ')) {
+            const mapName = message.content.substring(5);
+            const result = await getMapInfo(mapName);
+            message.reply(result);
+            logCommand('discord', message.author.username, '!map-reply', mapName, result);
+            return;
+        }
+        
+        if (lowerContent.startsWith('!player ')) {
+            const playerName = message.content.substring(8).trim();
+            const result = await getPlayerStats(playerName);
+            message.reply(result);
+            logCommand('discord', message.author.username, '!player-reply', playerName, result);
+            return;
+        }
+        
+        // AI response for non-commands
+        const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
+        message.reply(response);
+        logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
+    } catch (error) {
+        console.error('[REPLY ERROR]', error);
+    }
+});
+
 // ===== CULTIST MONITORING SYSTEM =====
 const CULTIST_CONFIG = {
     CHANNEL_ID: '1001340004259352678',
