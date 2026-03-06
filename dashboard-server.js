@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { getLogs, getLogCount, clearLogs, logCommand: dbLogCommand } = require('./database.js');
+const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand } = require('./database.js');
 
 let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
 
@@ -194,6 +194,48 @@ app.get('/api/bot/logs', (req, res) => {
   }
 });
 
+// System logs endpoint - NEW
+app.get('/api/bot/system-logs', (req, res) => {
+  const { log_type, severity, component, limit } = req.query;
+  
+  try {
+    const filters = {
+      log_type: log_type || 'all',
+      severity: severity || 'all',
+      component: component || 'all',
+      limit: Math.min(parseInt(limit) || 100, 1000)
+    };
+    
+    const systemLogs = getSystemLogs(filters);
+    const totalCount = getSystemLogCount();
+    
+    // Parse metadata JSON if present
+    const formattedLogs = systemLogs.map(log => ({
+      id: log.id,
+      timestamp: log.timestamp,
+      log_type: log.log_type,
+      severity: log.severity,
+      component: log.component,
+      message: log.message,
+      stack_trace: log.stack_trace,
+      metadata: log.metadata ? JSON.parse(log.metadata) : null
+    }));
+    
+    res.json({
+      success: true,
+      count: formattedLogs.length,
+      total: totalCount,
+      logs: formattedLogs
+    });
+  } catch (error) {
+    console.error('[API] Error fetching system logs:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch system logs'
+    });
+  }
+});
+
 // Clear logs endpoint - now clears database
 app.post('/api/bot/logs/clear', (req, res) => {
   try {
@@ -208,6 +250,22 @@ app.post('/api/bot/logs/clear', (req, res) => {
   } catch (error) {
     console.error('[API] Error clearing logs:', error);
     res.status(500).json({ success: false, error: 'Failed to clear logs' });
+  }
+});
+
+// Clear system logs endpoint - NEW
+app.post('/api/bot/system-logs/clear', (req, res) => {
+  try {
+    const success = clearSystemLogs();
+    if (success) {
+      console.log('[API] System logs cleared');
+      res.json({ success: true, message: 'System logs cleared' });
+    } else {
+      res.status(500).json({ success: false, error: 'Failed to clear system logs' });
+    }
+  } catch (error) {
+    console.error('[API] Error clearing system logs:', error);
+    res.status(500).json({ success: false, error: 'Failed to clear system logs' });
   }
 });
 
