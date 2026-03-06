@@ -9,13 +9,97 @@ const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
-const { logCommand: dbLogCommand } = require('./database.js');
+const { logCommand: dbLogCommand, logSystem } = require('./database.js');
 const { addToMemory, getSmartContext, clearChannelMemory } = require('./memory.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
+
+// ===== SYSTEM LOGGING HELPER =====
+function logSystemEvent(log_type, severity, component, message, error = null) {
+  const logEntry = {
+    log_type,
+    severity,
+    component,
+    message,
+    stack_trace: error ? error.stack : null,
+    metadata: error ? {
+      name: error.name,
+      message: error.message,
+      code: error.code
+    } : null
+  };
+  
+  logSystem(logEntry);
+  
+  // Also console log for immediate visibility
+  const prefix = severity === 'ERROR' || severity === 'CRITICAL' ? '[ERROR]' : '[INFO]';
+  console.log(`${prefix} [${component}] ${message}`);
+}
+
+// Log bot startup
+logSystemEvent('STARTUP', 'INFO', 'system', `🚀 Bot starting up - Node ${process.version} on ${process.platform}`);
+logSystemEvent('STARTUP', 'INFO', 'system', `Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+
+// ===== PROCESS ERROR HANDLERS =====
+
+// Catch uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logSystemEvent('CRASH', 'CRITICAL', 'system', `❌ Uncaught Exception: ${error.message}`, error);
+  console.error('[FATAL] Uncaught exception, exiting...', error);
+  process.exit(1);
+});
+
+// Catch unhandled promise rejections
+process.on('unhandledRejection', (reason, promise) => {
+  const error = reason instanceof Error ? reason : new Error(String(reason));
+  logSystemEvent('ERROR', 'ERROR', 'system', `❌ Unhandled Promise Rejection: ${error.message}`, error);
+  console.error('[ERROR] Unhandled rejection:', error);
+});
+
+// Catch SIGTERM (graceful shutdown request)
+process.on('SIGTERM', () => {
+  logSystemEvent('SHUTDOWN', 'INFO', 'system', '📴 Received SIGTERM signal - shutting down gracefully');
+  cleanup();
+  process.exit(0);
+});
+
+// Catch SIGINT (Ctrl+C)
+process.on('SIGINT', () => {
+  logSystemEvent('SHUTDOWN', 'INFO', 'system', '📴 Received SIGINT signal (Ctrl+C) - shutting down');
+  cleanup();
+  process.exit(0);
+});
+
+// Catch unexpected exit
+process.on('exit', (code) => {
+  if (code !== 0) {
+    logSystemEvent('SHUTDOWN', 'WARNING', 'system', `❌ Process exiting with code ${code}`);
+  } else {
+    logSystemEvent('SHUTDOWN', 'INFO', 'system', '✅ Process exiting normally');
+  }
+});
+
+// Cleanup function
+function cleanup() {
+  try {
+    logSystemEvent('SHUTDOWN', 'INFO', 'system', '🧹 Cleaning up resources...');
+    
+    if (discordClient) {
+      discordClient.destroy();
+      logSystemEvent('SHUTDOWN', 'INFO', 'discord', 'Discord client disconnected');
+    }
+    
+    if (twitchClient) {
+      twitchClient.disconnect();
+      logSystemEvent('SHUTDOWN', 'INFO', 'twitch', 'Twitch client disconnected');
+    }
+  } catch (error) {
+    logSystemEvent('ERROR', 'ERROR', 'system', 'Error during cleanup', error);
+  }
+}
 
 // ===== DASHBOARD LOGGING HELPER =====
 function logCommand(platform, username, command, message, response = null, error = false, image_url = null) {
@@ -38,6 +122,7 @@ function logCommand(platform, username, command, message, response = null, error
       global.dashboardLogCommand(logEntry);
     } catch (err) {
       console.error('[LOG ERROR]', err);
+      logSystemEvent('ERROR', 'WARNING', 'dashboard', 'Failed to send log to dashboard', err);
     }
   }
 }
@@ -142,6 +227,7 @@ async function generateImage(prompt) {
         throw new Error('No image data in response');
     } catch (error) {
         console.error('[IMAGE Error]', error);
+        logSystemEvent('ERROR', 'ERROR', 'ai', `Image generation failed: ${error.message}`, error);
         throw error;
     }
 }
@@ -201,6 +287,7 @@ ${memoryContext}
         return text;
     } catch (error) {
         console.error('[AI Error]', error);
+        logSystemEvent('ERROR', 'ERROR', 'ai', `AI response failed: ${error.message}`, error);
         return "Yo, my brain just glitched. Try again? 🤖";
     }
 }
@@ -231,6 +318,7 @@ async function getTarkovPrice(itemName) {
         return `No item found: ${itemName}`;
     } catch (error) {
         console.error('[Tarkov Price Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Price lookup failed for ${itemName}`, error);
         return `Error fetching: ${itemName}`;
     }
 }
@@ -265,6 +353,7 @@ async function getBestAmmo(searchCaliber) {
         return `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`;
     } catch (error) {
         console.error('[Best Ammo Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Best ammo lookup failed for ${searchCaliber}`, error);
         return `Error: ${searchCaliber}`;
     }
 }
@@ -287,6 +376,7 @@ async function getTraderResets() {
         return `Traders: ${traderList}`;
     } catch (error) {
         console.error('[Trader Resets Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', 'Trader resets lookup failed', error);
         return 'Error fetching traders';
     }
 }
@@ -304,6 +394,7 @@ async function getMapInfo(mapName) {
         return `No map: ${mapName}`;
     } catch (error) {
         console.error('[Map Info Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Map lookup failed for ${mapName}`, error);
         return `Error: ${mapName}`;
     }
 }
@@ -424,6 +515,7 @@ async function getPlayerStats(playerName) {
         return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Player stats lookup failed for ${playerName}`, error);
         return `Error fetching player: ${playerName}`;
     }
 }
@@ -472,6 +564,7 @@ async function fetchMeme() {
         return null;
     } catch (error) {
         console.error('[Meme Fetch Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'meme', 'Meme fetch failed', error);
         return null;
     }
 }
@@ -515,10 +608,19 @@ const twitchClient = new tmi.Client({
     channels: [process.env.TWITCH_CHANNEL]
 });
 
-twitchClient.connect().catch(console.error);
+twitchClient.connect().catch((error) => {
+    console.error('[TWITCH CONNECTION ERROR]', error);
+    logSystemEvent('CONNECTION', 'ERROR', 'twitch', 'Failed to connect to Twitch', error);
+});
 
 twitchClient.on('connected', (address, port) => {
     console.log(`✅ Connected to Twitch at ${address}:${port}`);
+    logSystemEvent('CONNECTION', 'INFO', 'twitch', `✅ Connected to Twitch at ${address}:${port}`);
+});
+
+twitchClient.on('disconnected', (reason) => {
+    console.log(`❌ Twitch disconnected: ${reason}`);
+    logSystemEvent('CONNECTION', 'WARNING', 'twitch', `❌ Twitch disconnected: ${reason}`);
 });
 
 // ===== TWITCH MESSAGE HANDLER =====
@@ -621,6 +723,22 @@ const discordClient = new Client({
 
 discordClient.on('ready', (readyClient) => {
     console.log(`✅ Discord logged in as ${readyClient.user.tag}`);
+    logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord logged in as ${readyClient.user.tag}`);
+});
+
+discordClient.on('error', (error) => {
+    console.error('[DISCORD ERROR]', error);
+    logSystemEvent('ERROR', 'ERROR', 'discord', 'Discord client error', error);
+});
+
+discordClient.on('shardDisconnect', (event) => {
+    console.log(`❌ Discord disconnected: ${event.reason || 'Unknown'}`);
+    logSystemEvent('CONNECTION', 'WARNING', 'discord', `❌ Discord disconnected: ${event.reason || 'Unknown'}`);
+});
+
+discordClient.on('shardReconnecting', () => {
+    console.log('🔄 Discord reconnecting...');
+    logSystemEvent('CONNECTION', 'INFO', 'discord', '🔄 Discord reconnecting...');
 });
 
 // ===== DISCORD MESSAGE HANDLER =====
@@ -741,6 +859,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 logCommand('discord', message.author.username, 'image-gen', prompt, `Image generated: ${imageUrl || 'URL not captured'}`, false, imageUrl);
             } catch (error) {
                 console.error('[IMAGE] Error generating image:', error);
+                logSystemEvent('ERROR', 'ERROR', 'discord', 'Image generation failed', error);
                 const errorMsg = "Yo, something broke while making your image. Try again? 🤖💥";
                 await message.reply(errorMsg);
                 logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
@@ -813,6 +932,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
     } catch (error) {
         console.error('[REPLY ERROR]', error);
+        logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler error', error);
     }
 });
 
@@ -872,15 +992,26 @@ async function checkCultistActivity() {
         console.log(`[CULTIST] Check - S1:${server1Time}(${server1Active}) S2:${server2Time}(${server2Active})`);
     } catch (error) {
         console.error('[CULTIST] Monitoring error:', error);
+        logSystemEvent('ERROR', 'WARNING', 'cultist', 'Cultist monitoring error', error);
     }
 }
 
 discordClient.once('ready', () => {
     console.log('[CULTIST] Starting monitoring system...');
+    logSystemEvent('STARTUP', 'INFO', 'cultist', 'Cultist monitoring system started');
     checkCultistActivity();
     setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
     console.log(`[CULTIST] Monitoring every ${CULTIST_CONFIG.CHECK_INTERVAL_MS / 60000} minutes`);
 });
 
 // ===== START DISCORD CLIENT =====
-discordClient.login(process.env.DISCORD_TOKEN);
+discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
+    console.error('[DISCORD LOGIN ERROR]', error);
+    logSystemEvent('CONNECTION', 'CRITICAL', 'discord', 'Discord login failed', error);
+    process.exit(1);
+});
+
+// Log successful startup after short delay
+setTimeout(() => {
+    logSystemEvent('STARTUP', 'INFO', 'system', '✅ Bot fully initialized and running');
+}, 5000);
