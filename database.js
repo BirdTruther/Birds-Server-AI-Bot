@@ -64,10 +64,27 @@ try {
     )
   `);
 
+  // Create system logs table for crashes, startups, shutdowns
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS system_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp TEXT NOT NULL,
+      log_type TEXT NOT NULL,
+      severity TEXT NOT NULL,
+      component TEXT NOT NULL,
+      message TEXT NOT NULL,
+      stack_trace TEXT,
+      metadata TEXT
+    )
+  `);
+
   // Create index for faster queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
     CREATE INDEX IF NOT EXISTS idx_platform ON command_logs(platform);
+    CREATE INDEX IF NOT EXISTS idx_system_timestamp ON system_logs(timestamp DESC);
+    CREATE INDEX IF NOT EXISTS idx_system_type ON system_logs(log_type);
+    CREATE INDEX IF NOT EXISTS idx_system_severity ON system_logs(severity);
   `);
   
   console.log('[DATABASE] Tables initialized successfully');
@@ -99,6 +116,28 @@ function logCommand(entry) {
   }
 }
 
+// Insert system log entry
+const insertSystemLog = db.prepare(`
+  INSERT INTO system_logs (timestamp, log_type, severity, component, message, stack_trace, metadata)
+  VALUES (@timestamp, @log_type, @severity, @component, @message, @stack_trace, @metadata)
+`);
+
+function logSystem(entry) {
+  try {
+    insertSystemLog.run({
+      timestamp: entry.timestamp || new Date().toISOString(),
+      log_type: entry.log_type || 'INFO',
+      severity: entry.severity || 'INFO',
+      component: entry.component || 'system',
+      message: entry.message || '',
+      stack_trace: entry.stack_trace || null,
+      metadata: entry.metadata ? JSON.stringify(entry.metadata) : null
+    });
+  } catch (err) {
+    console.error('[DATABASE] System log insert error:', err);
+  }
+}
+
 // Get recent logs with optional filters
 const getLogsStmt = db.prepare(`
   SELECT * FROM command_logs
@@ -116,8 +155,34 @@ function getLogs(platform = 'all', limit = 100) {
   }
 }
 
+// Get system logs with optional filters
+const getSystemLogsStmt = db.prepare(`
+  SELECT * FROM system_logs
+  WHERE (@log_type = 'all' OR log_type = @log_type)
+    AND (@severity = 'all' OR severity = @severity)
+    AND (@component = 'all' OR component = @component)
+  ORDER BY id DESC
+  LIMIT @limit
+`);
+
+function getSystemLogs(filters = {}) {
+  try {
+    const { log_type = 'all', severity = 'all', component = 'all', limit = 100 } = filters;
+    return getSystemLogsStmt.all({ 
+      log_type, 
+      severity, 
+      component, 
+      limit: Math.min(limit, 1000) 
+    });
+  } catch (err) {
+    console.error('[DATABASE] System logs query error:', err);
+    return [];
+  }
+}
+
 // Get total log count
 const getCountStmt = db.prepare('SELECT COUNT(*) as count FROM command_logs');
+const getSystemCountStmt = db.prepare('SELECT COUNT(*) as count FROM system_logs');
 
 function getLogCount() {
   try {
@@ -128,15 +193,36 @@ function getLogCount() {
   }
 }
 
+function getSystemLogCount() {
+  try {
+    return getSystemCountStmt.get().count;
+  } catch (err) {
+    console.error('[DATABASE] System count error:', err);
+    return 0;
+  }
+}
+
 // Clear all logs
 function clearLogs() {
   try {
     db.exec('DELETE FROM command_logs');
     db.exec('VACUUM');
-    console.log('[DATABASE] All logs cleared');
+    console.log('[DATABASE] All command logs cleared');
     return true;
   } catch (err) {
     console.error('[DATABASE] Clear error:', err);
+    return false;
+  }
+}
+
+function clearSystemLogs() {
+  try {
+    db.exec('DELETE FROM system_logs');
+    db.exec('VACUUM');
+    console.log('[DATABASE] All system logs cleared');
+    return true;
+  } catch (err) {
+    console.error('[DATABASE] Clear system logs error:', err);
     return false;
   }
 }
@@ -154,7 +240,7 @@ function cleanupOldLogs() {
     `);
     const changes = db.prepare('SELECT changes() as deleted').get().deleted;
     if (changes > 0) {
-      console.log(`[DATABASE] Cleaned up ${changes} old log entries`);
+      console.log(`[DATABASE] Cleaned up ${changes} old command log entries`);
       db.exec('VACUUM');
     }
   } catch (err) {
@@ -162,8 +248,31 @@ function cleanupOldLogs() {
   }
 }
 
+function cleanupOldSystemLogs() {
+  try {
+    db.exec(`
+      DELETE FROM system_logs
+      WHERE id NOT IN (
+        SELECT id FROM system_logs
+        ORDER BY id DESC
+        LIMIT 5000
+      )
+    `);
+    const changes = db.prepare('SELECT changes() as deleted').get().deleted;
+    if (changes > 0) {
+      console.log(`[DATABASE] Cleaned up ${changes} old system log entries`);
+      db.exec('VACUUM');
+    }
+  } catch (err) {
+    console.error('[DATABASE] System cleanup error:', err);
+  }
+}
+
 // Run cleanup daily
-setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000);
+setInterval(() => {
+  cleanupOldLogs();
+  cleanupOldSystemLogs();
+}, 24 * 60 * 60 * 1000);
 
 // Graceful shutdown
 function closeDatabase() {
@@ -191,7 +300,11 @@ module.exports = {
   db,
   dbPath,
   logCommand,
+  logSystem,
   getLogs,
+  getSystemLogs,
   getLogCount,
-  clearLogs
+  getSystemLogCount,
+  clearLogs,
+  clearSystemLogs
 };
