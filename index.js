@@ -199,6 +199,58 @@ function extractImagePrompt(message) {
     return prompt || 'abstract art';
 }
 
+// ===== IMAGE PROCESSING UTILITIES =====
+const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
+function hasImageAttachment(message) {
+    if (message.attachments.size === 0) return false;
+    
+    for (const attachment of message.attachments.values()) {
+        if (SUPPORTED_IMAGE_TYPES.includes(attachment.contentType)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+async function downloadImageAttachment(attachment) {
+    try {
+        const response = await fetch(attachment.url);
+        if (!response.ok) {
+            throw new Error(`Failed to download image: ${response.statusText}`);
+        }
+        const arrayBuffer = await response.arrayBuffer();
+        return Buffer.from(arrayBuffer);
+    } catch (error) {
+        console.error('[IMAGE DOWNLOAD ERROR]', error);
+        logSystemEvent('ERROR', 'WARNING', 'discord', 'Failed to download image attachment', error);
+        throw error;
+    }
+}
+
+async function getImageAttachments(message) {
+    const images = [];
+    
+    for (const attachment of message.attachments.values()) {
+        if (SUPPORTED_IMAGE_TYPES.includes(attachment.contentType)) {
+            try {
+                const imageBuffer = await downloadImageAttachment(attachment);
+                images.push({
+                    buffer: imageBuffer,
+                    url: attachment.url,
+                    name: attachment.name,
+                    contentType: attachment.contentType
+                });
+                console.log(`[IMAGE] Downloaded attachment: ${attachment.name} (${attachment.contentType})`);
+            } catch (error) {
+                console.error(`[IMAGE] Failed to download ${attachment.name}:`, error);
+            }
+        }
+    }
+    
+    return images;
+}
+
 // ===== AI IMAGE GENERATION SERVICE =====
 async function generateImage(prompt) {
     try {
@@ -232,7 +284,7 @@ async function generateImage(prompt) {
     }
 }
 
-// ===== AI SERVICE (Gemini 2.5 Flash) with Persona Support =====
+// ===== AI SERVICE (Gemini 2.5 Flash) with Persona Support and Image Understanding =====
 function getCurrentPersona() {
     // Get current persona from dashboard
     if (typeof global.getBotPersona === 'function') {
@@ -243,7 +295,7 @@ function getCurrentPersona() {
     return PERSONAS.aggressive;
 }
 
-async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user') {
+async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = []) {
     try {
         // Get smart context from SQLite memory system
         const memoryContext = getSmartContext(platform, channelId);
@@ -253,7 +305,7 @@ async function getAIResponse(message, platform = 'discord', channelId = 'default
             ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.' 
             : 'Discord – can go a bit longer but still keep it punchy.';
         
-        const systemPrompt = `${currentPersona.systemPrompt}
+        let systemPrompt = `${currentPersona.systemPrompt}
 
 **Recent Conversation:**
 ${memoryContext}
@@ -261,9 +313,28 @@ ${memoryContext}
 **Platform:** ${platformNote}
 **Current User:** ${username}`;
         
+        // Add image context if images are present
+        if (images && images.length > 0) {
+            systemPrompt += `\n\n**Note:** User has sent ${images.length} image(s). Analyze the image(s) and respond based on what you see.`;
+        }
+        
         console.log(`[AI] Using persona: ${currentPersona.name}`);
         console.log(`[AI] Context length: ${memoryContext.length} chars`);
+        console.log(`[AI] Images attached: ${images.length}`);
         console.log(`[AI] Using model: gemini-2.5-flash`);
+        
+        // Build content array for user message
+        const userContent = [{ type: 'text', text: message }];
+        
+        // Add images to content if present
+        if (images && images.length > 0) {
+            for (const image of images) {
+                userContent.push({
+                    type: 'image',
+                    image: image.buffer
+                });
+            }
+        }
         
         const { text } = await generateText({
             model: google('gemini-2.5-flash'),
@@ -274,7 +345,7 @@ ${memoryContext}
                 },
                 {
                     role: "user",
-                    content: [{ type: 'text', text: message }]
+                    content: userContent
                 }
             ]
         });
@@ -803,7 +874,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
-    // Handle @mentions - check for image generation keywords
+    // Handle @mentions - check for image generation keywords or image understanding
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
         // Check if this is an image generation request
         if (detectImageRequest(message.content)) {
@@ -865,10 +936,69 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
             }
         } else {
-            // Regular text chat response
-            const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-            await message.reply(response);
-            logCommand('discord', message.author.username, '@mention', message.content, response);
+            // Check if message has image attachments for understanding
+            const images = await getImageAttachments(message);
+            
+            if (images.length > 0) {
+                // Image understanding mode
+                try {
+                    await message.channel.sendTyping();
+                    console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) from ${message.author.username}`);
+                    
+                    const response = await getAIResponse(
+                        message.content || "What's in this image?",
+                        'discord',
+                        message.channelId,
+                        message.author.username,
+                        images
+                    );
+                    
+                    await message.reply(response);
+                    logCommand('discord', message.author.username, 'image-understanding', message.content, response);
+                } catch (error) {
+                    console.error('[IMAGE UNDERSTANDING] Error:', error);
+                    logSystemEvent('ERROR', 'ERROR', 'discord', 'Image understanding failed', error);
+                    const errorMsg = "Yo, I can't process that image right now. Try again? 🤖👀";
+                    await message.reply(errorMsg);
+                    logCommand('discord', message.author.username, 'image-understanding-error', message.content, errorMsg, true);
+                }
+            } else {
+                // Regular text chat response
+                const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
+                await message.reply(response);
+                logCommand('discord', message.author.username, '@mention', message.content, response);
+            }
+        }
+    }
+    
+    // Handle image attachments without @mention (when replying or just posting images)
+    else if (hasImageAttachment(message) && message.reference) {
+        try {
+            const repliedTo = await message.channel.messages.fetch(message.reference.messageId);
+            
+            // Only process if replying to the bot
+            if (repliedTo.author.id === discordClient.user.id) {
+                const images = await getImageAttachments(message);
+                
+                if (images.length > 0) {
+                    await message.channel.sendTyping();
+                    console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) in reply from ${message.author.username}`);
+                    
+                    const response = await getAIResponse(
+                        message.content || "What's in this image?",
+                        'discord',
+                        message.channelId,
+                        message.author.username,
+                        images
+                    );
+                    
+                    await message.reply(response);
+                    logCommand('discord', message.author.username, 'image-understanding-reply', message.content, response);
+                }
+            }
+        } catch (error) {
+            console.error('[IMAGE UNDERSTANDING REPLY] Error:', error);
+            logSystemEvent('ERROR', 'WARNING', 'discord', 'Image understanding in reply failed', error);
         }
     }
 });
@@ -926,10 +1056,30 @@ discordClient.on(Events.MessageCreate, async (message) => {
             return;
         }
         
-        // AI response for non-commands
-        const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-        message.reply(response);
-        logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
+        // Check if reply includes images
+        const images = await getImageAttachments(message);
+        
+        if (images.length > 0) {
+            // Image understanding in reply
+            await message.channel.sendTyping();
+            console.log(`[IMAGE UNDERSTANDING REPLY] Processing ${images.length} image(s) from ${message.author.username}`);
+            
+            const response = await getAIResponse(
+                message.content || "What's in this image?",
+                'discord',
+                message.channelId,
+                message.author.username,
+                images
+            );
+            
+            message.reply(response);
+            logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
+        } else {
+            // AI response for non-commands
+            const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
+            message.reply(response);
+            logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
+        }
     } catch (error) {
         console.error('[REPLY ERROR]', error);
         logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler error', error);
