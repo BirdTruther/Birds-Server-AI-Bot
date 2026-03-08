@@ -1,8 +1,20 @@
 # Birds-Server-AI-Bot
 
-A multi-platform Discord and Twitch bot with Escape from Tarkov integration, AI personality with image generation, and real-time web dashboard.
+A multi-platform Discord and Twitch bot with Escape from Tarkov integration, AI personality with image generation and understanding, and real-time web dashboard.
 
 ## Features
+
+### 👁️ AI Image Understanding (NEW!)
+
+- **Analyze Photos** - Bot can now understand and describe images sent by users
+- **Multiple Image Support** - Send one or more images with your message
+- **Context-Aware** - Ask questions about images: "What gun is this?" "Is this loadout good?"
+- **Works with @mentions** - Mention the bot and attach an image, or reply to the bot with an image
+- **Supports formats:** JPEG, PNG, GIF, WebP
+- Examples:
+  - `@ThePatrick` (with attached screenshot) - Bot analyzes and responds
+  - Reply to bot with image: "What map is this?"
+  - `@ThePatrick is this a good loadout?` (with inventory screenshot)
 
 ### 🎮 Tarkov Integration Commands
 
@@ -68,7 +80,7 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Express.js** - Web dashboard server
 - **Better-sqlite3** - SQLite database for logs and conversation memory
 - **Google Gemini AI** - Powered by `@ai-sdk/google`
-  - **Gemini 2.5 Flash** - Text chat responses with smart conversation memory
+  - **Gemini 2.5 Flash** - Text chat responses with smart conversation memory and multimodal image understanding
   - **Gemini 2.5 Flash Image** - AI image generation
 
 ### APIs
@@ -150,6 +162,7 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Status Update Interval** - 30 seconds for Cultist tracker
 - **Image Generation** - 60 second cooldown per user
 - **Conversation Memory** - Smart SQLite-based context selection
+- **Image Understanding** - Supports JPEG, PNG, GIF, WebP formats
 
 ### Smart Memory System
 
@@ -195,6 +208,7 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - Twitch chat integration
 - AI personality responses with Gemini
 - AI image generation with rate limiting
+- **AI image understanding with multimodal support**
 - Tarkov API integrations
 - Auto-join functionality
 - Smart conversation memory system
@@ -242,7 +256,22 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - `GET /api/bot/logs` - Get command log history from SQLite
 - `POST /api/bot/logs/clear` - Clear all command logs
 
-## Image Generation
+## Image Features
+
+### Image Understanding
+
+The bot uses Google's Gemini 2.5 Flash model with multimodal capabilities to understand images:
+
+- **Trigger methods:** 
+  - Mention bot with attached image(s)
+  - Reply to bot with attached image(s)
+  - No special keywords needed - just attach and ask
+- **Platform:** Discord only (Twitch doesn't support image uploads)
+- **Supported formats:** JPEG, PNG, GIF, WebP
+- **Multiple images:** Can analyze several images in one message
+- **Context retention:** Bot remembers images from conversation history
+
+### Image Generation
 
 The bot uses Google's Gemini 2.5 Flash Image model for AI image generation:
 
@@ -255,10 +284,28 @@ The bot uses Google's Gemini 2.5 Flash Image model for AI image generation:
 
 ### Technical Implementation
 - Uses Vercel AI SDK with Google provider
-- Images returned in `result.files` array as `Uint8Array`
-- Converted to Buffer and saved temporarily for Discord upload
-- Automatic cleanup after sending
-- Discord CDN URL captured and logged in SQLite database
+- Images sent to AI as Buffer objects in content array
+- Automatic download and processing of Discord attachments
+- Supports both inline images (with @mention) and reply images
+- Integrated with conversation memory system
+
+## How to Use Image Understanding
+
+**Basic usage:**
+1. Upload an image to Discord
+2. In the same message, @mention the bot and ask a question
+3. Bot analyzes the image and responds based on what it sees
+
+**Examples:**
+- Upload Tarkov screenshot → `@ThePatrick what map is this?`
+- Upload loadout screenshot → `@ThePatrick rate this build`
+- Upload meme → `@ThePatrick explain this`
+- Upload error message → `@ThePatrick what's wrong here?`
+
+**Reply mode:**
+- Bot sends a message
+- You reply with an image attached
+- Bot automatically analyzes it in context
 
 ## Contributing
 
