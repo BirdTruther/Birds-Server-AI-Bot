@@ -131,6 +131,7 @@ function logCommand(platform, username, command, message, response = null, error
 const CONFIG = {
     TWITCH_CHAR_LIMIT: 480,
     TWITCH_DELAY_MS: 1500,
+    DISCORD_CHAR_LIMIT: 2000,
     DUNGEON_AUTO_JOIN_DELAY: 1000,
     MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'],
     EST_TIMEZONE: 'America/New_York',
@@ -249,6 +250,55 @@ async function getImageAttachments(message) {
     }
     
     return images;
+}
+
+// ===== DISCORD MESSAGE SPLITTING UTILITY =====
+// Splits a long string into chunks that respect Discord's 2000 character limit.
+// Tries to break on newlines first, then sentence boundaries, then hard-cuts.
+function splitDiscordMessage(text, limit = CONFIG.DISCORD_CHAR_LIMIT) {
+    if (text.length <= limit) return [text];
+
+    const chunks = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+        if (remaining.length <= limit) {
+            chunks.push(remaining);
+            break;
+        }
+
+        let splitAt = remaining.lastIndexOf('\n', limit);
+        if (splitAt <= 0) splitAt = remaining.lastIndexOf('. ', limit);
+        if (splitAt <= 0) splitAt = remaining.lastIndexOf('! ', limit);
+        if (splitAt <= 0) splitAt = remaining.lastIndexOf('? ', limit);
+        if (splitAt <= 0) splitAt = remaining.lastIndexOf(' ', limit);
+        if (splitAt <= 0) splitAt = limit; // hard cut as last resort
+
+        chunks.push(remaining.substring(0, splitAt).trim());
+        remaining = remaining.substring(splitAt).trim();
+    }
+
+    return chunks.filter(c => c.length > 0);
+}
+
+// Helper: reply to a Discord message, splitting if over 2000 chars
+async function safeDiscordReply(message, text) {
+    const chunks = splitDiscordMessage(text);
+    for (let i = 0; i < chunks.length; i++) {
+        if (i === 0) {
+            await message.reply(chunks[i]);
+        } else {
+            await message.channel.send(chunks[i]);
+        }
+    }
+}
+
+// Helper: send to a Discord channel, splitting if over 2000 chars
+async function safeDiscordSend(channel, text) {
+    const chunks = splitDiscordMessage(text);
+    for (const chunk of chunks) {
+        await channel.send(chunk);
+    }
 }
 
 // ===== AI IMAGE GENERATION SERVICE =====
@@ -714,7 +764,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (lowerMessage.startsWith('!price ')) {
         const itemName = message.substring(7);
         const result = await getTarkovPrice(itemName);
-        twitchClient.say(channel, result);
+        await sendTwitchChunked(channel, result);
         logCommand('twitch', tags.username, '!price', itemName, result);
         return;
     }
@@ -722,14 +772,14 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (lowerMessage.startsWith('!bestammo ')) {
         const searchCaliber = message.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
-        twitchClient.say(channel, result);
+        await sendTwitchChunked(channel, result);
         logCommand('twitch', tags.username, '!bestammo', searchCaliber, result);
         return;
     }
     
     if (lowerMessage === '!trader') {
         const result = await getTraderResets();
-        twitchClient.say(channel, result);
+        await sendTwitchChunked(channel, result);
         logCommand('twitch', tags.username, '!trader', message, result);
         return;
     }
@@ -737,7 +787,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (lowerMessage.startsWith('!map ')) {
         const mapName = message.substring(5);
         const result = await getMapInfo(mapName);
-        twitchClient.say(channel, result);
+        await sendTwitchChunked(channel, result);
         logCommand('twitch', tags.username, '!map', mapName, result);
         return;
     }
@@ -745,7 +795,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (lowerMessage.startsWith('!player ')) {
         const playerName = message.substring(8).trim();
         const result = await getPlayerStats(playerName);
-        twitchClient.say(channel, result);
+        await sendTwitchChunked(channel, result);
         logCommand('twitch', tags.username, '!player', playerName, result);
         return;
     }
@@ -765,7 +815,7 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (lowerMessage.includes('meme')) {
         const meme = await fetchMeme();
         if (meme) {
-            twitchClient.say(channel, `${meme.title} ${meme.url}`);
+            await sendTwitchChunked(channel, `${meme.title} ${meme.url}`);
             logCommand('twitch', tags.username, 'meme', message, meme.title);
         } else {
             const errorMsg = 'Could not fetch a meme right now. Try again later.';
@@ -825,7 +875,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (lowerContent.startsWith('!price ')) {
         const itemName = message.content.substring(7);
         const result = await getTarkovPrice(itemName);
-        message.reply(result);
+        await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!price', itemName, result);
         return;
     }
@@ -833,14 +883,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (lowerContent.startsWith('!bestammo ')) {
         const searchCaliber = message.content.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
-        message.reply(result);
+        await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!bestammo', searchCaliber, result);
         return;
     }
     
     if (lowerContent === '!trader') {
         const result = await getTraderResets();
-        message.reply(result);
+        await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!trader', message.content, result);
         return;
     }
@@ -848,7 +898,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (lowerContent.startsWith('!map ')) {
         const mapName = message.content.substring(5);
         const result = await getMapInfo(mapName);
-        message.reply(result);
+        await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!map', mapName, result);
         return;
     }
@@ -856,7 +906,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (lowerContent.startsWith('!player ')) {
         const playerName = message.content.substring(8).trim();
         const result = await getPlayerStats(playerName);
-        message.reply(result);
+        await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!player', playerName, result);
         return;
     }
@@ -868,7 +918,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
             logCommand('discord', message.author.username, 'meme', message.content, meme.title);
         } else {
             const errorMsg = 'Could not fetch a meme right now. Try again later.';
-            await message.channel.send(errorMsg);
+            await safeDiscordSend(message.channel, errorMsg);
             logCommand('discord', message.author.username, 'meme', message.content, errorMsg, true);
         }
         return;
@@ -885,7 +935,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 const rateLimitMsg = currentPersona.name === 'Aggressive/Mean' 
                     ? `Whoa there, slow down! You're generating images too fast. Chill for ${rateLimit.timeLeft} more seconds. 😤`
                     : `Hey! You need to wait ${rateLimit.timeLeft} more seconds before generating another image. 🎨⏰`;
-                await message.reply(rateLimitMsg);
+                await safeDiscordReply(message, rateLimitMsg);
                 logCommand('discord', message.author.username, 'image-rate-limit', message.content, rateLimitMsg);
                 return;
             }
@@ -932,7 +982,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 console.error('[IMAGE] Error generating image:', error);
                 logSystemEvent('ERROR', 'ERROR', 'discord', 'Image generation failed', error);
                 const errorMsg = "Yo, something broke while making your image. Try again? 🤖💥";
-                await message.reply(errorMsg);
+                await safeDiscordReply(message, errorMsg);
                 logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
             }
         } else {
@@ -953,19 +1003,19 @@ discordClient.on(Events.MessageCreate, async (message) => {
                         images
                     );
                     
-                    await message.reply(response);
+                    await safeDiscordReply(message, response);
                     logCommand('discord', message.author.username, 'image-understanding', message.content, response);
                 } catch (error) {
                     console.error('[IMAGE UNDERSTANDING] Error:', error);
                     logSystemEvent('ERROR', 'ERROR', 'discord', 'Image understanding failed', error);
                     const errorMsg = "Yo, I can't process that image right now. Try again? 🤖👀";
-                    await message.reply(errorMsg);
+                    await safeDiscordReply(message, errorMsg);
                     logCommand('discord', message.author.username, 'image-understanding-error', message.content, errorMsg, true);
                 }
             } else {
                 // Regular text chat response
                 const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-                await message.reply(response);
+                await safeDiscordReply(message, response);
                 logCommand('discord', message.author.username, '@mention', message.content, response);
             }
         }
@@ -992,7 +1042,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                         images
                     );
                     
-                    await message.reply(response);
+                    await safeDiscordReply(message, response);
                     logCommand('discord', message.author.username, 'image-understanding-reply', message.content, response);
                 }
             }
@@ -1020,7 +1070,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         if (lowerContent.startsWith('!price ')) {
             const itemName = message.content.substring(7);
             const result = await getTarkovPrice(itemName);
-            message.reply(result);
+            await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!price-reply', itemName, result);
             return;
         }
@@ -1028,14 +1078,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
         if (lowerContent.startsWith('!bestammo ')) {
             const searchCaliber = message.content.substring(10).trim();
             const result = await getBestAmmo(searchCaliber);
-            message.reply(result);
+            await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!bestammo-reply', searchCaliber, result);
             return;
         }
         
         if (lowerContent === '!trader') {
             const result = await getTraderResets();
-            message.reply(result);
+            await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!trader-reply', message.content, result);
             return;
         }
@@ -1043,7 +1093,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         if (lowerContent.startsWith('!map ')) {
             const mapName = message.content.substring(5);
             const result = await getMapInfo(mapName);
-            message.reply(result);
+            await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!map-reply', mapName, result);
             return;
         }
@@ -1051,7 +1101,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         if (lowerContent.startsWith('!player ')) {
             const playerName = message.content.substring(8).trim();
             const result = await getPlayerStats(playerName);
-            message.reply(result);
+            await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!player-reply', playerName, result);
             return;
         }
@@ -1072,12 +1122,12 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 images
             );
             
-            message.reply(response);
+            await safeDiscordReply(message, response);
             logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
         } else {
             // AI response for non-commands
             const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-            message.reply(response);
+            await safeDiscordReply(message, response);
             logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
         }
     } catch (error) {
