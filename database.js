@@ -78,6 +78,14 @@ try {
     )
   `);
 
+  // Create bot_settings table for persisting toggle states across reboots
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS bot_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    )
+  `);
+
   // Create index for faster queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
@@ -274,6 +282,28 @@ setInterval(() => {
   cleanupOldSystemLogs();
 }, 24 * 60 * 60 * 1000);
 
+// ===== BOT SETTINGS (key/value store for persisting toggles across reboots) =====
+
+function getSetting(key, defaultValue = null) {
+  try {
+    const row = db.prepare('SELECT value FROM bot_settings WHERE key = ?').get(key);
+    return row ? row.value : defaultValue;
+  } catch (err) {
+    console.error('[DATABASE] getSetting error:', err);
+    return defaultValue;
+  }
+}
+
+function setSetting(key, value) {
+  try {
+    db.prepare('INSERT OR REPLACE INTO bot_settings (key, value) VALUES (?, ?)').run(key, String(value));
+    return true;
+  } catch (err) {
+    console.error('[DATABASE] setSetting error:', err);
+    return false;
+  }
+}
+
 // Graceful shutdown
 function closeDatabase() {
   try {
@@ -306,5 +336,7 @@ module.exports = {
   getLogCount,
   getSystemLogCount,
   clearLogs,
-  clearSystemLogs
+  clearSystemLogs,
+  getSetting,
+  setSetting
 };

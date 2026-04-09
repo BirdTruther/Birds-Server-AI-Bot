@@ -1,9 +1,19 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand } = require('./database.js');
+const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, getSetting, setSetting } = require('./database.js');
 
-let cultistState = { enabled: true, server1Active: false, server2Active: false, server1Time: '--:--' };
+// Load cultist enabled state from DB on startup (persists across reboots)
+let cultistState = {
+  enabled: getSetting('cultistEnabled', 'true') === 'true',
+  server1Active: false,
+  server2Active: false,
+  server1Time: '--:--'
+};
+console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 'ENABLED' : 'DISABLED'}`);
+
+// Expose getter so index.js can always read the live value
+global.getCultistEnabled = () => cultistState.enabled;
 
 // Persona state management
 let botPersona = {
@@ -105,7 +115,8 @@ app.get('/api/cultist/status', (req, res) => {
 app.post('/api/cultist/toggle', (req, res) => {
   const { enabled } = req.body;
   cultistState.enabled = enabled;
-  console.log(`[API] Cultist ${enabled ? 'ENABLED' : 'DISABLED'}`);
+  setSetting('cultistEnabled', enabled); // Persist to DB so it survives reboots
+  console.log(`[API] Cultist ${enabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
   res.json({ success: true, enabled });
 });
 
@@ -194,7 +205,7 @@ app.get('/api/bot/logs', (req, res) => {
   }
 });
 
-// System logs endpoint - NEW
+// System logs endpoint
 app.get('/api/bot/system-logs', (req, res) => {
   const { log_type, severity, component, limit } = req.query;
   
@@ -253,7 +264,7 @@ app.post('/api/bot/logs/clear', (req, res) => {
   }
 });
 
-// Clear system logs endpoint - NEW
+// Clear system logs endpoint
 app.post('/api/bot/system-logs/clear', (req, res) => {
   try {
     const success = clearSystemLogs();

@@ -9,7 +9,7 @@ const { generateText } = require('ai');
 const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
 const { request, gql } = require('graphql-request');
 const PERSONAS = require('./personas.js');
-const { logCommand: dbLogCommand, logSystem } = require('./database.js');
+const { logCommand: dbLogCommand, logSystem, getSetting } = require('./database.js');
 const { addToMemory, getSmartContext, clearChannelMemory } = require('./memory.js');
 const fs = require('fs');
 const path = require('path');
@@ -139,13 +139,20 @@ const CONFIG = {
     IMAGE_RATE_LIMIT_MS: 60000 // 1 minute cooldown per user
 };
 
-// Share cultist state with dashboard
-let cultistState = {
-  enabled: true,
-  server1Active: false,
-  server2Active: false,
-  server1Time: '--:--'
-};
+// ===== CULTIST STATE =====
+// Read persisted value from DB on startup so reboots don't reset the toggle
+let cultistEnabled = getSetting('cultistEnabled', 'true') === 'true';
+console.log(`[CULTIST] Monitoring loaded as: ${cultistEnabled ? 'ENABLED' : 'DISABLED'}`);
+
+// Helper used by checkCultistActivity - always checks live dashboard value first
+function isCultistMonitoringEnabled() {
+  // Prefer the dashboard's live in-memory value if available (real-time toggle)
+  if (typeof global.getCultistEnabled === 'function') {
+    return global.getCultistEnabled();
+  }
+  // Fallback to locally loaded DB value
+  return cultistEnabled;
+}
 
 // ===== IMAGE GENERATION RATE LIMITING =====
 const imageRateLimits = new Map(); // Map<userId, lastRequestTimestamp>
@@ -1148,8 +1155,8 @@ let lastCultistStates = {
 };
 
 async function checkCultistActivity() {
-  // Only run if dashboard says it's enabled
-  if (!cultistState.enabled) {
+  // Check live dashboard value first, fall back to locally loaded DB value
+  if (!isCultistMonitoringEnabled()) {
     console.log('[CULTIST] Monitoring disabled by dashboard');
     return;
   }
