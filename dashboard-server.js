@@ -198,6 +198,16 @@ global.setDiscordClientForExport = (client) => {
 
 const exportJobs = {};
 
+// Wraps a promise with a timeout — rejects with a clear message if it takes too long
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms: ${label}`)), ms)
+    )
+  ]);
+}
+
 async function runMessageExport(userId, jobId) {
   const job = exportJobs[jobId];
 
@@ -238,37 +248,78 @@ async function runMessageExport(userId, jobId) {
         metadata: { jobId, guildId: guild.id, guildName: guild.name }
       });
 
+      // Use cached channels first (instant) — fall back to fetch() with a 10s timeout
       let channels;
-      try {
-        channels = await guild.channels.fetch();
-      } catch (e) {
+      if (guild.channels.cache.size > 0) {
+        channels = guild.channels.cache;
         logSystem({
           log_type: 'EXPORT',
-          severity: 'WARNING',
+          severity: 'INFO',
           component: 'export',
-          message: `Job ${jobId} — could not fetch channels for guild ${guild.name}: ${e.message}`,
-          stack_trace: e.stack,
-          metadata: { jobId, guildId: guild.id }
+          message: `Job ${jobId} — using cached channels for ${guild.name} (${channels.size} channels)`,
+          metadata: { jobId, guildId: guild.id, channelCount: channels.size }
         });
-        continue;
+      } else {
+        try {
+          channels = await withTimeout(
+            guild.channels.fetch(),
+            10000,
+            `guild.channels.fetch() for ${guild.name}`
+          );
+          logSystem({
+            log_type: 'EXPORT',
+            severity: 'INFO',
+            component: 'export',
+            message: `Job ${jobId} — fetched channels for ${guild.name} (${channels.size} channels)`,
+            metadata: { jobId, guildId: guild.id, channelCount: channels.size }
+          });
+        } catch (e) {
+          logSystem({
+            log_type: 'EXPORT',
+            severity: 'WARNING',
+            component: 'export',
+            message: `Job ${jobId} — could not fetch channels for guild ${guild.name}: ${e.message}`,
+            stack_trace: e.stack,
+            metadata: { jobId, guildId: guild.id }
+          });
+          continue;
+        }
       }
+
+      let channelCount = 0;
+      let scannedCount = 0;
 
       for (const [, channel] of channels) {
         if (!channel || channel.type !== 0) continue;
+        channelCount++;
+
         let perms;
         try { perms = channel.permissionsFor(guild.members.me); } catch (e) { continue; }
         if (!perms || !perms.has('ViewChannel') || !perms.has('ReadMessageHistory')) continue;
 
+        scannedCount++;
+        job.progress = `Scanning: ${guild.name} — #${channel.name} (${messages.length} found so far)`;
+
+        logSystem({
+          log_type: 'EXPORT',
+          severity: 'INFO',
+          component: 'export',
+          message: `Job ${jobId} — scanning #${channel.name} in ${guild.name}`,
+          metadata: { jobId, channelId: channel.id, channelName: channel.name, guildName: guild.name }
+        });
+
         let lastId = null;
         let fetched;
-        let channelErrors = 0;
         do {
           try {
             const opts = { limit: 100 };
             if (lastId) opts.before = lastId;
-            fetched = await channel.messages.fetch(opts);
+            fetched = await withTimeout(
+              channel.messages.fetch(opts),
+              15000,
+              `messages.fetch() in #${channel.name}`
+            );
           } catch (e) {
-            channelErrors++;
             logSystem({
               log_type: 'EXPORT',
               severity: 'WARNING',
@@ -297,6 +348,14 @@ async function runMessageExport(userId, jobId) {
           lastId = fetched.size === 100 ? fetched.last().id : null;
         } while (fetched.size === 100);
       }
+
+      logSystem({
+        log_type: 'EXPORT',
+        severity: 'INFO',
+        component: 'export',
+        message: `Job ${jobId} — finished guild ${guild.name}: scanned ${scannedCount}/${channelCount} text channels, ${messages.length} messages found so far`,
+        metadata: { jobId, guildId: guild.id, scannedCount, channelCount, runningTotal: messages.length }
+      });
     }
 
     job.status = 'done';
@@ -309,7 +368,7 @@ async function runMessageExport(userId, jobId) {
       log_type: 'EXPORT',
       severity: 'INFO',
       component: 'export',
-      message: `Export job ${jobId} completed successfully — ${messages.length} messages found for user ${userId}`,
+      message: `Export job ${jobId} completed successfully \u2014 ${messages.length} messages found for user ${userId}`,
       metadata: { jobId, userId, messageCount: messages.length }
     });
     console.log(`[EXPORT] Job ${jobId} complete: ${messages.length} messages for user ${userId}`);
