@@ -19,11 +19,7 @@
             --shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
         }
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
@@ -34,16 +30,9 @@
             padding: 20px;
         }
 
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
+        .container { max-width: 1200px; margin: 0 auto; }
 
-        header {
-            text-align: center;
-            margin-bottom: 40px;
-            padding: 30px 0;
-        }
+        header { text-align: center; margin-bottom: 40px; padding: 30px 0; }
 
         h1 {
             font-size: 2.5rem;
@@ -54,10 +43,7 @@
             background-clip: text;
         }
 
-        .subtitle {
-            color: var(--color-text-secondary);
-            font-size: 1.1rem;
-        }
+        .subtitle { color: var(--color-text-secondary); font-size: 1.1rem; }
 
         .dashboard-grid {
             display: grid;
@@ -68,7 +54,7 @@
 
         .card {
             background: var(--color-bg-secondary);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: var(--radius);
             padding: 25px;
             box-shadow: var(--shadow);
@@ -77,7 +63,7 @@
 
         .card:hover {
             border-color: var(--color-primary);
-            box-shadow: 0 6px 20px rgba(2, 132, 199, 0.2);
+            box-shadow: 0 6px 20px rgba(2,132,199,0.2);
             transform: translateY(-2px);
         }
 
@@ -87,20 +73,11 @@
             justify-content: space-between;
             margin-bottom: 20px;
             padding-bottom: 15px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.05);
+            border-bottom: 2px solid rgba(255,255,255,0.05);
         }
 
-        .card-title {
-            font-size: 1.3rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card-icon {
-            font-size: 1.5rem;
-        }
+        .card-title { font-size: 1.3rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .card-icon { font-size: 1.5rem; }
 
         .status-badge {
             display: inline-block;
@@ -112,102 +89,24 @@
             letter-spacing: 0.5px;
         }
 
-        .status-badge.active {
-            background: rgba(34, 197, 94, 0.2);
-            color: var(--color-success);
-            border: 1px solid var(--color-success);
-        }
+        .status-badge.active { background: rgba(34,197,94,0.2); color: var(--color-success); border: 1px solid var(--color-success); }
+        .status-badge.inactive { background: rgba(239,68,68,0.2); color: var(--color-danger); border: 1px solid var(--color-danger); }
 
-        .status-badge.inactive {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--color-danger);
-            border: 1px solid var(--color-danger);
-        }
+        .status-info { margin: 20px 0; padding: 15px; background: rgba(255,255,255,0.05); border-radius: 6px; border-left: 4px solid var(--color-primary); }
 
-        .status-info {
-            margin: 20px 0;
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 6px;
-            border-left: 4px solid var(--color-primary);
-        }
+        .status-item { display: flex; justify-content: space-between; align-items: center; margin: 10px 0; font-size: 0.95rem; }
+        .status-label { color: var(--color-text-secondary); font-weight: 500; }
+        .status-value { font-weight: 600; color: var(--color-primary); }
 
-        .status-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin: 10px 0;
-            font-size: 0.95rem;
-        }
+        .control-section { margin-top: 25px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); }
+        .control-label { display: block; margin-bottom: 12px; font-weight: 600; color: var(--color-text-primary); }
 
-        .status-label {
-            color: var(--color-text-secondary);
-            font-weight: 500;
-        }
-
-        .status-value {
-            font-weight: 600;
-            color: var(--color-primary);
-        }
-
-        .control-section {
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .control-label {
-            display: block;
-            margin-bottom: 12px;
-            font-weight: 600;
-            color: var(--color-text-primary);
-        }
-
-        .toggle-switch {
-            position: relative;
-            display: inline-block;
-            width: 60px;
-            height: 34px;
-        }
-
-        .toggle-switch input {
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .slider {
-            position: absolute;
-            cursor: pointer;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background-color: #ccc;
-            transition: 0.4s;
-            border-radius: 34px;
-            background-color: rgba(239, 68, 68, 0.5);
-        }
-
-        .slider:before {
-            position: absolute;
-            content: "";
-            height: 26px;
-            width: 26px;
-            left: 4px;
-            bottom: 4px;
-            background-color: white;
-            transition: 0.4s;
-            border-radius: 50%;
-        }
-
-        input:checked + .slider {
-            background-color: var(--color-success);
-        }
-
-        input:checked + .slider:before {
-            transform: translateX(26px);
-        }
+        .toggle-switch { position: relative; display: inline-block; width: 60px; height: 34px; }
+        .toggle-switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: rgba(239,68,68,0.5); transition: 0.4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 26px; width: 26px; left: 4px; bottom: 4px; background-color: white; transition: 0.4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--color-success); }
+        input:checked + .slider:before { transform: translateX(26px); }
 
         .button {
             display: inline-block;
@@ -223,58 +122,28 @@
             letter-spacing: 0.5px;
         }
 
-        .button-primary {
-            background: var(--color-primary);
-            color: white;
-        }
-
-        .button-primary:hover {
-            background: var(--color-primary-hover);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);
-        }
-
-        .button-primary:active {
-            transform: translateY(0);
-        }
-
-        .button-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--color-text-primary);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-        }
-
-        .button-secondary:hover {
-            background: rgba(255, 255, 255, 0.15);
-            border-color: rgba(255, 255, 255, 0.3);
-        }
-
-        .button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
+        .button-primary { background: var(--color-primary); color: white; }
+        .button-primary:hover { background: var(--color-primary-hover); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(2,132,199,0.3); }
+        .button-primary:active { transform: translateY(0); }
+        .button-secondary { background: rgba(255,255,255,0.1); color: var(--color-text-primary); border: 1px solid rgba(255,255,255,0.2); }
+        .button-secondary:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+        .button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
         .persona-select {
             width: 100%;
             padding: 12px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.2);
             border-radius: var(--radius);
             color: var(--color-text-primary);
             font-size: 0.95rem;
             cursor: pointer;
             margin-bottom: 15px;
         }
-
-        .persona-select:focus {
-            outline: none;
-            border-color: var(--color-primary);
-            background: rgba(255, 255, 255, 0.08);
-        }
+        .persona-select:focus { outline: none; border-color: var(--color-primary); background: rgba(255,255,255,0.08); }
 
         .persona-description {
-            background: rgba(255, 255, 255, 0.03);
+            background: rgba(255,255,255,0.03);
             padding: 12px;
             border-radius: 6px;
             font-size: 0.85rem;
@@ -283,197 +152,48 @@
             line-height: 1.5;
         }
 
-        .alert {
-            padding: 15px;
-            margin: 15px 0;
-            border-radius: var(--radius);
-            font-weight: 500;
-            display: none;
-            animation: slideIn 0.3s ease;
-        }
+        .alert { padding: 15px; margin: 15px 0; border-radius: var(--radius); font-weight: 500; display: none; animation: slideIn 0.3s ease; }
+        .alert.show { display: block; }
+        .alert-success { background: rgba(34,197,94,0.2); color: var(--color-success); border: 1px solid var(--color-success); }
+        .alert-error { background: rgba(239,68,68,0.2); color: var(--color-danger); border: 1px solid var(--color-danger); }
+        .alert-warning { background: rgba(245,158,11,0.2); color: var(--color-warning); border: 1px solid var(--color-warning); }
 
-        .alert.show {
-            display: block;
-        }
+        @keyframes slideIn { from { transform: translateY(-10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        .alert-success {
-            background: rgba(34, 197, 94, 0.2);
-            color: var(--color-success);
-            border: 1px solid var(--color-success);
-        }
-
-        .alert-error {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--color-danger);
-            border: 1px solid var(--color-danger);
-        }
-
-        .alert-warning {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--color-warning);
-            border: 1px solid var(--color-warning);
-        }
-
-        @keyframes slideIn {
-            from { transform: translateY(-10px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
-
-        .modal {
-            display: none;
-            position: fixed;
-            z-index: 1000;
-            left: 0;
-            top: 0;
-            width: 100%;
-            height: 100%;
-            background-color: rgba(0, 0, 0, 0.8);
-            animation: fadeIn 0.3s ease;
-        }
-
-        .modal.show {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-content {
-            background: var(--color-bg-secondary);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: var(--radius);
-            width: 90%;
-            max-width: 900px;
-            max-height: 85vh;
-            display: flex;
-            flex-direction: column;
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-            animation: slideUp 0.3s ease;
-        }
+        .modal { display: none; position: fixed; z-index: 1000; left: 0; top: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.8); animation: fadeIn 0.3s ease; }
+        .modal.show { display: flex; align-items: center; justify-content: center; }
+        .modal-content { background: var(--color-bg-secondary); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius); width: 90%; max-width: 900px; max-height: 85vh; display: flex; flex-direction: column; box-shadow: 0 10px 40px rgba(0,0,0,0.5); animation: slideUp 0.3s ease; }
 
         @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { transform: translateY(50px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
-        @keyframes slideUp {
-            from { transform: translateY(50px); opacity: 0; }
-            to { transform: translateY(0); opacity: 1; }
-        }
+        .modal-header { padding: 20px 25px; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; }
+        .modal-title { font-size: 1.5rem; font-weight: 600; display: flex; align-items: center; gap: 10px; }
+        .modal-close { background: none; border: none; color: var(--color-text-secondary); font-size: 1.8rem; cursor: pointer; padding: 0; width: 30px; height: 30px; display: flex; align-items: center; justify-content: center; border-radius: 4px; transition: all 0.2s; }
+        .modal-close:hover { background: rgba(255,255,255,0.1); color: var(--color-text-primary); }
+        .modal-body { padding: 20px 25px; overflow-y: auto; flex: 1; }
+        .modal-footer { padding: 15px 25px; border-top: 1px solid rgba(255,255,255,0.1); display: flex; justify-content: space-between; align-items: center; }
 
-        .modal-header {
-            padding: 20px 25px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .modal-title {
-            font-size: 1.5rem;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .modal-close {
-            background: none;
-            border: none;
-            color: var(--color-text-secondary);
-            font-size: 1.8rem;
-            cursor: pointer;
-            padding: 0;
-            width: 30px;
-            height: 30px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-
-        .modal-close:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--color-text-primary);
-        }
-
-        .modal-body {
-            padding: 20px 25px;
-            overflow-y: auto;
-            flex: 1;
-        }
-
-        .modal-footer {
-            padding: 15px 25px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .logs-controls {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 20px;
-            flex-wrap: wrap;
-        }
-
-        .logs-filter {
-            padding: 8px 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: var(--radius);
-            color: var(--color-text-primary);
-            font-size: 0.9rem;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-
-        .logs-filter:hover { background: rgba(255, 255, 255, 0.1); }
+        .logs-controls { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+        .logs-filter { padding: 8px 15px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius); color: var(--color-text-primary); font-size: 0.9rem; cursor: pointer; transition: all 0.2s; }
+        .logs-filter:hover { background: rgba(255,255,255,0.1); }
         .logs-filter.active { background: var(--color-primary); border-color: var(--color-primary); }
+        .logs-search { flex: 1; min-width: 200px; padding: 8px 15px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); border-radius: var(--radius); color: var(--color-text-primary); font-size: 0.9rem; }
+        .logs-search:focus { outline: none; border-color: var(--color-primary); background: rgba(255,255,255,0.08); }
 
-        .logs-search {
-            flex: 1;
-            min-width: 200px;
-            padding: 8px 15px;
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: var(--radius);
-            color: var(--color-text-primary);
-            font-size: 0.9rem;
-        }
+        .logs-container { background: rgba(0,0,0,0.3); border-radius: var(--radius); padding: 15px; font-family: 'Courier New', monospace; font-size: 0.85rem; max-height: 500px; overflow-y: auto; }
 
-        .logs-search:focus {
-            outline: none;
-            border-color: var(--color-primary);
-            background: rgba(255, 255, 255, 0.08);
-        }
-
-        .logs-container {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: var(--radius);
-            padding: 15px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.85rem;
-            max-height: 500px;
-            overflow-y: auto;
-        }
-
-        .log-entry {
-            padding: 10px;
-            margin-bottom: 8px;
-            background: rgba(255, 255, 255, 0.03);
-            border-left: 3px solid var(--color-primary);
-            border-radius: 4px;
-            transition: all 0.2s;
-        }
-
-        .log-entry:hover { background: rgba(255, 255, 255, 0.06); }
+        .log-entry { padding: 10px; margin-bottom: 8px; background: rgba(255,255,255,0.03); border-left: 3px solid var(--color-primary); border-radius: 4px; transition: all 0.2s; }
+        .log-entry:hover { background: rgba(255,255,255,0.06); }
         .log-entry.discord { border-left-color: #5865F2; }
         .log-entry.twitch { border-left-color: #9146FF; }
-        .log-entry.error, .log-entry.ERROR { border-left-color: var(--color-danger); background: rgba(239, 68, 68, 0.05); }
-        .log-entry.CRITICAL { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.1); }
-        .log-entry.WARNING { border-left-color: var(--color-warning); background: rgba(245, 158, 11, 0.05); }
+        .log-entry.error, .log-entry.ERROR { border-left-color: var(--color-danger); background: rgba(239,68,68,0.05); }
+        .log-entry.CRITICAL { border-left-color: #dc2626; background: rgba(220,38,38,0.1); }
+        .log-entry.WARNING { border-left-color: var(--color-warning); background: rgba(245,158,11,0.05); }
         .log-entry.STARTUP { border-left-color: var(--color-success); }
         .log-entry.SHUTDOWN { border-left-color: #6b7280; }
         .log-entry.CONNECTION { border-left-color: #06b6d4; }
+        .log-entry.EXPORT { border-left-color: #a78bfa; }
 
         .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
         .log-meta { display: flex; gap: 10px; align-items: center; font-size: 0.8rem; }
@@ -487,70 +207,27 @@
             text-transform: uppercase;
         }
 
-        .log-platform.discord { background: rgba(88, 101, 242, 0.2); color: #5865F2; }
-        .log-platform.twitch { background: rgba(145, 70, 255, 0.2); color: #9146FF; }
-        .log-severity.INFO { background: rgba(2, 132, 199, 0.2); color: var(--color-primary); }
-        .log-severity.WARNING { background: rgba(245, 158, 11, 0.2); color: var(--color-warning); }
-        .log-severity.ERROR { background: rgba(239, 68, 68, 0.2); color: var(--color-danger); }
-        .log-severity.CRITICAL { background: rgba(220, 38, 38, 0.3); color: #dc2626; }
+        .log-platform.discord { background: rgba(88,101,242,0.2); color: #5865F2; }
+        .log-platform.twitch { background: rgba(145,70,255,0.2); color: #9146FF; }
+        .log-severity.INFO { background: rgba(2,132,199,0.2); color: var(--color-primary); }
+        .log-severity.WARNING { background: rgba(245,158,11,0.2); color: var(--color-warning); }
+        .log-severity.ERROR { background: rgba(239,68,68,0.2); color: var(--color-danger); }
+        .log-severity.CRITICAL { background: rgba(220,38,38,0.3); color: #dc2626; }
 
         .log-username { color: var(--color-primary); font-weight: 600; }
         .log-command, .log-type { color: var(--color-warning); font-weight: 600; }
+        .log-type.EXPORT { color: #a78bfa; }
 
-        .log-message {
-            color: var(--color-text-primary);
-            margin-top: 5px;
-            padding-left: 10px;
-            border-left: 2px solid rgba(255, 255, 255, 0.1);
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-        }
-
-        .log-response, .log-stack {
-            color: var(--color-text-secondary);
-            margin-top: 5px;
-            font-size: 0.8rem;
-            font-style: italic;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            padding: 8px;
-            background: rgba(0, 0, 0, 0.2);
-            border-radius: 4px;
-            max-height: 150px;
-            overflow-y: auto;
-        }
-
-        .log-image-link {
-            margin-top: 8px;
-            padding: 8px;
-            background: rgba(2, 132, 199, 0.1);
-            border-radius: 4px;
-            border-left: 3px solid var(--color-primary);
-        }
-
-        .log-image-link a {
-            color: var(--color-primary);
-            text-decoration: none;
-            font-weight: 500;
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            word-break: break-all;
-        }
-
+        .log-message { color: var(--color-text-primary); margin-top: 5px; padding-left: 10px; border-left: 2px solid rgba(255,255,255,0.1); word-wrap: break-word; overflow-wrap: break-word; }
+        .log-response, .log-stack { color: var(--color-text-secondary); margin-top: 5px; font-size: 0.8rem; font-style: italic; word-wrap: break-word; overflow-wrap: break-word; padding: 8px; background: rgba(0,0,0,0.2); border-radius: 4px; max-height: 150px; overflow-y: auto; }
+        .log-image-link { margin-top: 8px; padding: 8px; background: rgba(2,132,199,0.1); border-radius: 4px; border-left: 3px solid var(--color-primary); }
+        .log-image-link a { color: var(--color-primary); text-decoration: none; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; word-break: break-all; }
         .log-image-link a:hover { color: #06b6d4; text-decoration: underline; }
 
         .logs-empty { text-align: center; padding: 40px; color: var(--color-text-secondary); }
         .logs-stats { display: flex; gap: 20px; font-size: 0.85rem; color: var(--color-text-secondary); }
 
-        footer {
-            text-align: center;
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--color-text-secondary);
-            font-size: 0.9rem;
-        }
+        footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); font-size: 0.9rem; }
 
         @media (max-width: 768px) {
             h1 { font-size: 1.8rem; }
@@ -574,17 +251,12 @@
             <!-- AI Persona Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">
-                        <span class="card-icon">&#x1F3AD;</span>
-                        AI Persona
-                    </div>
+                    <div class="card-title"><span class="card-icon">&#x1F3AD;</span> AI Persona</div>
                     <span id="persona-status" class="status-badge active">ACTIVE</span>
                 </div>
-
                 <div class="status-info">
-                    <p style="color: var(--color-text-secondary); margin-bottom: 15px;">Control ThePatrick's personality and response style</p>
+                    <p style="color:var(--color-text-secondary);margin-bottom:15px;">Control ThePatrick's personality and response style</p>
                 </div>
-
                 <div class="control-section">
                     <label class="control-label">Select Persona</label>
                     <select id="persona-select" class="persona-select">
@@ -594,11 +266,7 @@
                         <option value="conspiracy">&#x1F441;&#xFE0F; Paranoid Conspiracy</option>
                         <option value="sleepy">&#x1F634; Sleepy/High Patrick</option>
                     </select>
-
-                    <div id="persona-description" class="persona-description">
-                        Classic toxic gamer - ego checks, 'git gud' energy, heavy sarcasm
-                    </div>
-
+                    <div id="persona-description" class="persona-description">Classic toxic gamer - ego checks, 'git gud' energy, heavy sarcasm</div>
                     <button class="button button-primary" id="apply-persona-btn">&#x2705; Apply Persona</button>
                     <button class="button button-secondary" id="preview-persona-btn">&#x1F441;&#xFE0F; Preview</button>
                 </div>
@@ -607,42 +275,21 @@
             <!-- Cultist Monitoring Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">
-                        <span class="card-icon">&#x1F319;</span>
-                        Cultist Monitor
-                    </div>
+                    <div class="card-title"><span class="card-icon">&#x1F319;</span> Cultist Monitor</div>
                     <span id="cultist-status" class="status-badge inactive">OFFLINE</span>
                 </div>
-
                 <div class="status-info">
-                    <div class="status-item">
-                        <span class="status-label">Monitoring:</span>
-                        <span class="status-value" id="cultist-monitoring">Disabled</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Server 1:</span>
-                        <span class="status-value" id="cultist-s1-status">Unknown</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Server 2:</span>
-                        <span class="status-value" id="cultist-s2-status">Unknown</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Tarkov Time:</span>
-                        <span class="status-value" id="tarkov-time">--:--</span>
-                    </div>
+                    <div class="status-item"><span class="status-label">Monitoring:</span><span class="status-value" id="cultist-monitoring">Disabled</span></div>
+                    <div class="status-item"><span class="status-label">Server 1:</span><span class="status-value" id="cultist-s1-status">Unknown</span></div>
+                    <div class="status-item"><span class="status-label">Server 2:</span><span class="status-value" id="cultist-s2-status">Unknown</span></div>
+                    <div class="status-item"><span class="status-label">Tarkov Time:</span><span class="status-value" id="tarkov-time">--:--</span></div>
                 </div>
-
                 <div class="control-section">
                     <label class="control-label">
-                        <span style="display: block; margin-bottom: 10px;">Toggle Monitoring</span>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="cultist-toggle">
-                            <span class="slider"></span>
-                        </label>
+                        <span style="display:block;margin-bottom:10px;">Toggle Monitoring</span>
+                        <label class="toggle-switch"><input type="checkbox" id="cultist-toggle"><span class="slider"></span></label>
                     </label>
                 </div>
-
                 <div>
                     <button class="button button-primary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
                     <button class="button button-secondary" id="reset-cultist-btn">&#x2699;&#xFE0F; Reset</button>
@@ -652,28 +299,14 @@
             <!-- Bot Status Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">
-                        <span class="card-icon">&#x26A1;</span>
-                        Bot Status
-                    </div>
+                    <div class="card-title"><span class="card-icon">&#x26A1;</span> Bot Status</div>
                     <span id="bot-status" class="status-badge inactive">OFFLINE</span>
                 </div>
-
                 <div class="status-info">
-                    <div class="status-item">
-                        <span class="status-label">Connection:</span>
-                        <span class="status-value" id="bot-connection">Unknown</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Uptime:</span>
-                        <span class="status-value" id="bot-uptime">--</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Last Check:</span>
-                        <span class="status-value" id="last-check">Never</span>
-                    </div>
+                    <div class="status-item"><span class="status-label">Connection:</span><span class="status-value" id="bot-connection">Unknown</span></div>
+                    <div class="status-item"><span class="status-label">Uptime:</span><span class="status-value" id="bot-uptime">--</span></div>
+                    <div class="status-item"><span class="status-label">Last Check:</span><span class="status-value" id="last-check">Never</span></div>
                 </div>
-
                 <div class="control-section">
                     <button class="button button-primary" id="check-bot-btn">&#x1F50D; Check Status</button>
                 </div>
@@ -682,16 +315,11 @@
             <!-- Quick Actions Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">
-                        <span class="card-icon">&#x2699;&#xFE0F;</span>
-                        Quick Actions
-                    </div>
+                    <div class="card-title"><span class="card-icon">&#x2699;&#xFE0F;</span> Quick Actions</div>
                 </div>
-
                 <div class="status-info">
-                    <p style="color: var(--color-text-secondary); margin-bottom: 15px;">Common bot control operations</p>
+                    <p style="color:var(--color-text-secondary);margin-bottom:15px;">Common bot control operations</p>
                 </div>
-
                 <div class="control-section">
                     <button class="button button-primary" id="reload-commands-btn">&#x1F504; Reload Commands</button>
                     <button class="button button-primary" id="clear-memory-btn">&#x1F9E0; Clear Memory</button>
@@ -703,36 +331,17 @@
             <!-- Memorial Message Exporter Card -->
             <div class="card">
                 <div class="card-header">
-                    <div class="card-title">
-                        <span class="card-icon">&#x1F54A;&#xFE0F;</span>
-                        Message Exporter
-                    </div>
+                    <div class="card-title"><span class="card-icon">&#x1F54A;&#xFE0F;</span> Message Exporter</div>
                     <span id="export-status-badge" class="status-badge inactive">IDLE</span>
                 </div>
-
                 <div class="status-info">
-                    <p style="color: var(--color-text-secondary); margin-bottom: 10px;">
-                        Export all messages from a Discord user across all accessible channels. Use this to gather data for a memorial or tribute page.
-                    </p>
-                    <div class="status-item">
-                        <span class="status-label">Status:</span>
-                        <span class="status-value" id="export-status-text">Ready</span>
-                    </div>
-                    <div class="status-item">
-                        <span class="status-label">Messages found:</span>
-                        <span class="status-value" id="export-count">&#x2014;</span>
-                    </div>
+                    <p style="color:var(--color-text-secondary);margin-bottom:10px;">Export all messages from a Discord user across all accessible channels. Use this to gather data for a memorial or tribute page.</p>
+                    <div class="status-item"><span class="status-label">Status:</span><span class="status-value" id="export-status-text">Ready</span></div>
+                    <div class="status-item"><span class="status-label">Messages found:</span><span class="status-value" id="export-count">&#x2014;</span></div>
                 </div>
-
                 <div class="control-section">
                     <label class="control-label">Discord User ID</label>
-                    <input
-                        type="text"
-                        id="export-user-id"
-                        class="persona-select"
-                        placeholder="e.g. 1080194115133779988"
-                        style="margin-bottom:12px;"
-                    >
+                    <input type="text" id="export-user-id" class="persona-select" placeholder="e.g. 1080194115133779988" style="margin-bottom:12px;">
                     <p id="export-progress-msg" style="font-size:0.82rem;color:var(--color-text-secondary);margin-bottom:10px;min-height:18px;"></p>
                     <button class="button button-primary" id="export-start-btn">&#x1F50D; Start Export</button>
                     <button class="button button-secondary" id="export-dl-json-btn" style="display:none;">&#x2B07;&#xFE0F; JSON</button>
@@ -742,7 +351,7 @@
         </div>
 
         <footer>
-            <p>Dashboard v1.4 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>Dashboard v1.5 | Last updated: <span id="footer-time">--:--:--</span></p>
             <p>&#x1F4BB; Built with &#x2764;&#xFE0F; and Mountain Dew</p>
         </footer>
     </div>
@@ -782,7 +391,7 @@
     <div id="system-logs-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <div class="modal-title"><span>&#x1F527;</span> System Logs (Crashes, Startup, Shutdown)</div>
+                <div class="modal-title"><span>&#x1F527;</span> System Logs</div>
                 <button class="modal-close" id="close-system-logs-modal">&times;</button>
             </div>
             <div class="modal-body">
@@ -793,6 +402,7 @@
                     <button class="logs-filter" data-filter="log_type" data-value="SHUTDOWN">Shutdown</button>
                     <button class="logs-filter" data-filter="log_type" data-value="ERROR">Errors</button>
                     <button class="logs-filter" data-filter="log_type" data-value="CONNECTION">Connection</button>
+                    <button class="logs-filter" data-filter="log_type" data-value="EXPORT" style="border-color:#a78bfa;color:#a78bfa;">&#x1F54A; Export</button>
                     <input type="text" class="logs-search" id="system-logs-search" placeholder="Search system logs...">
                     <button class="button button-primary" id="refresh-system-logs-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="clear-system-logs-btn">&#x1F5D1;&#xFE0F; Clear All</button>
@@ -926,15 +536,12 @@
                 const persona = document.getElementById('persona-select').value;
                 try {
                     const response = await fetch(`${API_BASE}/persona/set`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ persona })
                     });
                     const data = await response.json();
-                    if (data.success) {
-                        this.currentPersona = persona;
-                        this.showAlert(`Persona set to: ${persona}`, 'success');
-                    } else { this.showAlert('Failed to set persona: ' + data.error, 'error'); }
+                    if (data.success) { this.currentPersona = persona; this.showAlert(`Persona set to: ${persona}`, 'success'); }
+                    else { this.showAlert('Failed to set persona: ' + data.error, 'error'); }
                 } catch (error) { this.showAlert('Error: ' + error.message, 'error'); }
             }
 
@@ -948,8 +555,7 @@
                 const enabled = event.target.checked;
                 try {
                     const response = await fetch(`${API_BASE}/cultist/toggle`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ enabled })
                     });
                     const data = await response.json();
@@ -971,15 +577,8 @@
                     document.getElementById('tarkov-time').textContent = data.server1Time || '--:--';
                     const badge = document.getElementById('cultist-status');
                     const toggle = document.getElementById('cultist-toggle');
-                    if (data.enabled) {
-                        badge.textContent = 'ACTIVE';
-                        badge.className = 'status-badge active';
-                        toggle.checked = true;
-                    } else {
-                        badge.textContent = 'OFFLINE';
-                        badge.className = 'status-badge inactive';
-                        toggle.checked = false;
-                    }
+                    if (data.enabled) { badge.textContent = 'ACTIVE'; badge.className = 'status-badge active'; toggle.checked = true; }
+                    else { badge.textContent = 'OFFLINE'; badge.className = 'status-badge inactive'; toggle.checked = false; }
                 } catch (error) { console.error('Refresh cultist error:', error); }
             }
 
@@ -1007,13 +606,8 @@
                 }
             }
 
-            async reloadCommands() {
-                this.showAlert('Commands reloaded (restart bot to apply changes)', 'success');
-            }
-
-            async clearMemory() {
-                this.showAlert('Memory cleared for current session', 'success');
-            }
+            async reloadCommands() { this.showAlert('Commands reloaded (restart bot to apply changes)', 'success'); }
+            async clearMemory() { this.showAlert('Memory cleared for current session', 'success'); }
 
             openLogsModal() {
                 this.logsModal.classList.add('show');
@@ -1056,8 +650,7 @@
                     ? this.allLogs.filter(log =>
                         (log.username || '').toLowerCase().includes(this.logsSearchTerm) ||
                         (log.message || '').toLowerCase().includes(this.logsSearchTerm) ||
-                        (log.command || '').toLowerCase().includes(this.logsSearchTerm)
-                    )
+                        (log.command || '').toLowerCase().includes(this.logsSearchTerm))
                     : this.allLogs;
                 document.getElementById('logs-showing').textContent = filtered.length;
                 this.renderLogs(filtered);
@@ -1065,23 +658,18 @@
 
             renderLogs(logs) {
                 const container = document.getElementById('logs-container');
-                if (!logs || logs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No logs found.</div>';
-                    return;
-                }
+                if (!logs || logs.length === 0) { container.innerHTML = '<div class="logs-empty">No logs found.</div>'; return; }
                 container.innerHTML = logs.slice().reverse().map(log => {
                     const time = new Date(log.timestamp).toLocaleTimeString();
                     const platform = log.platform || 'discord';
                     const errorClass = log.error ? ' error' : '';
                     return `<div class="log-entry ${platform}${errorClass}">
-                        <div class="log-header">
-                            <div class="log-meta">
-                                <span class="log-time">${time}</span>
-                                <span class="log-platform ${platform}">${platform.toUpperCase()}</span>
-                                ${log.username ? `<span class="log-username">@${log.username}</span>` : ''}
-                                ${log.command ? `<span class="log-command">/${log.command}</span>` : ''}
-                            </div>
-                        </div>
+                        <div class="log-header"><div class="log-meta">
+                            <span class="log-time">${time}</span>
+                            <span class="log-platform ${platform}">${platform.toUpperCase()}</span>
+                            ${log.username ? `<span class="log-username">@${log.username}</span>` : ''}
+                            ${log.command ? `<span class="log-command">/${log.command}</span>` : ''}
+                        </div></div>
                         ${log.message ? `<div class="log-message">${this.escapeHtml(log.message)}</div>` : ''}
                         ${log.response ? `<div class="log-response">${this.escapeHtml(log.response)}</div>` : ''}
                         ${log.image_url ? `<div class="log-image-link"><a href="${log.image_url}" target="_blank">&#x1F5BC;&#xFE0F; View Image</a></div>` : ''}
@@ -1108,8 +696,8 @@
                 const filtered = this.systemLogsSearchTerm
                     ? this.allSystemLogs.filter(log =>
                         (log.message || '').toLowerCase().includes(this.systemLogsSearchTerm) ||
-                        (log.component || '').toLowerCase().includes(this.systemLogsSearchTerm)
-                    )
+                        (log.component || '').toLowerCase().includes(this.systemLogsSearchTerm) ||
+                        (log.log_type || '').toLowerCase().includes(this.systemLogsSearchTerm))
                     : this.allSystemLogs;
                 document.getElementById('system-logs-showing').textContent = filtered.length;
                 this.renderSystemLogs(filtered);
@@ -1117,23 +705,24 @@
 
             renderSystemLogs(logs) {
                 const container = document.getElementById('system-logs-container');
-                if (!logs || logs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No system logs found.</div>';
-                    return;
-                }
+                if (!logs || logs.length === 0) { container.innerHTML = '<div class="logs-empty">No system logs found.</div>'; return; }
                 container.innerHTML = logs.map(log => {
                     const time = new Date(log.timestamp).toLocaleString();
                     const sev = log.severity || 'INFO';
-                    return `<div class="log-entry ${log.log_type || ''} ${sev}">
-                        <div class="log-header">
-                            <div class="log-meta">
-                                <span class="log-time">${time}</span>
-                                <span class="log-severity ${sev}">${sev}</span>
-                                <span class="log-type">${log.log_type || 'SYSTEM'}</span>
-                                ${log.component ? `<span style="color:var(--color-text-secondary);font-size:0.8rem;">[${log.component}]</span>` : ''}
-                            </div>
-                        </div>
+                    const logType = log.log_type || 'SYSTEM';
+                    const isExport = logType === 'EXPORT';
+                    const metaStr = log.metadata ? Object.entries(log.metadata)
+                        .filter(([k]) => k !== 'jobId')
+                        .map(([k, v]) => `${k}: ${v}`).join(' | ') : '';
+                    return `<div class="log-entry ${logType} ${sev}">
+                        <div class="log-header"><div class="log-meta">
+                            <span class="log-time">${time}</span>
+                            <span class="log-severity ${sev}">${sev}</span>
+                            <span class="log-type ${isExport ? 'EXPORT' : ''}">${logType}</span>
+                            ${log.component ? `<span style="color:var(--color-text-secondary);font-size:0.8rem;">[${log.component}]</span>` : ''}
+                        </div></div>
                         <div class="log-message">${this.escapeHtml(log.message || '')}</div>
+                        ${metaStr ? `<div style="font-size:0.78rem;color:var(--color-text-secondary);margin-top:4px;padding-left:10px;">${this.escapeHtml(metaStr)}</div>` : ''}
                         ${log.stack_trace ? `<div class="log-stack">${this.escapeHtml(log.stack_trace)}</div>` : ''}
                     </div>`;
                 }).join('');
@@ -1197,8 +786,7 @@
 
                 try {
                     const res = await fetch(`${API_BASE}/export/start`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ userId })
                     });
                     const data = await res.json();
@@ -1210,7 +798,7 @@
                     btn.disabled = false;
                     document.getElementById('export-status-badge').textContent = 'ERROR';
                     document.getElementById('export-status-badge').className = 'status-badge inactive';
-                    document.getElementById('export-status-text').textContent = 'Error';
+                    document.getElementById('export-status-text').textContent = 'Error — check System Logs > Export tab';
                 }
             }
 
@@ -1238,8 +826,9 @@
                             document.getElementById('export-status-badge').textContent = 'ERROR';
                             document.getElementById('export-status-badge').className = 'status-badge inactive';
                             document.getElementById('export-status-text').textContent = 'Error';
+                            document.getElementById('export-progress-msg').textContent = data.error || 'Unknown error';
                             document.getElementById('export-start-btn').disabled = false;
-                            this.showAlert('Export error: ' + data.error, 'error');
+                            this.showAlert('Export error: ' + data.error + ' — open System Logs > Export tab for details', 'error');
                         }
                     } catch (e) { /* keep polling */ }
                 }, 2000);

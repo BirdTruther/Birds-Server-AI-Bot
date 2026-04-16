@@ -1,7 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, getSetting, setSetting } = require('./database.js');
+const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 
 // Load cultist enabled state from DB on startup (persists across reboots)
 let cultistState = {
@@ -184,12 +184,15 @@ app.post('/api/bot/system-logs/clear', (req, res) => {
 });
 
 // ===== MEMORIAL MESSAGE EXPORT =====
-// Register the Discord client from index.js so we can walk guild channels.
-// In your index.js, after client.login(), add:
-//   if (global.setDiscordClientForExport) global.setDiscordClientForExport(client);
 let discordClientRef = null;
 global.setDiscordClientForExport = (client) => {
   discordClientRef = client;
+  logSystem({
+    log_type: 'EXPORT',
+    severity: 'INFO',
+    component: 'export',
+    message: 'Discord client registered for memorial message export — bot is online and ready to export'
+  });
   console.log('[EXPORT] Discord client registered for memorial message export');
 };
 
@@ -197,34 +200,85 @@ const exportJobs = {};
 
 async function runMessageExport(userId, jobId) {
   const job = exportJobs[jobId];
+
   if (!discordClientRef) {
+    const errMsg = 'Discord client not available — make sure the bot is online and index.js calls setDiscordClientForExport(client)';
     job.status = 'error';
-    job.error = 'Discord client not available — make sure the bot is online and index.js calls setDiscordClientForExport(client)';
+    job.error = errMsg;
+    logSystem({
+      log_type: 'EXPORT',
+      severity: 'ERROR',
+      component: 'export',
+      message: `Export job ${jobId} failed to start: ${errMsg}`,
+      metadata: { jobId, userId }
+    });
+    console.error('[EXPORT]', errMsg);
     return;
   }
+
   job.status = 'running';
   const messages = [];
+
+  logSystem({
+    log_type: 'EXPORT',
+    severity: 'INFO',
+    component: 'export',
+    message: `Export job ${jobId} started for user ${userId}`,
+    metadata: { jobId, userId }
+  });
 
   try {
     for (const [, guild] of discordClientRef.guilds.cache) {
       job.progress = `Scanning: ${guild.name}`;
+      logSystem({
+        log_type: 'EXPORT',
+        severity: 'INFO',
+        component: 'export',
+        message: `Job ${jobId} — scanning guild: ${guild.name} (${guild.id})`,
+        metadata: { jobId, guildId: guild.id, guildName: guild.name }
+      });
+
       let channels;
-      try { channels = await guild.channels.fetch(); } catch (e) { continue; }
+      try {
+        channels = await guild.channels.fetch();
+      } catch (e) {
+        logSystem({
+          log_type: 'EXPORT',
+          severity: 'WARNING',
+          component: 'export',
+          message: `Job ${jobId} — could not fetch channels for guild ${guild.name}: ${e.message}`,
+          stack_trace: e.stack,
+          metadata: { jobId, guildId: guild.id }
+        });
+        continue;
+      }
 
       for (const [, channel] of channels) {
-        if (!channel || channel.type !== 0) continue; // text channels only
+        if (!channel || channel.type !== 0) continue;
         let perms;
         try { perms = channel.permissionsFor(guild.members.me); } catch (e) { continue; }
         if (!perms || !perms.has('ViewChannel') || !perms.has('ReadMessageHistory')) continue;
 
         let lastId = null;
         let fetched;
+        let channelErrors = 0;
         do {
           try {
             const opts = { limit: 100 };
             if (lastId) opts.before = lastId;
             fetched = await channel.messages.fetch(opts);
-          } catch (e) { break; }
+          } catch (e) {
+            channelErrors++;
+            logSystem({
+              log_type: 'EXPORT',
+              severity: 'WARNING',
+              component: 'export',
+              message: `Job ${jobId} — error reading #${channel.name} in ${guild.name}: ${e.message}`,
+              stack_trace: e.stack,
+              metadata: { jobId, channelId: channel.id, channelName: channel.name, guildName: guild.name }
+            });
+            break;
+          }
 
           for (const [, msg] of fetched) {
             if (msg.author.id === userId) {
@@ -250,11 +304,27 @@ async function runMessageExport(userId, jobId) {
     job.messages = messages;
     job.count = messages.length;
     job.completedAt = new Date().toISOString();
+
+    logSystem({
+      log_type: 'EXPORT',
+      severity: 'INFO',
+      component: 'export',
+      message: `Export job ${jobId} completed successfully — ${messages.length} messages found for user ${userId}`,
+      metadata: { jobId, userId, messageCount: messages.length }
+    });
     console.log(`[EXPORT] Job ${jobId} complete: ${messages.length} messages for user ${userId}`);
 
   } catch (err) {
     job.status = 'error';
     job.error = err.message;
+    logSystem({
+      log_type: 'EXPORT',
+      severity: 'ERROR',
+      component: 'export',
+      message: `Export job ${jobId} threw an unexpected error: ${err.message}`,
+      stack_trace: err.stack,
+      metadata: { jobId, userId }
+    });
     console.error(`[EXPORT] Job ${jobId} failed:`, err.message);
   }
 }
@@ -266,6 +336,13 @@ app.post('/api/export/start', (req, res) => {
   }
   const jobId = Date.now().toString();
   exportJobs[jobId] = { status: 'queued', userId, progress: 'Starting...', startedAt: new Date().toISOString() };
+  logSystem({
+    log_type: 'EXPORT',
+    severity: 'INFO',
+    component: 'export',
+    message: `Export job ${jobId} queued for user ID ${userId}`,
+    metadata: { jobId, userId }
+  });
   runMessageExport(userId, jobId);
   res.json({ success: true, jobId });
 });
@@ -280,6 +357,13 @@ app.get('/api/export/download/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job || job.status !== 'done') return res.status(404).json({ error: 'Export not ready or job not found' });
   const format = req.query.format || 'json';
+  logSystem({
+    log_type: 'EXPORT',
+    severity: 'INFO',
+    component: 'export',
+    message: `Export job ${req.params.jobId} downloaded as ${format.toUpperCase()} (${job.count} messages)`,
+    metadata: { jobId: req.params.jobId, format, messageCount: job.count }
+  });
   if (format === 'csv') {
     const header = 'id,timestamp,guild,channel,content,attachments,jump_url\n';
     const rows = job.messages.map(m =>
@@ -299,6 +383,12 @@ app.get('/api/export/download/:jobId', (req, res) => {
 });
 
 app.listen(PORT, () => {
+  logSystem({
+    log_type: 'STARTUP',
+    severity: 'INFO',
+    component: 'dashboard',
+    message: `Dashboard server started on port ${PORT}`
+  });
   console.log(`Dashboard on http://localhost:${PORT}/`);
   console.log(`Current persona: ${botPersona.current}`);
 });
