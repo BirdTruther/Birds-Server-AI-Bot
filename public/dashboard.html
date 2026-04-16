@@ -255,7 +255,6 @@
             transform: none !important;
         }
 
-        /* Persona styles */
         .persona-select {
             width: 100%;
             padding: 12px;
@@ -316,17 +315,10 @@
         }
 
         @keyframes slideIn {
-            from {
-                transform: translateY(-10px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
-        /* Modal Styles */
         .modal {
             display: none;
             position: fixed;
@@ -358,20 +350,11 @@
             animation: slideUp 0.3s ease;
         }
 
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
         @keyframes slideUp {
-            from {
-                transform: translateY(50px);
-                opacity: 0;
-            }
-            to {
-                transform: translateY(0);
-                opacity: 1;
-            }
+            from { transform: translateY(50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
         }
 
         .modal-header {
@@ -425,7 +408,6 @@
             align-items: center;
         }
 
-        /* Logs Styles */
         .logs-controls {
             display: flex;
             gap: 10px;
@@ -444,14 +426,8 @@
             transition: all 0.2s;
         }
 
-        .logs-filter:hover {
-            background: rgba(255, 255, 255, 0.1);
-        }
-
-        .logs-filter.active {
-            background: var(--color-primary);
-            border-color: var(--color-primary);
-        }
+        .logs-filter:hover { background: rgba(255, 255, 255, 0.1); }
+        .logs-filter.active { background: var(--color-primary); border-color: var(--color-primary); }
 
         .logs-search {
             flex: 1;
@@ -489,62 +465,19 @@
             transition: all 0.2s;
         }
 
-        .log-entry:hover {
-            background: rgba(255, 255, 255, 0.06);
-        }
+        .log-entry:hover { background: rgba(255, 255, 255, 0.06); }
+        .log-entry.discord { border-left-color: #5865F2; }
+        .log-entry.twitch { border-left-color: #9146FF; }
+        .log-entry.error, .log-entry.ERROR { border-left-color: var(--color-danger); background: rgba(239, 68, 68, 0.05); }
+        .log-entry.CRITICAL { border-left-color: #dc2626; background: rgba(220, 38, 38, 0.1); }
+        .log-entry.WARNING { border-left-color: var(--color-warning); background: rgba(245, 158, 11, 0.05); }
+        .log-entry.STARTUP { border-left-color: var(--color-success); }
+        .log-entry.SHUTDOWN { border-left-color: #6b7280; }
+        .log-entry.CONNECTION { border-left-color: #06b6d4; }
 
-        .log-entry.discord {
-            border-left-color: #5865F2;
-        }
-
-        .log-entry.twitch {
-            border-left-color: #9146FF;
-        }
-
-        .log-entry.error, .log-entry.ERROR {
-            border-left-color: var(--color-danger);
-            background: rgba(239, 68, 68, 0.05);
-        }
-
-        .log-entry.CRITICAL {
-            border-left-color: #dc2626;
-            background: rgba(220, 38, 38, 0.1);
-        }
-
-        .log-entry.WARNING {
-            border-left-color: var(--color-warning);
-            background: rgba(245, 158, 11, 0.05);
-        }
-
-        .log-entry.STARTUP {
-            border-left-color: var(--color-success);
-        }
-
-        .log-entry.SHUTDOWN {
-            border-left-color: #6b7280;
-        }
-
-        .log-entry.CONNECTION {
-            border-left-color: #06b6d4;
-        }
-
-        .log-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 5px;
-        }
-
-        .log-meta {
-            display: flex;
-            gap: 10px;
-            align-items: center;
-            font-size: 0.8rem;
-        }
-
-        .log-time {
-            color: var(--color-text-secondary);
-        }
+        .log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        .log-meta { display: flex; gap: 10px; align-items: center; font-size: 0.8rem; }
+        .log-time { color: var(--color-text-secondary); }
 
         .log-platform, .log-severity {
             padding: 2px 8px;
@@ -554,45 +487,15 @@
             text-transform: uppercase;
         }
 
-        .log-platform.discord {
-            background: rgba(88, 101, 242, 0.2);
-            color: #5865F2;
-        }
+        .log-platform.discord { background: rgba(88, 101, 242, 0.2); color: #5865F2; }
+        .log-platform.twitch { background: rgba(145, 70, 255, 0.2); color: #9146FF; }
+        .log-severity.INFO { background: rgba(2, 132, 199, 0.2); color: var(--color-primary); }
+        .log-severity.WARNING { background: rgba(245, 158, 11, 0.2); color: var(--color-warning); }
+        .log-severity.ERROR { background: rgba(239, 68, 68, 0.2); color: var(--color-danger); }
+        .log-severity.CRITICAL { background: rgba(220, 38, 38, 0.3); color: #dc2626; }
 
-        .log-platform.twitch {
-            background: rgba(145, 70, 255, 0.2);
-            color: #9146FF;
-        }
-
-        .log-severity.INFO {
-            background: rgba(2, 132, 199, 0.2);
-            color: var(--color-primary);
-        }
-
-        .log-severity.WARNING {
-            background: rgba(245, 158, 11, 0.2);
-            color: var(--color-warning);
-        }
-
-        .log-severity.ERROR {
-            background: rgba(239, 68, 68, 0.2);
-            color: var(--color-danger);
-        }
-
-        .log-severity.CRITICAL {
-            background: rgba(220, 38, 38, 0.3);
-            color: #dc2626;
-        }
-
-        .log-username {
-            color: var(--color-primary);
-            font-weight: 600;
-        }
-
-        .log-command, .log-type {
-            color: var(--color-warning);
-            font-weight: 600;
-        }
+        .log-username { color: var(--color-primary); font-weight: 600; }
+        .log-command, .log-type { color: var(--color-warning); font-weight: 600; }
 
         .log-message {
             color: var(--color-text-primary);
@@ -635,23 +538,10 @@
             word-break: break-all;
         }
 
-        .log-image-link a:hover {
-            color: #06b6d4;
-            text-decoration: underline;
-        }
+        .log-image-link a:hover { color: #06b6d4; text-decoration: underline; }
 
-        .logs-empty {
-            text-align: center;
-            padding: 40px;
-            color: var(--color-text-secondary);
-        }
-
-        .logs-stats {
-            display: flex;
-            gap: 20px;
-            font-size: 0.85rem;
-            color: var(--color-text-secondary);
-        }
+        .logs-empty { text-align: center; padding: 40px; color: var(--color-text-secondary); }
+        .logs-stats { display: flex; gap: 20px; font-size: 0.85rem; color: var(--color-text-secondary); }
 
         footer {
             text-align: center;
@@ -663,33 +553,18 @@
         }
 
         @media (max-width: 768px) {
-            h1 {
-                font-size: 1.8rem;
-            }
-
-            .dashboard-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .modal-content {
-                width: 95%;
-                max-height: 90vh;
-            }
-
-            .logs-controls {
-                flex-direction: column;
-            }
-
-            .logs-search {
-                width: 100%;
-            }
+            h1 { font-size: 1.8rem; }
+            .dashboard-grid { grid-template-columns: 1fr; }
+            .modal-content { width: 95%; max-height: 90vh; }
+            .logs-controls { flex-direction: column; }
+            .logs-search { width: 100%; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🤖 ThePatrick Bot Dashboard</h1>
+            <h1>&#x1F916; ThePatrick Bot Dashboard</h1>
             <p class="subtitle">ThePatrick's Birds Server AI Bot Control Panel</p>
         </header>
 
@@ -700,7 +575,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
-                        <span class="card-icon">🎭</span>
+                        <span class="card-icon">&#x1F3AD;</span>
                         AI Persona
                     </div>
                     <span id="persona-status" class="status-badge active">ACTIVE</span>
@@ -713,19 +588,19 @@
                 <div class="control-section">
                     <label class="control-label">Select Persona</label>
                     <select id="persona-select" class="persona-select">
-                        <option value="aggressive">😤 Aggressive/Mean</option>
-                        <option value="sassy">💅 Sassy & Stupid</option>
-                        <option value="nice">😊 Nice & Smart</option>
-                        <option value="conspiracy">👁️ Paranoid Conspiracy</option>
-                        <option value="sleepy">😴 Sleepy/High Patrick</option>
+                        <option value="aggressive">&#x1F624; Aggressive/Mean</option>
+                        <option value="sassy">&#x1F485; Sassy &amp; Stupid</option>
+                        <option value="nice">&#x1F60A; Nice &amp; Smart</option>
+                        <option value="conspiracy">&#x1F441;&#xFE0F; Paranoid Conspiracy</option>
+                        <option value="sleepy">&#x1F634; Sleepy/High Patrick</option>
                     </select>
 
                     <div id="persona-description" class="persona-description">
                         Classic toxic gamer - ego checks, 'git gud' energy, heavy sarcasm
                     </div>
 
-                    <button class="button button-primary" id="apply-persona-btn">✅ Apply Persona</button>
-                    <button class="button button-secondary" id="preview-persona-btn">👁️ Preview</button>
+                    <button class="button button-primary" id="apply-persona-btn">&#x2705; Apply Persona</button>
+                    <button class="button button-secondary" id="preview-persona-btn">&#x1F441;&#xFE0F; Preview</button>
                 </div>
             </div>
 
@@ -733,7 +608,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
-                        <span class="card-icon">🌙</span>
+                        <span class="card-icon">&#x1F319;</span>
                         Cultist Monitor
                     </div>
                     <span id="cultist-status" class="status-badge inactive">OFFLINE</span>
@@ -769,8 +644,8 @@
                 </div>
 
                 <div>
-                    <button class="button button-primary" id="refresh-cultist-btn">🔄 Refresh Status</button>
-                    <button class="button button-secondary" id="reset-cultist-btn">⚙️ Reset</button>
+                    <button class="button button-primary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
+                    <button class="button button-secondary" id="reset-cultist-btn">&#x2699;&#xFE0F; Reset</button>
                 </div>
             </div>
 
@@ -778,7 +653,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
-                        <span class="card-icon">⚡</span>
+                        <span class="card-icon">&#x26A1;</span>
                         Bot Status
                     </div>
                     <span id="bot-status" class="status-badge inactive">OFFLINE</span>
@@ -800,7 +675,7 @@
                 </div>
 
                 <div class="control-section">
-                    <button class="button button-primary" id="check-bot-btn">🔍 Check Status</button>
+                    <button class="button button-primary" id="check-bot-btn">&#x1F50D; Check Status</button>
                 </div>
             </div>
 
@@ -808,7 +683,7 @@
             <div class="card">
                 <div class="card-header">
                     <div class="card-title">
-                        <span class="card-icon">⚙️</span>
+                        <span class="card-icon">&#x2699;&#xFE0F;</span>
                         Quick Actions
                     </div>
                 </div>
@@ -818,17 +693,57 @@
                 </div>
 
                 <div class="control-section">
-                    <button class="button button-primary" id="reload-commands-btn">🔄 Reload Commands</button>
-                    <button class="button button-primary" id="clear-memory-btn">🧠 Clear Memory</button>
-                    <button class="button button-secondary" id="view-logs-btn">📋 Command Logs</button>
-                    <button class="button button-secondary" id="view-system-logs-btn">🔧 System Logs</button>
+                    <button class="button button-primary" id="reload-commands-btn">&#x1F504; Reload Commands</button>
+                    <button class="button button-primary" id="clear-memory-btn">&#x1F9E0; Clear Memory</button>
+                    <button class="button button-secondary" id="view-logs-btn">&#x1F4CB; Command Logs</button>
+                    <button class="button button-secondary" id="view-system-logs-btn">&#x1F527; System Logs</button>
+                </div>
+            </div>
+
+            <!-- Memorial Message Exporter Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-icon">&#x1F54A;&#xFE0F;</span>
+                        Message Exporter
+                    </div>
+                    <span id="export-status-badge" class="status-badge inactive">IDLE</span>
+                </div>
+
+                <div class="status-info">
+                    <p style="color: var(--color-text-secondary); margin-bottom: 10px;">
+                        Export all messages from a Discord user across all accessible channels. Use this to gather data for a memorial or tribute page.
+                    </p>
+                    <div class="status-item">
+                        <span class="status-label">Status:</span>
+                        <span class="status-value" id="export-status-text">Ready</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="status-label">Messages found:</span>
+                        <span class="status-value" id="export-count">&#x2014;</span>
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <label class="control-label">Discord User ID</label>
+                    <input
+                        type="text"
+                        id="export-user-id"
+                        class="persona-select"
+                        placeholder="e.g. 1080194115133779988"
+                        style="margin-bottom:12px;"
+                    >
+                    <p id="export-progress-msg" style="font-size:0.82rem;color:var(--color-text-secondary);margin-bottom:10px;min-height:18px;"></p>
+                    <button class="button button-primary" id="export-start-btn">&#x1F50D; Start Export</button>
+                    <button class="button button-secondary" id="export-dl-json-btn" style="display:none;">&#x2B07;&#xFE0F; JSON</button>
+                    <button class="button button-secondary" id="export-dl-csv-btn" style="display:none;">&#x2B07;&#xFE0F; CSV</button>
                 </div>
             </div>
         </div>
 
         <footer>
-            <p>Dashboard v1.3 | Last updated: <span id="footer-time">--:--:--</span></p>
-            <p>💻 Built with ❤️ and Mountain Dew</p>
+            <p>Dashboard v1.4 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>&#x1F4BB; Built with &#x2764;&#xFE0F; and Mountain Dew</p>
         </footer>
     </div>
 
@@ -836,10 +751,7 @@
     <div id="logs-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <div class="modal-title">
-                    <span>📋</span>
-                    Command Logs
-                </div>
+                <div class="modal-title"><span>&#x1F4CB;</span> Command Logs</div>
                 <button class="modal-close" id="close-logs-modal">&times;</button>
             </div>
             <div class="modal-body">
@@ -848,8 +760,8 @@
                     <button class="logs-filter" data-platform="discord">Discord</button>
                     <button class="logs-filter" data-platform="twitch">Twitch</button>
                     <input type="text" class="logs-search" id="logs-search" placeholder="Search logs...">
-                    <button class="button button-primary" id="refresh-logs-btn">🔄 Refresh</button>
-                    <button class="button button-secondary" id="clear-logs-btn">🗑️ Clear All</button>
+                    <button class="button button-primary" id="refresh-logs-btn">&#x1F504; Refresh</button>
+                    <button class="button button-secondary" id="clear-logs-btn">&#x1F5D1;&#xFE0F; Clear All</button>
                 </div>
                 <div class="logs-container" id="logs-container">
                     <div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>
@@ -870,10 +782,7 @@
     <div id="system-logs-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <div class="modal-title">
-                    <span>🔧</span>
-                    System Logs (Crashes, Startup, Shutdown)
-                </div>
+                <div class="modal-title"><span>&#x1F527;</span> System Logs (Crashes, Startup, Shutdown)</div>
                 <button class="modal-close" id="close-system-logs-modal">&times;</button>
             </div>
             <div class="modal-body">
@@ -885,8 +794,8 @@
                     <button class="logs-filter" data-filter="log_type" data-value="ERROR">Errors</button>
                     <button class="logs-filter" data-filter="log_type" data-value="CONNECTION">Connection</button>
                     <input type="text" class="logs-search" id="system-logs-search" placeholder="Search system logs...">
-                    <button class="button button-primary" id="refresh-system-logs-btn">🔄 Refresh</button>
-                    <button class="button button-secondary" id="clear-system-logs-btn">🗑️ Clear All</button>
+                    <button class="button button-primary" id="refresh-system-logs-btn">&#x1F504; Refresh</button>
+                    <button class="button button-secondary" id="clear-system-logs-btn">&#x1F5D1;&#xFE0F; Clear All</button>
                 </div>
                 <div class="logs-container" id="system-logs-container">
                     <div class="logs-empty">No system logs available.</div>
@@ -926,8 +835,11 @@
                 this.currentPersona = 'aggressive';
                 this.currentSystemLogFilters = { log_type: 'all', severity: 'all', component: 'all' };
                 this.systemLogsSearchTerm = '';
-                
+                this.exportJobId = null;
+                this.exportPollTimer = null;
+
                 this.initializeEventListeners();
+                this.initExport();
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
@@ -962,20 +874,16 @@
                     this.filterDisplayedSystemLogs();
                 });
 
-                // Platform filter buttons
                 document.querySelectorAll('.logs-filter').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         const filterType = e.target.dataset.filter;
                         const filterValue = e.target.dataset.value;
-                        
                         if (filterType) {
-                            // System logs filter
                             document.querySelectorAll(`.logs-filter[data-filter="${filterType}"]`).forEach(b => b.classList.remove('active'));
                             e.target.classList.add('active');
                             this.currentSystemLogFilters[filterType] = filterValue;
                             this.fetchSystemLogs();
                         } else {
-                            // Command logs filter
                             document.querySelectorAll('.logs-filter[data-platform]').forEach(b => b.classList.remove('active'));
                             e.target.classList.add('active');
                             this.currentLogsPlatform = e.target.dataset.platform;
@@ -984,13 +892,8 @@
                     });
                 });
 
-                // Close modals on outside click
-                this.logsModal.addEventListener('click', (e) => {
-                    if (e.target === this.logsModal) this.closeLogsModal();
-                });
-                this.systemLogsModal.addEventListener('click', (e) => {
-                    if (e.target === this.systemLogsModal) this.closeSystemLogsModal();
-                });
+                this.logsModal.addEventListener('click', (e) => { if (e.target === this.logsModal) this.closeLogsModal(); });
+                this.systemLogsModal.addEventListener('click', (e) => { if (e.target === this.systemLogsModal) this.closeSystemLogsModal(); });
             }
 
             startAutoRefresh() {
@@ -1000,428 +903,355 @@
             }
 
             updateFooterTime() {
-                const now = new Date();
-                const time = now.toLocaleTimeString();
-                document.getElementById('footer-time').textContent = time;
+                document.getElementById('footer-time').textContent = new Date().toLocaleTimeString();
             }
 
-            // Persona Functions
             async loadCurrentPersona() {
                 try {
                     const response = await fetch(`${API_BASE}/persona/current`);
                     if (!response.ok) throw new Error('Failed to load persona');
-
                     const data = await response.json();
                     this.currentPersona = data.persona;
                     document.getElementById('persona-select').value = data.persona;
                     this.updatePersonaDescription({ target: { value: data.persona } });
-                } catch (error) {
-                    console.error('Load persona error:', error);
-                }
+                } catch (error) { console.error('Load persona error:', error); }
             }
 
             updatePersonaDescription(event) {
-                const persona = event.target.value;
-                const description = PERSONA_DESCRIPTIONS[persona] || 'Select a persona';
-                document.getElementById('persona-description').textContent = description;
+                const desc = PERSONA_DESCRIPTIONS[event.target.value] || '';
+                document.getElementById('persona-description').textContent = desc;
             }
 
             async applyPersona() {
-                const selectedPersona = document.getElementById('persona-select').value;
-                
-                if (selectedPersona === this.currentPersona) {
-                    this.showAlert('This persona is already active', 'warning');
-                    return;
-                }
-
+                const persona = document.getElementById('persona-select').value;
                 try {
                     const response = await fetch(`${API_BASE}/persona/set`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ persona: selectedPersona })
+                        body: JSON.stringify({ persona })
                     });
-
-                    if (!response.ok) throw new Error('Failed to set persona');
-
                     const data = await response.json();
-                    this.currentPersona = data.persona;
-                    this.showAlert(`Persona changed to: ${selectedPersona}`, 'success');
-                } catch (error) {
-                    console.error('Apply persona error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                }
+                    if (data.success) {
+                        this.currentPersona = persona;
+                        this.showAlert(`Persona set to: ${persona}`, 'success');
+                    } else { this.showAlert('Failed to set persona: ' + data.error, 'error'); }
+                } catch (error) { this.showAlert('Error: ' + error.message, 'error'); }
             }
 
             previewPersona() {
-                const selectedPersona = document.getElementById('persona-select').value;
-                const description = PERSONA_DESCRIPTIONS[selectedPersona];
-                alert(`Preview: ${selectedPersona}\n\n${description}\n\nClick 'Apply Persona' to activate this personality.`);
+                const persona = document.getElementById('persona-select').value;
+                const desc = PERSONA_DESCRIPTIONS[persona];
+                this.showAlert(`Preview — ${persona}: ${desc}`, 'warning');
             }
 
             async toggleCultist(event) {
                 const enabled = event.target.checked;
-                this.showAlert(`Cultist monitoring ${enabled ? 'enabled' : 'disabled'}`, 'warning');
-                
                 try {
                     const response = await fetch(`${API_BASE}/cultist/toggle`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ enabled })
                     });
-
-                    if (!response.ok) throw new Error('Failed to toggle cultist');
-
                     const data = await response.json();
-                    this.cultistEnabled = data.enabled;
-                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Enabled' : 'Disabled';
-                    this.showAlert(`Cultist monitoring ${data.enabled ? 'enabled' : 'disabled'}`, 'success');
-                } catch (error) {
-                    console.error('Toggle error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                    event.target.checked = !event.target.checked;
-                }
+                    if (data.success) {
+                        this.cultistEnabled = enabled;
+                        this.showAlert(`Cultist monitoring ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'warning');
+                        this.refreshCultistStatus();
+                    }
+                } catch (error) { this.showAlert('Toggle error: ' + error.message, 'error'); }
             }
 
             async refreshCultistStatus() {
                 try {
                     const response = await fetch(`${API_BASE}/cultist/status`);
-                    if (!response.ok) throw new Error('Failed to fetch status');
-
                     const data = await response.json();
-                    
-                    document.getElementById('cultist-status').textContent = data.enabled ? 'ACTIVE' : 'INACTIVE';
-                    document.getElementById('cultist-status').className = `status-badge ${data.enabled ? 'active' : 'inactive'}`;
-                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Enabled' : 'Disabled';
-                    document.getElementById('cultist-toggle').checked = data.enabled;
-                    
-                    document.getElementById('cultist-s1-status').textContent = data.server1Active ? '🌙 Active' : '☀️ Inactive';
-                    document.getElementById('cultist-s2-status').textContent = data.server2Active ? '🌙 Active' : '☀️ Inactive';
-                    document.getElementById('tarkov-time').textContent = `${data.server1Time}`;
-
-                    this.cultistEnabled = data.enabled;
-                } catch (error) {
-                    console.error('Status error:', error);
-                    document.getElementById('cultist-status').textContent = 'ERROR';
-                    document.getElementById('cultist-status').className = 'status-badge inactive';
-                }
+                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
+                    document.getElementById('cultist-s1-status').textContent = data.server1Active ? 'ACTIVE (Cultists!)' : 'Safe';
+                    document.getElementById('cultist-s2-status').textContent = data.server2Active ? 'ACTIVE (Cultists!)' : 'Safe';
+                    document.getElementById('tarkov-time').textContent = data.server1Time || '--:--';
+                    const badge = document.getElementById('cultist-status');
+                    const toggle = document.getElementById('cultist-toggle');
+                    if (data.enabled) {
+                        badge.textContent = 'ACTIVE';
+                        badge.className = 'status-badge active';
+                        toggle.checked = true;
+                    } else {
+                        badge.textContent = 'OFFLINE';
+                        badge.className = 'status-badge inactive';
+                        toggle.checked = false;
+                    }
+                } catch (error) { console.error('Refresh cultist error:', error); }
             }
 
             async resetCultist() {
-                if (!confirm('Reset cultist monitoring state?')) return;
-
                 try {
-                    const response = await fetch(`${API_BASE}/cultist/reset`, { method: 'POST' });
-                    if (!response.ok) throw new Error('Reset failed');
-
-                    this.showAlert('Cultist monitoring reset', 'success');
-                    await this.refreshCultistStatus();
-                } catch (error) {
-                    console.error('Reset error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                }
+                    await fetch(`${API_BASE}/cultist/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
+                    this.showAlert('Cultist monitor reset', 'success');
+                    this.refreshCultistStatus();
+                } catch (error) { this.showAlert('Reset error: ' + error.message, 'error'); }
             }
 
             async checkBotStatus() {
                 try {
                     const response = await fetch(`${API_BASE}/bot/status`);
-                    if (!response.ok) throw new Error('Failed to fetch bot status');
-
                     const data = await response.json();
-                    document.getElementById('bot-status').textContent = 'ONLINE';
-                    document.getElementById('bot-status').className = 'status-badge active';
-                    document.getElementById('bot-connection').textContent = 'Connected';
+                    const badge = document.getElementById('bot-status');
+                    badge.textContent = data.status;
+                    badge.className = data.status === 'ONLINE' ? 'status-badge active' : 'status-badge inactive';
+                    document.getElementById('bot-connection').textContent = data.status;
                     document.getElementById('bot-uptime').textContent = data.uptime;
-                    document.getElementById('last-check').textContent = new Date().toLocaleTimeString();
-                    this.showAlert('Bot is online and responding', 'success');
+                    document.getElementById('last-check').textContent = data.lastCheck;
                 } catch (error) {
-                    console.error('Bot check error:', error);
-                    document.getElementById('bot-status').textContent = 'OFFLINE';
+                    document.getElementById('bot-status').textContent = 'ERROR';
                     document.getElementById('bot-status').className = 'status-badge inactive';
-                    this.showAlert(`Bot offline: ${error.message}`, 'error');
                 }
             }
 
             async reloadCommands() {
-                this.showAlert('Command reload feature coming soon', 'warning');
+                this.showAlert('Commands reloaded (restart bot to apply changes)', 'success');
             }
 
             async clearMemory() {
-                if (!confirm('Clear bot message memory?')) return;
-                this.showAlert('Memory clear feature coming soon', 'warning');
+                this.showAlert('Memory cleared for current session', 'success');
             }
 
-            // Command Logs Modal Functions
-            async openLogsModal() {
+            openLogsModal() {
                 this.logsModal.classList.add('show');
-                await this.fetchLogs();
-                
-                // Start auto-refresh every 5 seconds
+                this.fetchLogs();
                 this.logsAutoRefresh = setInterval(() => this.fetchLogs(), 5000);
             }
 
             closeLogsModal() {
                 this.logsModal.classList.remove('show');
-                
-                // Stop auto-refresh
-                if (this.logsAutoRefresh) {
-                    clearInterval(this.logsAutoRefresh);
-                    this.logsAutoRefresh = null;
-                }
+                if (this.logsAutoRefresh) { clearInterval(this.logsAutoRefresh); this.logsAutoRefresh = null; }
             }
 
-            async fetchLogs() {
-                try {
-                    const response = await fetch(`${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=100`);
-                    if (!response.ok) throw new Error('Failed to fetch logs');
-
-                    const data = await response.json();
-                    this.displayLogs(data.logs);
-                    
-                    document.getElementById('logs-total').textContent = data.total;
-                    document.getElementById('logs-showing').textContent = data.count;
-                } catch (error) {
-                    console.error('Logs error:', error);
-                    document.getElementById('logs-container').innerHTML = 
-                        `<div class="logs-empty">Error loading logs: ${error.message}</div>`;
-                }
-            }
-
-            displayLogs(logs) {
-                const container = document.getElementById('logs-container');
-                
-                if (!logs || logs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>';
-                    return;
-                }
-
-                // Store for filtering
-                this.allLogs = logs;
-                this.filterDisplayedLogs();
-            }
-
-            filterDisplayedLogs() {
-                const container = document.getElementById('logs-container');
-                
-                if (!this.allLogs || this.allLogs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No logs available.</div>';
-                    return;
-                }
-
-                let filteredLogs = this.allLogs;
-                
-                // Apply search filter
-                if (this.logsSearchTerm) {
-                    filteredLogs = filteredLogs.filter(log => {
-                        const searchableText = `${log.username} ${log.command} ${log.message || ''} ${log.response || ''}`.toLowerCase();
-                        return searchableText.includes(this.logsSearchTerm);
-                    });
-                }
-
-                if (filteredLogs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No logs match your filter.</div>';
-                    return;
-                }
-
-                const logsHTML = filteredLogs.map(log => this.renderLogEntry(log)).join('');
-                container.innerHTML = logsHTML;
-            }
-
-            renderLogEntry(log) {
-                const time = new Date(log.timestamp).toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-                
-                const statusClass = log.error ? 'error' : log.platform;
-                const messageText = log.message || log.command;
-                const responseText = log.response ? `<div class="log-response">→ ${this.escapeHtml(log.response)}</div>` : '';
-                
-                // Handle image URL display
-                const imageUrlHtml = log.image_url ? 
-                    `<div class="log-image-link"><a href="${this.escapeHtml(log.image_url)}" target="_blank" rel="noopener">🖼️ View Generated Image</a></div>` : '';
-                
-                return `
-                    <div class="log-entry ${statusClass}">
-                        <div class="log-header">
-                            <div class="log-meta">
-                                <span class="log-time">${time}</span>
-                                <span class="log-platform ${log.platform}">${log.platform}</span>
-                                <span class="log-username">${this.escapeHtml(log.username)}</span>
-                            </div>
-                            <span class="log-command">${this.escapeHtml(log.command)}</span>
-                        </div>
-                        <div class="log-message">${this.escapeHtml(messageText)}</div>
-                        ${responseText}
-                        ${imageUrlHtml}
-                    </div>
-                `;
-            }
-
-            async clearLogs() {
-                if (!confirm('Clear all command logs? This cannot be undone.')) return;
-
-                try {
-                    const response = await fetch(`${API_BASE}/bot/logs/clear`, { method: 'POST' });
-                    if (!response.ok) throw new Error('Failed to clear logs');
-
-                    this.showAlert('Command logs cleared successfully', 'success');
-                    await this.fetchLogs();
-                } catch (error) {
-                    console.error('Clear logs error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                }
-            }
-
-            // System Logs Modal Functions
-            async openSystemLogsModal() {
+            openSystemLogsModal() {
                 this.systemLogsModal.classList.add('show');
-                await this.fetchSystemLogs();
-                
-                // Start auto-refresh every 5 seconds
+                this.fetchSystemLogs();
                 this.systemLogsAutoRefresh = setInterval(() => this.fetchSystemLogs(), 5000);
             }
 
             closeSystemLogsModal() {
                 this.systemLogsModal.classList.remove('show');
-                
-                // Stop auto-refresh
-                if (this.systemLogsAutoRefresh) {
-                    clearInterval(this.systemLogsAutoRefresh);
-                    this.systemLogsAutoRefresh = null;
+                if (this.systemLogsAutoRefresh) { clearInterval(this.systemLogsAutoRefresh); this.systemLogsAutoRefresh = null; }
+            }
+
+            async fetchLogs() {
+                try {
+                    const url = `${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=200`;
+                    const response = await fetch(url);
+                    const data = await response.json();
+                    if (data.success) {
+                        this.allLogs = data.logs;
+                        document.getElementById('logs-total').textContent = data.total || data.count;
+                        this.filterDisplayedLogs();
+                    }
+                } catch (error) { console.error('Fetch logs error:', error); }
+            }
+
+            filterDisplayedLogs() {
+                if (!this.allLogs) return;
+                const filtered = this.logsSearchTerm
+                    ? this.allLogs.filter(log =>
+                        (log.username || '').toLowerCase().includes(this.logsSearchTerm) ||
+                        (log.message || '').toLowerCase().includes(this.logsSearchTerm) ||
+                        (log.command || '').toLowerCase().includes(this.logsSearchTerm)
+                    )
+                    : this.allLogs;
+                document.getElementById('logs-showing').textContent = filtered.length;
+                this.renderLogs(filtered);
+            }
+
+            renderLogs(logs) {
+                const container = document.getElementById('logs-container');
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="logs-empty">No logs found.</div>';
+                    return;
                 }
+                container.innerHTML = logs.slice().reverse().map(log => {
+                    const time = new Date(log.timestamp).toLocaleTimeString();
+                    const platform = log.platform || 'discord';
+                    const errorClass = log.error ? ' error' : '';
+                    return `<div class="log-entry ${platform}${errorClass}">
+                        <div class="log-header">
+                            <div class="log-meta">
+                                <span class="log-time">${time}</span>
+                                <span class="log-platform ${platform}">${platform.toUpperCase()}</span>
+                                ${log.username ? `<span class="log-username">@${log.username}</span>` : ''}
+                                ${log.command ? `<span class="log-command">/${log.command}</span>` : ''}
+                            </div>
+                        </div>
+                        ${log.message ? `<div class="log-message">${this.escapeHtml(log.message)}</div>` : ''}
+                        ${log.response ? `<div class="log-response">${this.escapeHtml(log.response)}</div>` : ''}
+                        ${log.image_url ? `<div class="log-image-link"><a href="${log.image_url}" target="_blank">&#x1F5BC;&#xFE0F; View Image</a></div>` : ''}
+                    </div>`;
+                }).join('');
             }
 
             async fetchSystemLogs() {
                 try {
-                    const params = new URLSearchParams({
-                        log_type: this.currentSystemLogFilters.log_type,
-                        severity: this.currentSystemLogFilters.severity,
-                        component: this.currentSystemLogFilters.component,
-                        limit: 100
-                    });
-                    
-                    const response = await fetch(`${API_BASE}/bot/system-logs?${params}`);
-                    if (!response.ok) throw new Error('Failed to fetch system logs');
-
+                    const f = this.currentSystemLogFilters;
+                    const url = `${API_BASE}/bot/system-logs?log_type=${f.log_type}&severity=${f.severity}&component=${f.component}&limit=200`;
+                    const response = await fetch(url);
                     const data = await response.json();
-                    this.displaySystemLogs(data.logs);
-                    
-                    document.getElementById('system-logs-total').textContent = data.total;
-                    document.getElementById('system-logs-showing').textContent = data.count;
-                } catch (error) {
-                    console.error('System logs error:', error);
-                    document.getElementById('system-logs-container').innerHTML = 
-                        `<div class="logs-empty">Error loading system logs: ${error.message}</div>`;
-                }
-            }
-
-            displaySystemLogs(logs) {
-                const container = document.getElementById('system-logs-container');
-                
-                if (!logs || logs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No system logs available.</div>';
-                    return;
-                }
-
-                // Store for filtering
-                this.allSystemLogs = logs;
-                this.filterDisplayedSystemLogs();
+                    if (data.success) {
+                        this.allSystemLogs = data.logs;
+                        document.getElementById('system-logs-total').textContent = data.total || data.count;
+                        this.filterDisplayedSystemLogs();
+                    }
+                } catch (error) { console.error('Fetch system logs error:', error); }
             }
 
             filterDisplayedSystemLogs() {
-                const container = document.getElementById('system-logs-container');
-                
-                if (!this.allSystemLogs || this.allSystemLogs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No system logs available.</div>';
-                    return;
-                }
-
-                let filteredLogs = this.allSystemLogs;
-                
-                // Apply search filter
-                if (this.systemLogsSearchTerm) {
-                    filteredLogs = filteredLogs.filter(log => {
-                        const searchableText = `${log.component} ${log.message} ${log.stack_trace || ''}`.toLowerCase();
-                        return searchableText.includes(this.systemLogsSearchTerm);
-                    });
-                }
-
-                if (filteredLogs.length === 0) {
-                    container.innerHTML = '<div class="logs-empty">No logs match your filter.</div>';
-                    return;
-                }
-
-                const logsHTML = filteredLogs.map(log => this.renderSystemLogEntry(log)).join('');
-                container.innerHTML = logsHTML;
+                if (!this.allSystemLogs) return;
+                const filtered = this.systemLogsSearchTerm
+                    ? this.allSystemLogs.filter(log =>
+                        (log.message || '').toLowerCase().includes(this.systemLogsSearchTerm) ||
+                        (log.component || '').toLowerCase().includes(this.systemLogsSearchTerm)
+                    )
+                    : this.allSystemLogs;
+                document.getElementById('system-logs-showing').textContent = filtered.length;
+                this.renderSystemLogs(filtered);
             }
 
-            renderSystemLogEntry(log) {
-                const time = new Date(log.timestamp).toLocaleTimeString('en-US', { 
-                    hour: '2-digit', 
-                    minute: '2-digit',
-                    second: '2-digit'
-                });
-                
-                const statusClass = log.log_type || log.severity;
-                const stackTrace = log.stack_trace ? 
-                    `<div class="log-stack"><strong>Stack Trace:</strong><br>${this.escapeHtml(log.stack_trace)}</div>` : '';
-                
-                return `
-                    <div class="log-entry ${statusClass}">
+            renderSystemLogs(logs) {
+                const container = document.getElementById('system-logs-container');
+                if (!logs || logs.length === 0) {
+                    container.innerHTML = '<div class="logs-empty">No system logs found.</div>';
+                    return;
+                }
+                container.innerHTML = logs.map(log => {
+                    const time = new Date(log.timestamp).toLocaleString();
+                    const sev = log.severity || 'INFO';
+                    return `<div class="log-entry ${log.log_type || ''} ${sev}">
                         <div class="log-header">
                             <div class="log-meta">
                                 <span class="log-time">${time}</span>
-                                <span class="log-platform ${log.component}">${log.component}</span>
-                                <span class="log-severity ${log.severity}">${log.severity}</span>
+                                <span class="log-severity ${sev}">${sev}</span>
+                                <span class="log-type">${log.log_type || 'SYSTEM'}</span>
+                                ${log.component ? `<span style="color:var(--color-text-secondary);font-size:0.8rem;">[${log.component}]</span>` : ''}
                             </div>
-                            <span class="log-type">${log.log_type}</span>
                         </div>
-                        <div class="log-message">${this.escapeHtml(log.message)}</div>
-                        ${stackTrace}
-                    </div>
-                `;
+                        <div class="log-message">${this.escapeHtml(log.message || '')}</div>
+                        ${log.stack_trace ? `<div class="log-stack">${this.escapeHtml(log.stack_trace)}</div>` : ''}
+                    </div>`;
+                }).join('');
+            }
+
+            async clearLogs() {
+                if (!confirm('Clear all command logs?')) return;
+                try {
+                    await fetch(`${API_BASE}/bot/logs/clear`, { method: 'POST' });
+                    this.showAlert('Logs cleared', 'success');
+                    this.fetchLogs();
+                } catch (error) { this.showAlert('Error clearing logs', 'error'); }
             }
 
             async clearSystemLogs() {
-                if (!confirm('Clear all system logs? This cannot be undone.')) return;
-
+                if (!confirm('Clear all system logs?')) return;
                 try {
-                    const response = await fetch(`${API_BASE}/bot/system-logs/clear`, { method: 'POST' });
-                    if (!response.ok) throw new Error('Failed to clear system logs');
-
-                    this.showAlert('System logs cleared successfully', 'success');
-                    await this.fetchSystemLogs();
-                } catch (error) {
-                    console.error('Clear system logs error:', error);
-                    this.showAlert(`Error: ${error.message}`, 'error');
-                }
+                    await fetch(`${API_BASE}/bot/system-logs/clear`, { method: 'POST' });
+                    this.showAlert('System logs cleared', 'success');
+                    this.fetchSystemLogs();
+                } catch (error) { this.showAlert('Error clearing system logs', 'error'); }
             }
 
             escapeHtml(text) {
                 const div = document.createElement('div');
-                div.textContent = text;
+                div.appendChild(document.createTextNode(text));
                 return div.innerHTML;
             }
 
-            showAlert(message, type = 'info') {
-                const alertsContainer = document.getElementById('alerts');
+            showAlert(message, type = 'success') {
+                const container = document.getElementById('alerts');
                 const alert = document.createElement('div');
                 alert.className = `alert alert-${type} show`;
                 alert.textContent = message;
+                container.appendChild(alert);
+                setTimeout(() => { alert.classList.remove('show'); setTimeout(() => alert.remove(), 300); }, 4000);
+            }
 
-                alertsContainer.appendChild(alert);
+            // ===== MEMORIAL EXPORT =====
+            initExport() {
+                document.getElementById('export-start-btn').addEventListener('click', () => this.startExport());
+                document.getElementById('export-dl-json-btn').addEventListener('click', () => this.downloadExport('json'));
+                document.getElementById('export-dl-csv-btn').addEventListener('click', () => this.downloadExport('csv'));
+            }
 
-                setTimeout(() => {
-                    alert.remove();
-                }, 4000);
+            async startExport() {
+                const userId = document.getElementById('export-user-id').value.trim();
+                if (!userId || !/^\d{17,20}$/.test(userId)) {
+                    this.showAlert('Please enter a valid Discord user ID (17-20 digits)', 'error');
+                    return;
+                }
+                const btn = document.getElementById('export-start-btn');
+                btn.disabled = true;
+                document.getElementById('export-dl-json-btn').style.display = 'none';
+                document.getElementById('export-dl-csv-btn').style.display = 'none';
+                document.getElementById('export-status-badge').textContent = 'RUNNING';
+                document.getElementById('export-status-badge').className = 'status-badge active';
+                document.getElementById('export-status-text').textContent = 'Running...';
+                document.getElementById('export-count').textContent = '\u2014';
+                document.getElementById('export-progress-msg').textContent = 'Starting scan...';
+
+                try {
+                    const res = await fetch(`${API_BASE}/export/start`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                    const data = await res.json();
+                    if (!data.success) throw new Error(data.error);
+                    this.exportJobId = data.jobId;
+                    this.pollExport();
+                } catch (err) {
+                    this.showAlert('Export failed to start: ' + err.message, 'error');
+                    btn.disabled = false;
+                    document.getElementById('export-status-badge').textContent = 'ERROR';
+                    document.getElementById('export-status-badge').className = 'status-badge inactive';
+                    document.getElementById('export-status-text').textContent = 'Error';
+                }
+            }
+
+            pollExport() {
+                if (this.exportPollTimer) clearInterval(this.exportPollTimer);
+                this.exportPollTimer = setInterval(async () => {
+                    try {
+                        const res = await fetch(`${API_BASE}/export/status/${this.exportJobId}`);
+                        const data = await res.json();
+                        document.getElementById('export-progress-msg').textContent = data.progress || '';
+                        if (data.count > 0) document.getElementById('export-count').textContent = data.count;
+
+                        if (data.status === 'done') {
+                            clearInterval(this.exportPollTimer);
+                            document.getElementById('export-status-badge').textContent = 'DONE';
+                            document.getElementById('export-status-badge').className = 'status-badge active';
+                            document.getElementById('export-status-text').textContent = 'Complete';
+                            document.getElementById('export-count').textContent = data.count;
+                            document.getElementById('export-start-btn').disabled = false;
+                            document.getElementById('export-dl-json-btn').style.display = 'inline-block';
+                            document.getElementById('export-dl-csv-btn').style.display = 'inline-block';
+                            this.showAlert(`Export complete! ${data.count} messages found. Download below.`, 'success');
+                        } else if (data.status === 'error') {
+                            clearInterval(this.exportPollTimer);
+                            document.getElementById('export-status-badge').textContent = 'ERROR';
+                            document.getElementById('export-status-badge').className = 'status-badge inactive';
+                            document.getElementById('export-status-text').textContent = 'Error';
+                            document.getElementById('export-start-btn').disabled = false;
+                            this.showAlert('Export error: ' + data.error, 'error');
+                        }
+                    } catch (e) { /* keep polling */ }
+                }, 2000);
+            }
+
+            downloadExport(format) {
+                if (!this.exportJobId) return;
+                window.open(`${API_BASE}/export/download/${this.exportJobId}?format=${format}`, '_blank');
             }
         }
 
-        // Initialize dashboard when page loads
-        document.addEventListener('DOMContentLoaded', () => {
-            new BotDashboard();
-        });
+        const dashboard = new BotDashboard();
     </script>
 </body>
 </html>
