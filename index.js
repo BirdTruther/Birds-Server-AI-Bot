@@ -1203,12 +1203,24 @@ async function checkCultistActivity() {
     }
 }
 
+// ===== CULTIST + EXPORT WIRING ON READY =====
 discordClient.once('ready', () => {
     console.log('[CULTIST] Starting monitoring system...');
     logSystemEvent('STARTUP', 'INFO', 'cultist', 'Cultist monitoring system started');
     checkCultistActivity();
     setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
     console.log(`[CULTIST] Monitoring every ${CULTIST_CONFIG.CHECK_INTERVAL_MS / 60000} minutes`);
+
+    // ===== WIRE DISCORD CLIENT TO EXPORT SYSTEM =====
+    // This gives dashboard-server.js access to the live Discord client
+    // so message export jobs can scan guilds and channels.
+    if (typeof global.setDiscordClientForExport === 'function') {
+        global.setDiscordClientForExport(discordClient);
+        console.log('[EXPORT] Discord client registered with export system ✅');
+    } else {
+        console.warn('[EXPORT] setDiscordClientForExport not found — dashboard may not be loaded yet');
+        logSystemEvent('STARTUP', 'WARNING', 'export', 'setDiscordClientForExport was not available on ready — dashboard-server.js may not be running');
+    }
 });
 
 // ===== START DISCORD CLIENT =====
