@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Discord and Twitch bot with Tarkov integration and web dashboard",
   "main": "index.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "start": "node index.js",
     "dashboard": "node dashboard-server.js"
