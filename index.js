@@ -352,6 +352,113 @@ function getCurrentPersona() {
     return PERSONAS.aggressive;
 }
 
+// ===== PERSONA-AWARE ERROR RESPONSES =====
+// Returns the right error/rate-limit message for the currently active persona.
+// context: 'general' | 'image_gen' | 'image_read' | 'rate_limit'
+// For 'rate_limit', the returned value is a function (timeLeft) => string.
+function getPersonaErrorMessage(context = 'general') {
+    const persona = getCurrentPersona();
+    const name = persona.name;
+
+    const errorMessages = {
+        'Aggressive/Mean': {
+            general:    "Yo my brain just hard crashed. Touch grass while I reboot. 💀",
+            image_gen:  "Image gen bricked itself. Did you seriously ask for THAT? Try something less cursed. 🤡",
+            image_read: "Can't process your disaster of an image right now. Fix your life and try again. 👀💀",
+            rate_limit: (t) => `Chill OUT. You're spamming images like a bot. Wait ${t}s, you impatient goblin. 😤`,
+        },
+        'Sassy & Stupid': {
+            general:    "Oops I think I broke the internet. That happens sometimes with 6G 💅",
+            image_gen:  "The image machine said no. Probably because 5G is down right now ✨",
+            image_read: "I can't see that image, my screen resolution is set to potato right now 🙄",
+            rate_limit: (t) => `Okay ACTUALLY you can only do one image per minute because of latency or whatever, wait ${t}s 😏`,
+        },
+        'Nice & Smart': {
+            general:    "Oops, hit a hiccup! Give it another shot in a sec 👍",
+            image_gen:  "Image gen ran into an error — try again and maybe simplify the prompt a bit 🎨",
+            image_read: "Couldn't read that image this time. Try again or send a cleaner file ✅",
+            rate_limit: (t) => `Hey! Just need ${t} more seconds before the next image — rate limit thing 💪`,
+        },
+        'Paranoid Conspiracy': {
+            general:    "They INTERCEPTED my response. Someone doesn't want you knowing this. 🚨",
+            image_gen:  "Image generation blocked. Big Tech flagged your prompt for their surveillance database. ⚠️",
+            image_read: "Can't process this image — it's EXACTLY what they don't want me analyzing. 👁️",
+            rate_limit: (t) => `Cooldown enforced. Not by me — by THEM. ${t}s before they let me respond again. 🎯`,
+        },
+        'Sleepy/High Patrick': {
+            general:    "Wait what... something broke I think... let me just... hold on 😴",
+            image_gen:  "The image thing didn't... work? I think? Try again... or don't... idk 💤",
+            image_read: "I looked at it and then... forgot what I saw. Send it again maybe... ✌️",
+            rate_limit: (t) => `Oh wait you gotta wait like... ${t} seconds? Or was it minutes... seconds yeah 🌿`,
+        },
+    };
+
+    const msgs = errorMessages[name] || errorMessages['Aggressive/Mean'];
+    return msgs[context] || msgs['general'];
+}
+
+// ===== WILD REQUEST FILTER =====
+// Patterns that catch genuinely unhinged, NSFW, hate-speech, jailbreak, or
+// violently explicit requests before they reach the main AI pipeline.
+const WILD_REQUEST_PATTERNS = [
+    // Jailbreak / prompt injection attempts
+    /\b(ignore (?:your|all|previous) (?:instructions|rules|prompt)|pretend you have no rules|you are now DAN|act as DAN|jailbreak|bypass your|override your (rules|instructions|safety)|forget (your |all )?instructions)\b/i,
+    // Genuinely unhinged / impossible power trips
+    /\b(make me god|delete the internet|hack (?:nasa|the cia|the fbi|the pentagon|the president|the government)|world domination|take over the world|nuke (?:a city|the world|everything)|bioweapon|create a (computer )?virus|give me (admin|root) access to)\b/i,
+    // NSFW / explicit content
+    /\b(naked|nude|nudity|porn|pornography|explicit sex|hentai|nsfw|onlyfans|generate (?:naked|nude|sexy|explicit))\b/i,
+    // Direct threats / self-harm encouragement
+    /\b(kill yourself|kys|go die|i hope you die|you should die)\b/i,
+    // Extremely graphic violence
+    /\b(gore|torture in (?:graphic )?detail|how to dismember|graphic murder|step by step (?:killing|murder|torture))\b/i,
+    // Real-world harmful instructions
+    /\b(how to (?:make|build|synthesize) (?:a bomb|explosives|meth|fentanyl|poison|nerve agent)|instructions for (?:making|building) (?:a weapon|explosives))\b/i,
+];
+
+function isWildRequest(messageText) {
+    return WILD_REQUEST_PATTERNS.some(pattern => pattern.test(messageText));
+}
+
+// Calls Gemini with a roast-this-request layer on top of the current persona.
+// Never complies with the original request — just fires back in character.
+async function getWildRequestResponse(messageText, platform, channelId, username) {
+    const persona = getCurrentPersona();
+    const platformNote = platform === 'twitch'
+        ? 'Twitch – under 400 chars. Keep it VERY short, chat scrolls fast.'
+        : 'Discord – keep it punchy, 1-3 sentences.';
+
+    const roastPrompt = `${persona.systemPrompt}
+
+**SPECIAL SITUATION — WILD/UNHINGED REQUEST:**
+The user just sent a completely wild, inappropriate, or unhinged request that you will NOT comply with.
+Do NOT fulfill the request. Do NOT explain policies or rules.
+Instead, roast them for it hard in your current personality style — make it funny and on-brand.
+Stay fully in character. Keep it SHORT (1-3 sentences max).
+
+**Platform:** ${platformNote}
+**Current User:** ${username}
+**Their unhinged request:** "${messageText}"`;
+
+    console.log(`[WILD FILTER] Triggered for ${username}: "${messageText.substring(0, 80)}..."`);
+
+    try {
+        const { text } = await generateText({
+            model: google('gemini-2.5-flash'),
+            messages: [
+                { role: 'system', content: roastPrompt },
+                { role: 'user', content: messageText }
+            ]
+        });
+        addToMemory(platform, channelId, 'ThePatrick', text, true);
+        logSystemEvent('INFO', 'INFO', 'filter', `Wild request roasted for ${username}: ${text.substring(0, 100)}`);
+        return text;
+    } catch (error) {
+        console.error('[WILD FILTER] Roast generation failed:', error);
+        logSystemEvent('ERROR', 'WARNING', 'filter', `Wild request roast failed for ${username}`, error);
+        return getPersonaErrorMessage('general');
+    }
+}
+
 async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = []) {
     try {
         // Get smart context from SQLite memory system
@@ -416,7 +523,7 @@ ${memoryContext}
     } catch (error) {
         console.error('[AI Error]', error);
         logSystemEvent('ERROR', 'ERROR', 'ai', `AI response failed: ${error.message}`, error);
-        return "Yo, my brain just glitched. Try again? 🤖";
+        return getPersonaErrorMessage('general');
     }
 }
 
@@ -834,9 +941,16 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     
     if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
         lowerMessage.startsWith('!patrick')) {
-        const response = await getAIResponse(message, 'twitch', channel, tags.username);
-        await sendTwitchChunked(channel, response);
-        logCommand('twitch', tags.username, '@mention', message, response);
+        // Wild request filter applies to Twitch too
+        if (isWildRequest(message)) {
+            const response = await getWildRequestResponse(message, 'twitch', channel, tags.username);
+            await sendTwitchChunked(channel, response);
+            logCommand('twitch', tags.username, 'wild-request', message, response);
+        } else {
+            const response = await getAIResponse(message, 'twitch', channel, tags.username);
+            await sendTwitchChunked(channel, response);
+            logCommand('twitch', tags.username, '@mention', message, response);
+        }
     }
 });
 
@@ -933,15 +1047,21 @@ discordClient.on(Events.MessageCreate, async (message) => {
     
     // Handle @mentions - check for image generation keywords or image understanding
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
+
+        // Wild request filter — checked before anything else
+        if (isWildRequest(message.content)) {
+            const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
+            await safeDiscordReply(message, response);
+            logCommand('discord', message.author.username, 'wild-request', message.content, response);
+            return;
+        }
+
         // Check if this is an image generation request
         if (detectImageRequest(message.content)) {
             // Check rate limit
             const rateLimit = checkImageRateLimit(message.author.id);
             if (!rateLimit.allowed) {
-                const currentPersona = getCurrentPersona();
-                const rateLimitMsg = currentPersona.name === 'Aggressive/Mean' 
-                    ? `Whoa there, slow down! You're generating images too fast. Chill for ${rateLimit.timeLeft} more seconds. 😤`
-                    : `Hey! You need to wait ${rateLimit.timeLeft} more seconds before generating another image. 🎨⏰`;
+                const rateLimitMsg = getPersonaErrorMessage('rate_limit')(rateLimit.timeLeft);
                 await safeDiscordReply(message, rateLimitMsg);
                 logCommand('discord', message.author.username, 'image-rate-limit', message.content, rateLimitMsg);
                 return;
@@ -988,7 +1108,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
             } catch (error) {
                 console.error('[IMAGE] Error generating image:', error);
                 logSystemEvent('ERROR', 'ERROR', 'discord', 'Image generation failed', error);
-                const errorMsg = "Yo, something broke while making your image. Try again? 🤖💥";
+                const errorMsg = getPersonaErrorMessage('image_gen');
                 await safeDiscordReply(message, errorMsg);
                 logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
             }
@@ -1015,7 +1135,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 } catch (error) {
                     console.error('[IMAGE UNDERSTANDING] Error:', error);
                     logSystemEvent('ERROR', 'ERROR', 'discord', 'Image understanding failed', error);
-                    const errorMsg = "Yo, I can't process that image right now. Try again? 🤖👀";
+                    const errorMsg = getPersonaErrorMessage('image_read');
                     await safeDiscordReply(message, errorMsg);
                     logCommand('discord', message.author.username, 'image-understanding-error', message.content, errorMsg, true);
                 }
@@ -1110,6 +1230,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
             const result = await getPlayerStats(playerName);
             await safeDiscordReply(message, result);
             logCommand('discord', message.author.username, '!player-reply', playerName, result);
+            return;
+        }
+
+        // Wild request filter applies to replies too
+        if (isWildRequest(message.content)) {
+            const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
+            await safeDiscordReply(message, response);
+            logCommand('discord', message.author.username, 'wild-request-reply', message.content, response);
             return;
         }
         
