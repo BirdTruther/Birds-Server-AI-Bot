@@ -88,6 +88,22 @@ setInterval(() => {
   cultistState.server2Active = isCultistTime((hours + 12) % 24);
 }, 30000);
 
+// ===== FIX 1: Real uptime formatter — handles days correctly past 24 hours =====
+function formatUptime(seconds) {
+  const totalSecs = Math.floor(seconds);
+  const d = Math.floor(totalSecs / 86400);
+  const h = Math.floor((totalSecs % 86400) / 3600);
+  const m = Math.floor((totalSecs % 3600) / 60);
+  const s = totalSecs % 60;
+  const hh = String(h).padStart(2, '0');
+  const mm = String(m).padStart(2, '0');
+  const ss = String(s).padStart(2, '0');
+  if (d > 0) {
+    return `${d}d ${hh}h ${mm}m ${ss}s`;
+  }
+  return `${hh}h ${mm}m ${ss}s`;
+}
+
 const app = express();
 const PORT = 3001;
 
@@ -111,7 +127,8 @@ app.post('/api/cultist/toggle', (req, res) => {
 
 app.get('/api/bot/status', (req, res) => {
   const uptimeSeconds = process.uptime();
-  const uptimeStr = new Date(uptimeSeconds * 1000).toISOString().substr(11, 8);
+  // FIX 1: use formatUptime() instead of toISOString().substr(11,8) which wraps after 24h
+  const uptimeStr = formatUptime(uptimeSeconds);
   res.json({ status: 'ONLINE', uptime: uptimeStr, lastCheck: new Date().toLocaleTimeString(), memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB' });
 });
 
@@ -409,7 +426,7 @@ app.post('/api/export/start', (req, res) => {
 app.get('/api/export/status/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
-  res.json({ success: true, status: job.status, progress: job.progress, count: job.count || 0, error: job.error || null });
+  res.json({ success: true, jobId: req.params.jobId, userId: job.userId, status: job.status, progress: job.progress, count: job.count || 0, error: job.error || null, startedAt: job.startedAt || null, completedAt: job.completedAt || null });
 });
 
 app.get('/api/export/download/:jobId', (req, res) => {
