@@ -34,10 +34,29 @@
 
         header { text-align: center; margin-bottom: 40px; padding: 30px 0; }
 
+        /* FIX 4: header h1 — emoji always visible, title text readable */
         h1 {
             font-size: 2.5rem;
             margin-bottom: 10px;
-            background: linear-gradient(135deg, var(--color-primary), #06b6d4);
+            /* Removed gradient clip that made emoji invisible */
+            color: #f1f5f9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+        }
+
+        /* The emoji span is never gradient-clipped */
+        .title-emoji {
+            font-style: normal;
+            -webkit-text-fill-color: initial;
+            color: initial;
+            display: inline-block;
+        }
+
+        /* The text part gets a subtle blue gradient safely via a nested span */
+        .title-text {
+            background: linear-gradient(135deg, #60c0f8, #06b6d4);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
@@ -129,18 +148,34 @@
         .button-secondary:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
         .button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
+        /* FIX 3: Persona dropdown — fully visible at rest with solid bg/text/option colors */
         .persona-select {
             width: 100%;
             padding: 12px;
-            background: rgba(255,255,255,0.05);
-            border: 1px solid rgba(255,255,255,0.2);
+            background: #1a2742;
+            border: 1px solid #4a90c4;
             border-radius: var(--radius);
-            color: var(--color-text-primary);
+            color: #f1f5f9;
             font-size: 0.95rem;
             cursor: pointer;
             margin-bottom: 15px;
+            -webkit-appearance: auto;
+            appearance: auto;
         }
-        .persona-select:focus { outline: none; border-color: var(--color-primary); background: rgba(255,255,255,0.08); }
+        .persona-select option {
+            background: #1a2742;
+            color: #f1f5f9;
+        }
+        .persona-select:focus {
+            outline: 2px solid var(--color-primary);
+            outline-offset: 2px;
+            border-color: var(--color-primary);
+            background: #1e2f50;
+        }
+        .persona-select:hover {
+            border-color: #60c0f8;
+            background: #1e2f50;
+        }
 
         .persona-description {
             background: rgba(255,255,255,0.03);
@@ -227,6 +262,47 @@
         .logs-empty { text-align: center; padding: 40px; color: var(--color-text-secondary); }
         .logs-stats { display: flex; gap: 20px; font-size: 0.85rem; color: var(--color-text-secondary); }
 
+        /* FIX 2: Export Status modal styles */
+        .export-status-modal .modal-content { max-width: 620px; }
+        .export-status-field {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 10px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.06);
+            font-size: 0.92rem;
+            gap: 12px;
+        }
+        .export-status-field:last-child { border-bottom: none; }
+        .export-status-field .esf-label { color: var(--color-text-secondary); font-weight: 500; min-width: 130px; flex-shrink: 0; }
+        .export-status-field .esf-value { color: var(--color-text-primary); font-weight: 600; text-align: right; word-break: break-all; }
+        .export-status-field .esf-value.running { color: var(--color-warning); }
+        .export-status-field .esf-value.done { color: var(--color-success); }
+        .export-status-field .esf-value.error { color: var(--color-danger); }
+        .export-status-field .esf-value.queued { color: #a78bfa; }
+        .export-progress-bar-wrap { margin: 16px 0 6px; background: rgba(255,255,255,0.06); border-radius: 6px; height: 8px; overflow: hidden; }
+        .export-progress-bar { height: 100%; background: var(--color-primary); border-radius: 6px; transition: width 0.4s ease; width: 0%; }
+        .export-progress-bar.done { background: var(--color-success); width: 100%; }
+        .export-progress-bar.error { background: var(--color-danger); width: 100%; }
+        .export-progress-bar.running { animation: progressPulse 1.5s ease-in-out infinite; }
+        @keyframes progressPulse {
+            0%,100% { opacity: 1; }
+            50% { opacity: 0.55; }
+        }
+        .esm-input-row { display: flex; gap: 8px; margin-bottom: 14px; }
+        .esm-input-row input {
+            flex: 1;
+            padding: 10px 12px;
+            background: #1a2742;
+            border: 1px solid #4a90c4;
+            border-radius: var(--radius);
+            color: #f1f5f9;
+            font-size: 0.9rem;
+        }
+        .esm-input-row input:focus { outline: 2px solid var(--color-primary); outline-offset: 2px; }
+        .esm-input-row input::placeholder { color: #64748b; }
+        .export-dl-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
+
         footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); font-size: 0.9rem; }
 
         @media (max-width: 768px) {
@@ -241,7 +317,8 @@
 <body>
     <div class="container">
         <header>
-            <h1>&#x1F916; ThePatrick Bot Dashboard</h1>
+            <!-- FIX 4: emoji in own span so gradient clip doesn't hide it -->
+            <h1><span class="title-emoji">&#x1F916;</span><span class="title-text">ThePatrick Bot Dashboard</span></h1>
             <p class="subtitle">ThePatrick's Birds Server AI Bot Control Panel</p>
         </header>
 
@@ -259,6 +336,7 @@
                 </div>
                 <div class="control-section">
                     <label class="control-label">Select Persona</label>
+                    <!-- FIX 3: persona-select now uses solid bg/text colors, readable at rest -->
                     <select id="persona-select" class="persona-select">
                         <option value="aggressive">&#x1F624; Aggressive/Mean</option>
                         <option value="sassy">&#x1F485; Sassy &amp; Stupid</option>
@@ -304,6 +382,7 @@
                 </div>
                 <div class="status-info">
                     <div class="status-item"><span class="status-label">Connection:</span><span class="status-value" id="bot-connection">Unknown</span></div>
+                    <!-- FIX 1: uptime now comes from formatUptime() in dashboard-server.js -->
                     <div class="status-item"><span class="status-label">Uptime:</span><span class="status-value" id="bot-uptime">--</span></div>
                     <div class="status-item"><span class="status-label">Last Check:</span><span class="status-value" id="last-check">Never</span></div>
                 </div>
@@ -325,6 +404,8 @@
                     <button class="button button-primary" id="clear-memory-btn">&#x1F9E0; Clear Memory</button>
                     <button class="button button-secondary" id="view-logs-btn">&#x1F4CB; Command Logs</button>
                     <button class="button button-secondary" id="view-system-logs-btn">&#x1F527; System Logs</button>
+                    <!-- FIX 2: Export Status button opens the new modal -->
+                    <button class="button button-secondary" id="view-export-status-btn" style="border-color:#a78bfa;color:#a78bfa;">&#x1F54A;&#xFE0F; Export Status</button>
                 </div>
             </div>
 
@@ -351,7 +432,7 @@
         </div>
 
         <footer>
-            <p>Dashboard v1.5 | Last updated: <span id="footer-time">--:--:--</span></p>
+            <p>Dashboard v1.6 | Last updated: <span id="footer-time">--:--:--</span></p>
             <p>&#x1F4BB; Built with &#x2764;&#xFE0F; and Mountain Dew</p>
         </footer>
     </div>
@@ -422,6 +503,79 @@
         </div>
     </div>
 
+    <!-- FIX 2: Export Status Modal -->
+    <div id="export-status-modal" class="modal export-status-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title"><span>&#x1F54A;&#xFE0F;</span> Export Status</div>
+                <button class="modal-close" id="close-export-status-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Job ID lookup row -->
+                <div class="esm-input-row">
+                    <input type="text" id="esm-job-id-input" placeholder="Paste export Job ID (e.g. 1716345612345)" autocomplete="off">
+                    <button class="button button-primary" id="esm-check-btn">&#x1F50D; Check</button>
+                </div>
+                <p style="font-size:0.82rem;color:var(--color-text-secondary);margin-bottom:16px;">
+                    Enter a Job ID from a previously started export, or the current running job will auto-populate below.
+                </p>
+
+                <!-- Status fields -->
+                <div id="esm-fields">
+                    <div class="export-status-field">
+                        <span class="esf-label">Job ID</span>
+                        <span class="esf-value" id="esm-jobid">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">User ID</span>
+                        <span class="esf-value" id="esm-userid">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">Status</span>
+                        <span class="esf-value" id="esm-status">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">Progress</span>
+                        <span class="esf-value" id="esm-progress">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">Messages Found</span>
+                        <span class="esf-value" id="esm-count">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">Started At</span>
+                        <span class="esf-value" id="esm-started">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field">
+                        <span class="esf-label">Completed At</span>
+                        <span class="esf-value" id="esm-completed">&#x2014;</span>
+                    </div>
+                    <div class="export-status-field" id="esm-error-row" style="display:none;">
+                        <span class="esf-label">Error</span>
+                        <span class="esf-value error" id="esm-error"></span>
+                    </div>
+                </div>
+
+                <div class="export-progress-bar-wrap" id="esm-bar-wrap" style="display:none;">
+                    <div class="export-progress-bar" id="esm-bar"></div>
+                </div>
+
+                <!-- Download buttons, only shown when done -->
+                <div class="export-dl-row" id="esm-dl-row" style="display:none;">
+                    <button class="button button-primary" id="esm-dl-json">&#x2B07;&#xFE0F; Download JSON</button>
+                    <button class="button button-secondary" id="esm-dl-csv">&#x2B07;&#xFE0F; Download CSV</button>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span style="font-size:0.82rem;color:var(--color-text-secondary);" id="esm-last-refreshed"></span>
+                <div style="display:flex;gap:10px;">
+                    <button class="button button-primary" id="esm-refresh-btn">&#x1F504; Refresh</button>
+                    <button class="button button-secondary" id="close-export-status-btn">Close</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
 
@@ -438,6 +592,7 @@
                 this.cultistEnabled = false;
                 this.logsModal = document.getElementById('logs-modal');
                 this.systemLogsModal = document.getElementById('system-logs-modal');
+                this.exportStatusModal = document.getElementById('export-status-modal');
                 this.logsAutoRefresh = null;
                 this.systemLogsAutoRefresh = null;
                 this.currentLogsPlatform = 'all';
@@ -447,9 +602,12 @@
                 this.systemLogsSearchTerm = '';
                 this.exportJobId = null;
                 this.exportPollTimer = null;
+                this.esmPollTimer = null;
+                this.esmCurrentJobId = null;
 
                 this.initializeEventListeners();
                 this.initExport();
+                this.initExportStatusModal();
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
@@ -504,6 +662,7 @@
 
                 this.logsModal.addEventListener('click', (e) => { if (e.target === this.logsModal) this.closeLogsModal(); });
                 this.systemLogsModal.addEventListener('click', (e) => { if (e.target === this.systemLogsModal) this.closeSystemLogsModal(); });
+                this.exportStatusModal.addEventListener('click', (e) => { if (e.target === this.exportStatusModal) this.closeExportStatusModal(); });
             }
 
             startAutoRefresh() {
@@ -548,7 +707,7 @@
             previewPersona() {
                 const persona = document.getElementById('persona-select').value;
                 const desc = PERSONA_DESCRIPTIONS[persona];
-                this.showAlert(`Preview — ${persona}: ${desc}`, 'warning');
+                this.showAlert(`Preview \u2014 ${persona}: ${desc}`, 'warning');
             }
 
             async toggleCultist(event) {
@@ -798,7 +957,7 @@
                     btn.disabled = false;
                     document.getElementById('export-status-badge').textContent = 'ERROR';
                     document.getElementById('export-status-badge').className = 'status-badge inactive';
-                    document.getElementById('export-status-text').textContent = 'Error — check System Logs > Export tab';
+                    document.getElementById('export-status-text').textContent = 'Error \u2014 check System Logs > Export tab';
                 }
             }
 
@@ -828,7 +987,7 @@
                             document.getElementById('export-status-text').textContent = 'Error';
                             document.getElementById('export-progress-msg').textContent = data.error || 'Unknown error';
                             document.getElementById('export-start-btn').disabled = false;
-                            this.showAlert('Export error: ' + data.error + ' — open System Logs > Export tab for details', 'error');
+                            this.showAlert('Export error: ' + data.error + ' \u2014 open System Logs > Export tab for details', 'error');
                         }
                     } catch (e) { /* keep polling */ }
                 }, 2000);
@@ -837,6 +996,122 @@
             downloadExport(format) {
                 if (!this.exportJobId) return;
                 window.open(`${API_BASE}/export/download/${this.exportJobId}?format=${format}`, '_blank');
+            }
+
+            // ===== FIX 2: EXPORT STATUS MODAL =====
+            initExportStatusModal() {
+                document.getElementById('view-export-status-btn').addEventListener('click', () => this.openExportStatusModal());
+                document.getElementById('close-export-status-modal').addEventListener('click', () => this.closeExportStatusModal());
+                document.getElementById('close-export-status-btn').addEventListener('click', () => this.closeExportStatusModal());
+                document.getElementById('esm-check-btn').addEventListener('click', () => this.esmLookup());
+                document.getElementById('esm-refresh-btn').addEventListener('click', () => this.esmRefresh());
+                document.getElementById('esm-dl-json').addEventListener('click', () => this.esmDownload('json'));
+                document.getElementById('esm-dl-csv').addEventListener('click', () => this.esmDownload('csv'));
+                document.getElementById('esm-job-id-input').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') this.esmLookup();
+                });
+            }
+
+            openExportStatusModal() {
+                this.exportStatusModal.classList.add('show');
+                // Pre-fill with running job if one exists
+                if (this.exportJobId) {
+                    document.getElementById('esm-job-id-input').value = this.exportJobId;
+                    this.esmCurrentJobId = this.exportJobId;
+                    this.esmFetchStatus(this.esmCurrentJobId);
+                }
+            }
+
+            closeExportStatusModal() {
+                this.exportStatusModal.classList.remove('show');
+                if (this.esmPollTimer) { clearInterval(this.esmPollTimer); this.esmPollTimer = null; }
+            }
+
+            esmLookup() {
+                const jobId = document.getElementById('esm-job-id-input').value.trim();
+                if (!jobId) { this.showAlert('Please enter a Job ID', 'warning'); return; }
+                this.esmCurrentJobId = jobId;
+                if (this.esmPollTimer) { clearInterval(this.esmPollTimer); this.esmPollTimer = null; }
+                this.esmFetchStatus(jobId);
+            }
+
+            esmRefresh() {
+                if (!this.esmCurrentJobId) {
+                    const jobId = document.getElementById('esm-job-id-input').value.trim();
+                    if (!jobId) { this.showAlert('No Job ID entered', 'warning'); return; }
+                    this.esmCurrentJobId = jobId;
+                }
+                this.esmFetchStatus(this.esmCurrentJobId);
+            }
+
+            async esmFetchStatus(jobId) {
+                try {
+                    const res = await fetch(`${API_BASE}/export/status/${jobId}`);
+                    if (!res.ok) {
+                        this.esmSetFields({ status: 'not_found', progress: 'Job not found — it may have been cleared on server restart', count: 0 }, jobId);
+                        return;
+                    }
+                    const data = await res.json();
+                    this.esmSetFields(data, jobId);
+
+                    // Auto-poll if still running
+                    if (data.status === 'running' || data.status === 'queued') {
+                        if (!this.esmPollTimer) {
+                            this.esmPollTimer = setInterval(() => this.esmFetchStatus(jobId), 3000);
+                        }
+                    } else {
+                        if (this.esmPollTimer) { clearInterval(this.esmPollTimer); this.esmPollTimer = null; }
+                    }
+                } catch (e) {
+                    this.esmSetFields({ status: 'error', progress: 'Network error — could not reach server', count: 0 }, jobId);
+                }
+            }
+
+            esmSetFields(data, jobId) {
+                const st = data.status || 'unknown';
+                const statusColors = { done: 'done', running: 'running', queued: 'queued', error: 'error', not_found: 'error' };
+                const statusColor = statusColors[st] || '';
+
+                document.getElementById('esm-jobid').textContent = data.jobId || jobId || '\u2014';
+                document.getElementById('esm-userid').textContent = data.userId || '\u2014';
+
+                const statusEl = document.getElementById('esm-status');
+                statusEl.textContent = st.toUpperCase();
+                statusEl.className = `esf-value ${statusColor}`;
+
+                document.getElementById('esm-progress').textContent = data.progress || '\u2014';
+                document.getElementById('esm-count').textContent = data.count > 0 ? data.count.toLocaleString() : (st === 'done' ? '0' : '\u2014');
+                document.getElementById('esm-started').textContent = data.startedAt ? new Date(data.startedAt).toLocaleString() : '\u2014';
+                document.getElementById('esm-completed').textContent = data.completedAt ? new Date(data.completedAt).toLocaleString() : '\u2014';
+
+                const errRow = document.getElementById('esm-error-row');
+                if (data.error) {
+                    errRow.style.display = 'flex';
+                    document.getElementById('esm-error').textContent = data.error;
+                } else {
+                    errRow.style.display = 'none';
+                }
+
+                // Progress bar
+                const barWrap = document.getElementById('esm-bar-wrap');
+                const bar = document.getElementById('esm-bar');
+                barWrap.style.display = 'block';
+                bar.className = 'export-progress-bar';
+                if (st === 'done') { bar.classList.add('done'); }
+                else if (st === 'error' || st === 'not_found') { bar.classList.add('error'); }
+                else if (st === 'running' || st === 'queued') { bar.classList.add('running'); }
+
+                // Download buttons
+                const dlRow = document.getElementById('esm-dl-row');
+                dlRow.style.display = st === 'done' ? 'flex' : 'none';
+
+                document.getElementById('esm-last-refreshed').textContent = 'Last refreshed: ' + new Date().toLocaleTimeString();
+            }
+
+            esmDownload(format) {
+                const jobId = this.esmCurrentJobId || document.getElementById('esm-job-id-input').value.trim();
+                if (!jobId) { this.showAlert('No Job ID to download', 'warning'); return; }
+                window.open(`${API_BASE}/export/download/${jobId}?format=${format}`, '_blank');
             }
         }
 
