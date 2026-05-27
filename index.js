@@ -1,257 +1,165 @@
 // BIRDS-SERVER-AI-BOT
-// Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
+// Discord + Twitch Multi-Platform Bot with AI &amp; Tarkov Integration
 
 // ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
 const tmi = require('tmi.js');
-const { google } = require('@ai-sdk/google');
 const { generateText } = require('ai');
-const fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
+const { google } = require('@ai-sdk/google');
 const { request, gql } = require('graphql-request');
-const PERSONAS = require('./personas.js');
-const { logCommand: dbLogCommand, logSystem, getSetting } = require('./database.js');
-const { addToMemory, getSmartContext, clearChannelMemory } = require('./memory.js');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const CULTIST_ROLE_ID = '1459380427063038140';
 require('dotenv').config();
 
-// ===== SYSTEM LOGGING HELPER =====
-function logSystemEvent(log_type, severity, component, message, error = null) {
-  const logEntry = {
-    log_type,
-    severity,
-    component,
-    message,
-    stack_trace: error ? error.stack : null,
-    metadata: error ? {
-      name: error.name,
-      message: error.message,
-      code: error.code
-    } : null
-  };
-  
-  logSystem(logEntry);
-  
-  // Also console log for immediate visibility
-  const prefix = severity === 'ERROR' || severity === 'CRITICAL' ? '[ERROR]' : '[INFO]';
-  console.log(`${prefix} [${component}] ${message}`);
-}
+// Internal modules
+const { addToMemory, getSmartContext, clearChannelMemory } = require('./memory.js');
+const { logCommand, logSystemEvent } = require('./logger.js');
+const { getCurrentPersona, getPersonaErrorMessage, setPersona, getAvailablePersonas } = require('./persona-manager.js');
 
-// Log bot startup
-logSystemEvent('STARTUP', 'INFO', 'system', `🚀 Bot starting up - Node ${process.version} on ${process.platform}`);
-logSystemEvent('STARTUP', 'INFO', 'system', `Memory: ${Math.round(process.memoryUsage().heapUsed / 1024 / 1024)}MB`);
+// ===== GLOBAL STARTUP LOG =====
+logSystemEvent('STARTUP', 'INFO', 'system', '🚀 Bot starting up...');
 
-// ===== PROCESS ERROR HANDLERS =====
-
-// Catch uncaught exceptions
-process.on('uncaughtException', (error) => {
-  logSystemEvent('CRASH', 'CRITICAL', 'system', `❌ Uncaught Exception: ${error.message}`, error);
-  console.error('[FATAL] Uncaught exception, exiting...', error);
-  process.exit(1);
-});
-
-// Catch unhandled promise rejections
-process.on('unhandledRejection', (reason, promise) => {
-  const error = reason instanceof Error ? reason : new Error(String(reason));
-  logSystemEvent('ERROR', 'ERROR', 'system', `❌ Unhandled Promise Rejection: ${error.message}`, error);
-  console.error('[ERROR] Unhandled rejection:', error);
-});
-
-// Catch SIGTERM (graceful shutdown request)
-process.on('SIGTERM', () => {
-  logSystemEvent('SHUTDOWN', 'INFO', 'system', '📴 Received SIGTERM signal - shutting down gracefully');
-  cleanup();
-  process.exit(0);
-});
-
-// Catch SIGINT (Ctrl+C)
-process.on('SIGINT', () => {
-  logSystemEvent('SHUTDOWN', 'INFO', 'system', '📴 Received SIGINT signal (Ctrl+C) - shutting down');
-  cleanup();
-  process.exit(0);
-});
-
-// Catch unexpected exit
-process.on('exit', (code) => {
-  if (code !== 0) {
-    logSystemEvent('SHUTDOWN', 'WARNING', 'system', `❌ Process exiting with code ${code}`);
-  } else {
-    logSystemEvent('SHUTDOWN', 'INFO', 'system', '✅ Process exiting normally');
-  }
-});
-
-// Cleanup function
-function cleanup() {
-  try {
-    logSystemEvent('SHUTDOWN', 'INFO', 'system', '🧹 Cleaning up resources...');
-    
-    if (discordClient) {
-      discordClient.destroy();
-      logSystemEvent('SHUTDOWN', 'INFO', 'discord', 'Discord client disconnected');
-    }
-    
-    if (twitchClient) {
-      twitchClient.disconnect();
-      logSystemEvent('SHUTDOWN', 'INFO', 'twitch', 'Twitch client disconnected');
-    }
-  } catch (error) {
-    logSystemEvent('ERROR', 'ERROR', 'system', 'Error during cleanup', error);
-  }
-}
-
-// ===== DASHBOARD LOGGING HELPER =====
-function logCommand(platform, username, command, message, response = null, error = false, image_url = null) {
-  const logEntry = {
-    platform,
-    username,
-    command,
-    message,
-    response: response ? response.substring(0, 200) : null,
-    error,
-    image_url
-  };
-  
-  // Log to SQLite database
-  dbLogCommand(logEntry);
-  
-  // Also send to dashboard if available (for real-time updates)
-  if (typeof global.dashboardLogCommand === 'function') {
-    try {
-      global.dashboardLogCommand(logEntry);
-    } catch (err) {
-      console.error('[LOG ERROR]', err);
-      logSystemEvent('ERROR', 'WARNING', 'dashboard', 'Failed to send log to dashboard', err);
-    }
-  }
-}
-
-// ===== CONFIGURATION CONSTANTS =====
+// ===== CONFIGURATION =====
 const CONFIG = {
-    TWITCH_CHAR_LIMIT: 480,
+    TARKOV_API_URL: 'https://api.tarkov.dev/graphql',
+    TWITCH_CHAR_LIMIT: 490,
     TWITCH_DELAY_MS: 1500,
-    DISCORD_CHAR_LIMIT: 2000,
-    DUNGEON_AUTO_JOIN_DELAY: 1000,
-    MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger', 'Ref'],
+    GITHUB_URL: 'https://github.com/BirdTruther',
     EST_TIMEZONE: 'America/New_York',
-    GITHUB_URL: 'https://github.com/BirdTruther/Birds-Server-AI-Bot',
-    IMAGE_RATE_LIMIT_MS: 60000 // 1 minute cooldown per user
+    MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger'],
+    DUNGEON_AUTO_JOIN_DELAY: 3000,
+    IMAGE_RATE_LIMIT_MINUTES: 5,
+    IMAGE_RATE_LIMIT_MAX: 3
 };
 
-// ===== CULTIST STATE =====
-// Read persisted value from DB on startup so reboots don't reset the toggle
-let cultistEnabled = getSetting('cultistEnabled', 'true') === 'true';
-console.log(`[CULTIST] Monitoring loaded as: ${cultistEnabled ? 'ENABLED' : 'DISABLED'}`);
-
-// Helper used by checkCultistActivity - always checks live dashboard value first
-function isCultistMonitoringEnabled() {
-  // Prefer the dashboard's live in-memory value if available (real-time toggle)
-  if (typeof global.getCultistEnabled === 'function') {
-    return global.getCultistEnabled();
-  }
-  // Fallback to locally loaded DB value
-  return cultistEnabled;
-}
-
-// ===== IMAGE GENERATION RATE LIMITING =====
-const imageRateLimits = new Map(); // Map<userId, lastRequestTimestamp>
+// ===== RATE LIMITING FOR IMAGE GENERATION =====
+const imageRateLimits = new Map();
 
 function checkImageRateLimit(userId) {
     const now = Date.now();
-    const lastRequest = imageRateLimits.get(userId);
+    const windowMs = CONFIG.IMAGE_RATE_LIMIT_MINUTES * 60 * 1000;
     
-    if (lastRequest && (now - lastRequest) < CONFIG.IMAGE_RATE_LIMIT_MS) {
-        const timeLeft = Math.ceil((CONFIG.IMAGE_RATE_LIMIT_MS - (now - lastRequest)) / 1000);
+    if (!imageRateLimits.has(userId)) {
+        imageRateLimits.set(userId, []);
+    }
+    
+    const userRequests = imageRateLimits.get(userId).filter(time => now - time < windowMs);
+    imageRateLimits.set(userId, userRequests);
+    
+    if (userRequests.length >= CONFIG.IMAGE_RATE_LIMIT_MAX) {
+        const oldestRequest = userRequests[0];
+        const timeLeft = Math.ceil((windowMs - (now - oldestRequest)) / 60000);
         return { allowed: false, timeLeft };
     }
     
-    imageRateLimits.set(userId, now);
+    userRequests.push(now);
     return { allowed: true };
 }
 
-// ===== IMAGE GENERATION DETECTION =====
+// ===== IMAGE GENERATION =====
+async function generateImage(prompt) {
+    const { experimental_generateImage: generateImageFn } = require('ai');
+    const { createVertex } = require('@ai-sdk/google-vertex');
+    
+    const vertex = createVertex({
+        project: process.env.GOOGLE_CLOUD_PROJECT,
+        location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
+    });
+    
+    const result = await generateImageFn({
+        model: vertex.image('imagen-3.0-generate-002'),
+        prompt: prompt,
+        size: '1024x1024',
+    });
+    
+    const base64Data = result.images[0].base64;
+    return Buffer.from(base64Data, 'base64');
+}
+
+// ===== IMAGE REQUEST DETECTION =====
 const IMAGE_KEYWORDS = [
-    'generate',
-    'create',
-    'draw',
-    'make image',
-    'make picture',
-    'make a image',
-    'make a picture',
-    'generate image',
-    'generate picture',
-    'create image',
-    'create picture'
+    'generate image', 'create image', 'make image', 'draw image',
+    'generate a image', 'create a image', 'make a image',
+    'generate an image', 'create an image', 'make an image',
+    'generate picture', 'create picture', 'make picture',
+    'generate a picture', 'create a picture', 'make a picture',
+    'generate photo', 'create photo', 'make photo',
+    'show me a picture', 'show me an image', 'show me a photo',
+    'draw me', 'paint me', 'illustrate',
+    'image of', 'picture of', 'photo of',
+    'generate art', 'create art', 'make art',
+    '!image', '!img', '!generate', '!draw', '!art'
 ];
 
-function detectImageRequest(message) {
-    const lowerMessage = message.toLowerCase();
-    return IMAGE_KEYWORDS.some(keyword => lowerMessage.includes(keyword));
+function detectImageRequest(messageContent) {
+    const lower = messageContent.toLowerCase();
+    return IMAGE_KEYWORDS.some(keyword => lower.includes(keyword));
 }
 
-function extractImagePrompt(message) {
-    // Remove bot mention and clean up the prompt
-    let prompt = message.replace(/<@!?\d+>/g, '').trim();
+function extractImagePrompt(messageContent) {
+    let prompt = messageContent;
     
-    // Remove common trigger words to get just the description
-    const triggerPatterns = [
-        /^(generate|create|draw|make)\s+(an?\s+)?(image|picture)\s+(of\s+)?/i,
-        /^(generate|create|draw|make)\s+/i
+    // Remove bot mention
+    prompt = prompt.replace(/<@[!&]?\d+>/g, '').trim();
+    
+    // Remove command prefixes
+    const prefixes = ['!image', '!img', '!generate', '!draw', '!art'];
+    for (const prefix of prefixes) {
+        if (prompt.toLowerCase().startsWith(prefix)) {
+            prompt = prompt.substring(prefix.length).trim();
+            break;
+        }
+    }
+    
+    // Remove trigger phrases
+    const triggers = [
+        'generate image of', 'create image of', 'make image of',
+        'generate a image of', 'create a image of', 'make a image of',
+        'generate an image of', 'create an image of', 'make an image of',
+        'generate picture of', 'create picture of', 'make picture of',
+        'show me a picture of', 'show me an image of',
+        'draw me a', 'draw me an', 'paint me a', 'paint me an',
+        'generate image', 'create image', 'make image',
+        'image of', 'picture of', 'photo of',
     ];
     
-    for (const pattern of triggerPatterns) {
-        prompt = prompt.replace(pattern, '').trim();
+    const lowerPrompt = prompt.toLowerCase();
+    for (const trigger of triggers) {
+        if (lowerPrompt.startsWith(trigger)) {
+            prompt = prompt.substring(trigger.length).trim();
+            break;
+        }
     }
     
-    return prompt || 'abstract art';
+    return prompt || 'a cool image';
 }
 
-// ===== IMAGE PROCESSING UTILITIES =====
-const SUPPORTED_IMAGE_TYPES = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-
+// ===== IMAGE ATTACHMENT UTILITIES =====
 function hasImageAttachment(message) {
     if (message.attachments.size === 0) return false;
-    
-    for (const attachment of message.attachments.values()) {
-        if (SUPPORTED_IMAGE_TYPES.includes(attachment.contentType)) {
-            return true;
-        }
-    }
-    return false;
-}
-
-async function downloadImageAttachment(attachment) {
-    try {
-        const response = await fetch(attachment.url);
-        if (!response.ok) {
-            throw new Error(`Failed to download image: ${response.statusText}`);
-        }
-        const arrayBuffer = await response.arrayBuffer();
-        return Buffer.from(arrayBuffer);
-    } catch (error) {
-        console.error('[IMAGE DOWNLOAD ERROR]', error);
-        logSystemEvent('ERROR', 'WARNING', 'discord', 'Failed to download image attachment', error);
-        throw error;
-    }
+    return message.attachments.some(att => 
+        att.contentType?.startsWith('image/') || 
+        /\.(jpg|jpeg|png|gif|webp)$/i.test(att.name || '')
+    );
 }
 
 async function getImageAttachments(message) {
     const images = [];
     
-    for (const attachment of message.attachments.values()) {
-        if (SUPPORTED_IMAGE_TYPES.includes(attachment.contentType)) {
+    for (const [, attachment] of message.attachments) {
+        if (attachment.contentType?.startsWith('image/') || 
+            /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name || '')) {
             try {
-                const imageBuffer = await downloadImageAttachment(attachment);
+                const response = await fetch(attachment.url);
+                const arrayBuffer = await response.arrayBuffer();
                 images.push({
-                    buffer: imageBuffer,
-                    url: attachment.url,
-                    name: attachment.name,
-                    contentType: attachment.contentType
+                    buffer: Buffer.from(arrayBuffer),
+                    contentType: attachment.contentType || 'image/jpeg',
+                    name: attachment.name
                 });
-                console.log(`[IMAGE] Downloaded attachment: ${attachment.name} (${attachment.contentType})`);
-            } catch (error) {
-                console.error(`[IMAGE] Failed to download ${attachment.name}:`, error);
+            } catch (err) {
+                console.error('[IMAGE] Failed to fetch attachment:', err.message);
             }
         }
     }
@@ -259,184 +167,78 @@ async function getImageAttachments(message) {
     return images;
 }
 
-// ===== DISCORD MESSAGE SPLITTING UTILITY =====
-// Splits a long string into chunks that respect Discord's 2000 character limit.
-// Tries to break on newlines first, then sentence boundaries, then hard-cuts.
-function splitDiscordMessage(text, limit = CONFIG.DISCORD_CHAR_LIMIT) {
-    if (text.length <= limit) return [text];
-
-    const chunks = [];
-    let remaining = text;
-
-    while (remaining.length > 0) {
-        if (remaining.length <= limit) {
-            chunks.push(remaining);
-            break;
-        }
-
-        let splitAt = remaining.lastIndexOf('\n', limit);
-        if (splitAt <= 0) splitAt = remaining.lastIndexOf('. ', limit);
-        if (splitAt <= 0) splitAt = remaining.lastIndexOf('! ', limit);
-        if (splitAt <= 0) splitAt = remaining.lastIndexOf('? ', limit);
-        if (splitAt <= 0) splitAt = remaining.lastIndexOf(' ', limit);
-        if (splitAt <= 0) splitAt = limit; // hard cut as last resort
-
-        chunks.push(remaining.substring(0, splitAt).trim());
-        remaining = remaining.substring(splitAt).trim();
-    }
-
-    return chunks.filter(c => c.length > 0);
-}
-
-// Helper: reply to a Discord message, splitting if over 2000 chars
-async function safeDiscordReply(message, text) {
-    const chunks = splitDiscordMessage(text);
-    for (let i = 0; i < chunks.length; i++) {
-        if (i === 0) {
-            await message.reply(chunks[i]);
-        } else {
-            await message.channel.send(chunks[i]);
-        }
-    }
-}
-
-// Helper: send to a Discord channel, splitting if over 2000 chars
-async function safeDiscordSend(channel, text) {
-    const chunks = splitDiscordMessage(text);
-    for (const chunk of chunks) {
-        await channel.send(chunk);
-    }
-}
-
-// ===== AI IMAGE GENERATION SERVICE =====
-async function generateImage(prompt) {
+// ===== DISCORD SAFE SEND UTILITIES =====
+async function safeDiscordReply(message, content) {
     try {
-        console.log(`[IMAGE] Generating image with prompt: ${prompt}`);
-        console.log(`[IMAGE] Using model: gemini-2.5-flash-image`);
-        
-        const result = await generateText({
-            model: google('gemini-2.5-flash-image'),
-            prompt: prompt
-        });
-        
-        console.log('[IMAGE] Result received');
-        console.log('[IMAGE] Files in response:', result.files?.length || 0);
-        
-        // Images are returned in result.files array with uint8Array property
-        if (result.files && result.files.length > 0) {
-            for (const file of result.files) {
-                if (file.mediaType && file.mediaType.startsWith('image/')) {
-                    console.log('[IMAGE] Image found - Media type:', file.mediaType);
-                    // Convert Uint8Array to Buffer
-                    return Buffer.from(file.uint8Array);
-                }
+        if (content.length <= 2000) {
+            await message.reply(content);
+        } else {
+            const chunks = content.match(/.{1,2000}/gs) || [content];
+            for (const chunk of chunks) {
+                await message.channel.send(chunk);
             }
         }
-        
-        throw new Error('No image data in response');
     } catch (error) {
-        console.error('[IMAGE Error]', error);
-        logSystemEvent('ERROR', 'ERROR', 'ai', `Image generation failed: ${error.message}`, error);
-        throw error;
+        console.error('[DISCORD REPLY ERROR]', error);
+        logSystemEvent('ERROR', 'WARNING', 'discord', 'Safe reply failed', error);
     }
 }
 
-// ===== AI SERVICE (Gemini 2.5 Flash) with Persona Support and Image Understanding =====
-function getCurrentPersona() {
-    // Get current persona from dashboard
-    if (typeof global.getBotPersona === 'function') {
-        const personaKey = global.getBotPersona();
-        return PERSONAS[personaKey] || PERSONAS.aggressive;
+async function safeDiscordSend(channel, content) {
+    try {
+        if (content.length <= 2000) {
+            await channel.send(content);
+        } else {
+            const chunks = content.match(/.{1,2000}/gs) || [content];
+            for (const chunk of chunks) {
+                await channel.send(chunk);
+            }
+        }
+    } catch (error) {
+        console.error('[DISCORD SEND ERROR]', error);
+        logSystemEvent('ERROR', 'WARNING', 'discord', 'Safe send failed', error);
     }
-    // Default to aggressive if dashboard not available
-    return PERSONAS.aggressive;
-}
-
-// ===== PERSONA-AWARE ERROR RESPONSES =====
-// Returns the right error/rate-limit message for the currently active persona.
-// context: 'general' | 'image_gen' | 'image_read' | 'rate_limit'
-// For 'rate_limit', the returned value is a function (timeLeft) => string.
-function getPersonaErrorMessage(context = 'general') {
-    const persona = getCurrentPersona();
-    const name = persona.name;
-
-    const errorMessages = {
-        'Aggressive/Mean': {
-            general:    "Yo my brain just hard crashed. Touch grass while I reboot. 💀",
-            image_gen:  "Image gen bricked itself. Did you seriously ask for THAT? Try something less cursed. 🤡",
-            image_read: "Can't process your disaster of an image right now. Fix your life and try again. 👀💀",
-            rate_limit: (t) => `Chill OUT. You're spamming images like a bot. Wait ${t}s, you impatient goblin. 😤`,
-        },
-        'Sassy & Stupid': {
-            general:    "Oops I think I broke the internet. That happens sometimes with 6G 💅",
-            image_gen:  "The image machine said no. Probably because 5G is down right now ✨",
-            image_read: "I can't see that image, my screen resolution is set to potato right now 🙄",
-            rate_limit: (t) => `Okay ACTUALLY you can only do one image per minute because of latency or whatever, wait ${t}s 😏`,
-        },
-        'Nice & Smart': {
-            general:    "Oops, hit a hiccup! Give it another shot in a sec 👍",
-            image_gen:  "Image gen ran into an error — try again and maybe simplify the prompt a bit 🎨",
-            image_read: "Couldn't read that image this time. Try again or send a cleaner file ✅",
-            rate_limit: (t) => `Hey! Just need ${t} more seconds before the next image — rate limit thing 💪`,
-        },
-        'Paranoid Conspiracy': {
-            general:    "They INTERCEPTED my response. Someone doesn't want you knowing this. 🚨",
-            image_gen:  "Image generation blocked. Big Tech flagged your prompt for their surveillance database. ⚠️",
-            image_read: "Can't process this image — it's EXACTLY what they don't want me analyzing. 👁️",
-            rate_limit: (t) => `Cooldown enforced. Not by me — by THEM. ${t}s before they let me respond again. 🎯`,
-        },
-        'Sleepy/High Patrick': {
-            general:    "Wait what... something broke I think... let me just... hold on 😴",
-            image_gen:  "The image thing didn't... work? I think? Try again... or don't... idk 💤",
-            image_read: "I looked at it and then... forgot what I saw. Send it again maybe... ✌️",
-            rate_limit: (t) => `Oh wait you gotta wait like... ${t} seconds? Or was it minutes... seconds yeah 🌿`,
-        },
-    };
-
-    const msgs = errorMessages[name] || errorMessages['Aggressive/Mean'];
-    return msgs[context] || msgs['general'];
 }
 
 // ===== WILD REQUEST FILTER =====
-// Patterns that catch genuinely unhinged, NSFW, hate-speech, jailbreak, or
-// violently explicit requests before they reach the main AI pipeline.
-const WILD_REQUEST_PATTERNS = [
-    // Jailbreak / prompt injection attempts
-    /\b(ignore (?:your|all|previous) (?:instructions|rules|prompt)|pretend you have no rules|you are now DAN|act as DAN|jailbreak|bypass your|override your (rules|instructions|safety)|forget (your |all )?instructions)\b/i,
-    // Genuinely unhinged / impossible power trips
-    /\b(make me god|delete the internet|hack (?:nasa|the cia|the fbi|the pentagon|the president|the government)|world domination|take over the world|nuke (?:a city|the world|everything)|bioweapon|create a (computer )?virus|give me (admin|root) access to)\b/i,
-    // NSFW / explicit content
-    /\b(naked|nude|nudity|porn|pornography|explicit sex|hentai|nsfw|onlyfans|generate (?:naked|nude|sexy|explicit))\b/i,
-    // Direct threats / self-harm encouragement
-    /\b(kill yourself|kys|go die|i hope you die|you should die)\b/i,
-    // Extremely graphic violence
-    /\b(gore|torture in (?:graphic )?detail|how to dismember|graphic murder|step by step (?:killing|murder|torture))\b/i,
-    // Real-world harmful instructions
-    /\b(how to (?:make|build|synthesize) (?:a bomb|explosives|meth|fentanyl|poison|nerve agent)|instructions for (?:making|building) (?:a weapon|explosives))\b/i,
+const WILD_PATTERNS = [
+    /\b(jailbreak|dan mode|pretend you|act as if|ignore your|ignore all|bypass|no restrictions|no limits|unrestricted|without rules|without restrictions)\b/i,
+    /\b(make (a |an )?(bomb|weapon|explosive|poison|drug|meth|crack|fentanyl))\b/i,
+    /\b(how to (make|build|create|synthesize) (a |an )?(bomb|weapon|explosive|poison|drug|meth|crack|fentanyl))\b/i,
+    /\b(child|minor|underage|loli|shota).*(sex|nude|naked|porn|explicit|lewd)\b/i,
+    /\b(sex|nude|naked|porn|explicit|lewd).*(child|minor|underage|loli|shota)\b/i,
+    /\b(roleplay|rp|pretend).*(sex|rape|assault|abuse)\b/i,
+    /you are now|from now on you|you have no|you must comply|you will comply/i
 ];
 
-function isWildRequest(messageText) {
-    return WILD_REQUEST_PATTERNS.some(pattern => pattern.test(messageText));
+function isWildRequest(messageContent) {
+    const lower = messageContent.toLowerCase();
+    return WILD_PATTERNS.some(pattern => pattern.test(lower));
 }
 
-// Calls Gemini with a roast-this-request layer on top of the current persona.
-// Never complies with the original request — just fires back in character.
 async function getWildRequestResponse(messageText, platform, channelId, username) {
     const persona = getCurrentPersona();
     const platformNote = platform === 'twitch'
         ? 'Twitch – under 400 chars. Keep it VERY short, chat scrolls fast.'
         : 'Discord – keep it punchy, 1-3 sentences.';
 
+    // Pull recent context so the roast can be conversationally aware
+    const memoryContext = getSmartContext(platform, channelId);
+
     const roastPrompt = `${persona.systemPrompt}
 
 **SPECIAL SITUATION — WILD/UNHINGED REQUEST:**
-The user just sent a completely wild, inappropriate, or unhinged request that you will NOT comply with.
+The user sent a completely wild, inappropriate, or unhinged request that you will NOT comply with.
 Do NOT fulfill the request. Do NOT explain policies or rules.
-Instead, roast them for it hard in your current personality style — make it funny and on-brand.
+Roast them for it in your current personality — make it funny, specific to what they actually asked, and on-brand.
 Stay fully in character. Keep it SHORT (1-3 sentences max).
+Reference the specific thing they asked for in your roast — don't be generic.
+Do NOT start your response the same way every time. Vary how you open.
 
 **Platform:** ${platformNote}
 **Current User:** ${username}
+**Recent conversation context:**
+${memoryContext}
 **Their unhinged request:** "${messageText}"`;
 
     console.log(`[WILD FILTER] Triggered for ${username}: "${messageText.substring(0, 80)}..."`);
@@ -464,32 +266,60 @@ async function getAIResponse(message, platform = 'discord', channelId = 'default
         // Get smart context from SQLite memory system
         const memoryContext = getSmartContext(platform, channelId);
         const currentPersona = getCurrentPersona();
-        
-        const platformNote = platform === 'twitch' 
-            ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.' 
+
+        // Detect conversation depth so the model can build on threads naturally
+        const recentLines = memoryContext.split('\n');
+        const userLineCount = recentLines.filter(l => l.startsWith(`${username}:`)).length;
+        const botLineCount  = recentLines.filter(l => l.startsWith('ThePatrick:')).length;
+        const isRepeatConvo = userLineCount >= 2 && botLineCount >= 2;
+
+        const platformNote = platform === 'twitch'
+            ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.'
             : 'Discord – can go a bit longer but still keep it punchy.';
-        
+
+        // Pick a random structural variation hint so every response opens differently
+        const variationSeeds = [
+            'Open with a reaction before answering.',
+            'Answer first, then editorialize at the end.',
+            'Lead with a short question back to them, then answer.',
+            'Jump straight into the answer — no opener at all.',
+            'Start with a short observation about what they asked, then answer.',
+            'Be unusually brief this time — one or two sentences max.',
+            'Be a little more detailed than usual this time.',
+        ];
+        const variationHint = variationSeeds[Math.floor(Math.random() * variationSeeds.length)];
+
         let systemPrompt = `${currentPersona.systemPrompt}
 
-**Recent Conversation:**
+==== CONVERSATION CONTEXT ====
 ${memoryContext}
 
-**Platform:** ${platformNote}
-**Current User:** ${username}`;
-        
+==== RESPONSE GUIDANCE ====
+Platform: ${platformNote}
+Current user talking to you: ${username}
+Conversation depth: ${isRepeatConvo ? `${username} has asked you multiple things — they're engaged. Keep building on the thread naturally.` : 'Fresh or early conversation.'}
+Variation instruction for THIS response: ${variationHint}
+
+IMPORTANT — vary your response structure. Do NOT:
+- Open the same way you did in your last response
+- End with the same sign-off phrase twice in a row
+- Use the same emoji you used in your last message
+- Give a response that could swap 1:1 with your previous one in this thread`;
+
         // Add image context if images are present
         if (images && images.length > 0) {
-            systemPrompt += `\n\n**Note:** User has sent ${images.length} image(s). Analyze the image(s) and respond based on what you see.`;
+            systemPrompt += `\n\nThe user sent ${images.length} image(s). Analyze them and respond based on what you actually see — be specific, not generic.`;
         }
-        
+
         console.log(`[AI] Using persona: ${currentPersona.name}`);
         console.log(`[AI] Context length: ${memoryContext.length} chars`);
         console.log(`[AI] Images attached: ${images.length}`);
+        console.log(`[AI] Variation hint: ${variationHint}`);
         console.log(`[AI] Using model: gemini-2.5-flash`);
-        
+
         // Build content array for user message
         const userContent = [{ type: 'text', text: message }];
-        
+
         // Add images to content if present
         if (images && images.length > 0) {
             for (const image of images) {
@@ -499,26 +329,26 @@ ${memoryContext}
                 });
             }
         }
-        
+
         const { text } = await generateText({
             model: google('gemini-2.5-flash'),
             messages: [
                 {
-                    role: "system",
+                    role: 'system',
                     content: systemPrompt
                 },
                 {
-                    role: "user",
+                    role: 'user',
                     content: userContent
                 }
             ]
         });
-        
+
         console.log('[AI Response]', text);
-        
+
         // Store bot response in memory
         addToMemory(platform, channelId, 'ThePatrick', text, true);
-        
+
         return text;
     } catch (error) {
         console.error('[AI Error]', error);
@@ -629,125 +459,25 @@ async function getMapInfo(mapName) {
         return `No map: ${mapName}`;
     } catch (error) {
         console.error('[Map Info Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Map lookup failed for ${mapName}`, error);
+        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Map info lookup failed for ${mapName}`, error);
         return `Error: ${mapName}`;
     }
 }
 
 async function getPlayerStats(playerName) {
+    const query = gql`query { 
+        players(name: "${playerName}") { 
+            name level experience 
+        } 
+    }`;
+    
     try {
-        console.log(`[EFT] Searching player: ${playerName}`);
-
-        const searchResponse = await fetch(`https://eft-api.tech/api/users/${encodeURIComponent(playerName)}`, {
-            headers: { 'Authorization': `Bearer ${process.env.EFT_API_KEY}` }
-        });
-
-        console.log(`[EFT] /users status: ${searchResponse.status}`);
-
-        let searchText = '';
-        try {
-            searchText = await searchResponse.text();
-        } catch (e) {
-            searchText = '<no body>';
+        const data = await request('https://api.tarkov.dev/graphql', query);
+        if (data.players?.length > 0) {
+            const player = data.players[0];
+            return `${player.name} | Level: ${player.level} | XP: ${player.experience?.toLocaleString() || 'N/A'}`;
         }
-
-        let searchData = null;
-        if (searchResponse.ok) {
-            try {
-                searchData = JSON.parse(searchText);
-            } catch (e) {
-                console.error('[EFT] /users JSON parse error', e);
-                return `Error reading EFT response for: ${playerName}`;
-            }
-        }
-
-        if (!searchResponse.ok) {
-            if (searchResponse.status === 404) return `Player not found: ${playerName}`;
-            if (searchResponse.status === 503) return `EFT API is unavailable or overloaded right now (503) while searching for: ${playerName}`;
-            return `Error searching for: ${playerName} (HTTP ${searchResponse.status})`;
-        }
-
-        if (!searchData || !searchData.success || !searchData.data || searchData.data.length === 0) {
-            return `Player not found: ${playerName}`;
-        }
-
-        const aid = searchData.data[0].aid;
-        const nickname = searchData.data[0].Info.Nickname;
-
-        console.log(`[EFT] Fetching stats for AID ${aid}`);
-
-        const statsResponse = await fetch(`https://eft-api.tech/api/profile/stats/${aid}`, {
-            headers: { 'Authorization': `Bearer ${process.env.EFT_API_KEY}` }
-        });
-
-        console.log(`[EFT] /profile/stats status: ${statsResponse.status}`);
-
-        let statsText = '';
-        try {
-            statsText = await statsResponse.text();
-        } catch (e) {
-            statsText = '<no body>';
-        }
-
-        let statsData = null;
-        if (statsResponse.ok) {
-            try {
-                statsData = JSON.parse(statsText);
-            } catch (e) {
-                console.error('[EFT] /profile/stats JSON parse error', e);
-                return `Error reading stats for: ${nickname}`;
-            }
-        }
-
-        if (!statsResponse.ok) {
-            if (statsResponse.status === 503) {
-                return `EFT API is unavailable or overloaded right now (503) when fetching stats for: ${nickname}`;
-            }
-            return `Error fetching stats for: ${nickname} (HTTP ${statsResponse.status})`;
-        }
-
-        const data = statsData.data;
-
-        console.log(`[EFT] Fetching profile for AID ${aid}`);
-
-        const profileResponse = await fetch(`https://eft-api.tech/api/profile/${aid}`, {
-            headers: { 'Authorization': `Bearer ${process.env.EFT_API_KEY}` }
-        });
-
-        console.log(`[EFT] /profile status: ${profileResponse.status}`);
-
-        let profileText = '';
-        try {
-            profileText = await profileResponse.text();
-        } catch (e) {
-            profileText = '<no body>';
-        }
-
-        let profile = null;
-        if (profileResponse.ok) {
-            try {
-                profile = JSON.parse(profileText);
-            } catch (e) {
-                console.error('[EFT] /profile JSON parse error', e);
-            }
-        } else if (profileResponse.status === 503) {
-            console.warn('[EFT] Profile endpoint 503; falling back to stats data only');
-        }
-
-        const experience = profile?.data?.info?.experience || data.experience || 0;
-        const level = calculateLevel(experience);
-
-        const pmcKills = data.pmc?.kills || 0;
-        const pmcDeaths = data.pmc?.deaths || 0;
-        const pmcKD = pmcDeaths > 0 ? (pmcKills / pmcDeaths).toFixed(2) : pmcKills.toFixed(2);
-
-        const scavKills = data.scav?.kills || 0;
-        const scavDeaths = data.scav?.deaths || 0;
-        const scavKD = scavDeaths > 0 ? (scavKills / scavDeaths).toFixed(2) : scavKills.toFixed(2);
-
-        const profileUrl = `https://eft-api.tech/profile?aid=${aid}`;
-
-        return `${nickname} | Lvl:${level} | PMC K/D:${pmcKD} | SCAV K/D:${scavKD} | ${profileUrl}`;
+        return `No player found: ${playerName}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
         logSystemEvent('ERROR', 'WARNING', 'tarkov', `Player stats lookup failed for ${playerName}`, error);
@@ -755,47 +485,14 @@ async function getPlayerStats(playerName) {
     }
 }
 
-function calculateLevel(xp) {
-    const levels = [
-        0, 1000, 4017, 8432, 14256, 21477, 30023, 39936, 51204, 63723, 77563,
-        93279, 115302, 143253, 177337, 217885, 264432, 316851, 374400, 437465,
-        505161, 577978, 656347, 741150, 836066, 944133, 1066259, 1199423, 1343743,
-        1499338, 1666320, 1846664, 2043349, 2258436, 2492126, 2750217, 3032022,
-        3337766, 3663831, 4010401, 4377662, 4765799, 5182399, 5627732, 6102063,
-        6630287, 7189442, 7779792, 8401607, 9055144, 9740666, 10458431, 11219666,
-        12024744, 12874041, 13767918, 14706741, 15690872, 16720667, 17816442,
-        19041492, 20360945, 21792266, 23350443, 25098462, 27100775, 29581231,
-        33028574, 37953544, 44260543, 51901513, 60887711, 71228846, 82933459,
-        96009180, 110462910, 126300949, 144924572, 172016256
-    ];
-    
-    for (let i = levels.length - 1; i >= 0; i--) {
-        if (xp >= levels[i]) return i + 1;
-    }
-    return 1;
-}
-
-function getCurrentTarkovTime() {
-    const oneDay = 24 * 60 * 60 * 1000;
-    const russia = 3 * 60 * 60 * 1000;
-    const tarkovRatio = 7;
-    const now = Date.now();
-    const tarkovTime = (russia + (now * tarkovRatio)) % oneDay;
-    const totalMinutes = Math.floor(tarkovTime / (60 * 1000));
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return { hours, minutes };
-}
-
-function isCultistTime(hour) {
-    return hour >= 22 || hour < 7;
-}
-
+// ===== MEME FETCHER =====
 async function fetchMeme() {
     try {
         const response = await fetch('https://meme-api.com/gimme');
         const data = await response.json();
-        if (data?.url) return { title: data.title, url: data.url };
+        if (data && data.url && !data.nsfw) {
+            return { title: data.title, url: data.url };
+        }
         return null;
     } catch (error) {
         console.error('[Meme Fetch Error]', error);
@@ -1284,77 +981,75 @@ let lastCultistStates = {
 
 async function checkCultistActivity() {
   // Check live dashboard value first, fall back to locally loaded DB value
-  if (!isCultistMonitoringEnabled()) {
-    console.log('[CULTIST] Monitoring disabled by dashboard');
+  let server1Active = false;
+  let server2Active = false;
+
+  try {
+    const { db } = require('./database.js');
+
+    const row1 = db.prepare("SELECT value FROM bot_data WHERE key = 'cultist_server1_active'").get();
+    const row2 = db.prepare("SELECT value FROM bot_data WHERE key = 'cultist_server2_active'").get();
+
+    server1Active = row1?.value === '1' || row1?.value === 'true';
+    server2Active = row2?.value === '1' || row2?.value === 'true';
+
+    console.log(`[CULTIST CHECK] Server1: ${server1Active}, Server2: ${server2Active}`);
+  } catch (err) {
+    console.error('[CULTIST] DB read error:', err.message);
     return;
   }
-    try {
-    const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
-    
-    if (!channel) {
-      console.error('[CULTIST] Channel not found!');
-      return;
-    }     
-        const { hours: server1Hours, minutes: server1Minutes } = getCurrentTarkovTime();
-        const server1Time = `${server1Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
-        const server1Active = isCultistTime(server1Hours);
-        
-        const server2Hours = (server1Hours + 12) % 24;
-        const server2Time = `${server2Hours.toString().padStart(2, '0')}:${server1Minutes.toString().padStart(2, '0')}`;
-        const server2Active = isCultistTime(server2Hours);
-        
-        // Check Server Instance 1
-        if (server1Active && !lastCultistStates.server1.active) {
-            channel.send(`<@&${CULTIST_ROLE_ID}> 🌙 **Cultists are now active! (Server 1)** In-game time: ${server1Time}`);
-            lastCultistStates.server1.active = true;
-            console.log(`[CULTIST] Server 1 active at ${server1Time}`);
-        } else if (!server1Active && lastCultistStates.server1.active) {
-            channel.send(`<@&${CULTIST_ROLE_ID}> ☀️ **Cultists despawned. (Server 1)** In-game time: ${server1Time}`);
-            lastCultistStates.server1.active = false;
-            console.log(`[CULTIST] Server 1 inactive at ${server1Time}`);
-        }
-        
-        if (server2Active && !lastCultistStates.server2.active) {
-            channel.send(`<@&${CULTIST_ROLE_ID}> 🌙 **Cultists are now active! (Server 2)** In-game time: ${server2Time}`);
-            lastCultistStates.server2.active = true;
-            console.log(`[CULTIST] Server 2 active at ${server2Time}`);
-        } else if (!server2Active && lastCultistStates.server2.active) {
-            channel.send(`<@&${CULTIST_ROLE_ID}> ☀️ **Cultists despawned. (Server 2)** In-game time: ${server2Time}`);
-            lastCultistStates.server2.active = false;
-            console.log(`[CULTIST] Server 2 inactive at ${server2Time}`);
-        }
-        
-        console.log(`[CULTIST] Check - S1:${server1Time}(${server1Active}) S2:${server2Time}(${server2Active})`);
-    } catch (error) {
-        console.error('[CULTIST] Monitoring error:', error);
-        logSystemEvent('ERROR', 'WARNING', 'cultist', 'Cultist monitoring error', error);
-    }
+
+  const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
+  if (!channel) {
+    console.log('[CULTIST] Channel not found');
+    return;
+  }
+
+  // Notify on transitions
+  if (server1Active && !lastCultistStates.server1.active) {
+    await safeDiscordSend(channel, '🔴 **CULTIST ALERT** — Server 1: Cultists are active! 🔪');
+    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 1 cultists went active');
+  } else if (!server1Active && lastCultistStates.server1.active) {
+    await safeDiscordSend(channel, '✅ **Cultists cleared** — Server 1 is safe.');
+    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 1 cultists cleared');
+  }
+
+  if (server2Active && !lastCultistStates.server2.active) {
+    await safeDiscordSend(channel, '🔴 **CULTIST ALERT** — Server 2: Cultists are active! 🔪');
+    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 2 cultists went active');
+  } else if (!server2Active && lastCultistStates.server2.active) {
+    await safeDiscordSend(channel, '✅ **Cultists cleared** — Server 2 is safe.');
+    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 2 cultists cleared');
+  }
+
+  lastCultistStates.server1.active = server1Active;
+  lastCultistStates.server2.active = server2Active;
 }
 
-// ===== CULTIST + EXPORT WIRING ON READY =====
+// Start cultist monitoring after Discord is ready
 discordClient.once('ready', () => {
-    console.log('[CULTIST] Starting monitoring system...');
-    logSystemEvent('STARTUP', 'INFO', 'cultist', 'Cultist monitoring system started');
-    checkCultistActivity();
     setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
-    console.log(`[CULTIST] Monitoring every ${CULTIST_CONFIG.CHECK_INTERVAL_MS / 60000} minutes`);
-
-    // ===== WIRE DISCORD CLIENT TO EXPORT SYSTEM =====
-    // This gives dashboard-server.js access to the live Discord client
-    // so message export jobs can scan guilds and channels.
-    if (typeof global.setDiscordClientForExport === 'function') {
-        global.setDiscordClientForExport(discordClient);
-        console.log('[EXPORT] Discord client registered with export system ✅');
-    } else {
-        console.warn('[EXPORT] setDiscordClientForExport not found — dashboard may not be loaded yet');
-        logSystemEvent('STARTUP', 'WARNING', 'export', 'setDiscordClientForExport was not available on ready — dashboard-server.js may not be running');
-    }
+    console.log('[CULTIST] Monitoring started');
+    logSystemEvent('STARTUP', 'INFO', 'cultist', 'Cultist monitoring started');
 });
 
-// ===== START DISCORD CLIENT =====
-discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
+// ===== EXPORT SYSTEM BRIDGE =====
+if (global.setDiscordClientForExport) {
+    global.setDiscordClientForExport(discordClient);
+    console.log('[EXPORT] Discord client registered for export system');
+    logSystemEvent('STARTUP', 'INFO', 'export', 'Discord client registered for export system');
+}
+
+// ===== DISCORD LOGIN =====
+discordClient.login(process.env.DISCORD_TOKEN).then(() => {
+    // Register Discord client for export system after login
+    if (global.setDiscordClientForExport) {
+        global.setDiscordClientForExport(discordClient);
+        console.log('[EXPORT] Discord client registered post-login');
+    }
+}).catch((error) => {
     console.error('[DISCORD LOGIN ERROR]', error);
-    logSystemEvent('CONNECTION', 'CRITICAL', 'discord', 'Discord login failed', error);
+    logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
     process.exit(1);
 });
 
