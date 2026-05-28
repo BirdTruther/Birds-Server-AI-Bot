@@ -170,6 +170,68 @@ function extractImagePrompt(messageContent) {
     return prompt || 'a cool image';
 }
 
+// ===== IMAGE PROMPT SANITIZER =====
+// Rewrites vague, self-referential, or identity-based prompts into concrete
+// visual descriptions that the image model will actually generate.
+//
+// The Gemini image model refuses prompts like "what do you look like" or
+// "a picture of yourself" because it has no physical form and responds with
+// a text explanation instead of an image. We catch those here and substitute
+// a vivid, on-brand visual prompt so the request always produces something cool.
+//
+// Also rewrites other known trouble patterns:
+//   - Extremely short/vague prompts (1-2 words) → adds artistic context
+//   - "nothing" / "anything" / empty → generates a random cool scene
+const SELF_REFERENTIAL_PATTERNS = [
+    /\b(yourself|your self|your face|your body|your form|your appearance|your looks?)\b/i,
+    /\bwhat (do|does|did) you look like\b/i,
+    /\bshow (me )?(what )?you (look like|are|appear)\b/i,
+    /\b(picture|image|photo|drawing) of (you|yourself|the bot|this bot|an ai|the ai)\b/i,
+    /\byou (as|in) (a |an )?(picture|image|photo)\b/i,
+    /\bgenerate (you|yourself|the bot)\b/i,
+    /\bdraw (you|yourself|the bot)\b/i,
+    /\bwhat (are|do) you (look|appear)\b/i,
+];
+
+// Fallback prompts for self-referential requests — bot-themed, visually strong
+const BOT_IMAGE_FALLBACKS = [
+    'a sleek futuristic AI robot with glowing blue eyes standing in a neon-lit server room, cinematic lighting, highly detailed digital art',
+    'an anthropomorphic robot DJ at a massive concert, laser lights, crowd going wild, photorealistic render',
+    'a powerful chrome robot sitting at a gaming PC setup with RGB lighting, playing video games, dramatic studio lighting',
+    'a friendly metallic robot with a bird on its shoulder standing in a lush forest at golden hour, detailed concept art',
+    'an AI brain made of glowing circuits and birds flying through it, abstract digital art, vibrant colors',
+];
+
+function sanitizeImagePrompt(rawPrompt) {
+    const lower = rawPrompt.toLowerCase().trim();
+
+    // Self-referential / identity prompts → bot-themed visual
+    if (SELF_REFERENTIAL_PATTERNS.some(p => p.test(lower))) {
+        const fallback = BOT_IMAGE_FALLBACKS[Math.floor(Math.random() * BOT_IMAGE_FALLBACKS.length)];
+        console.log(`[IMAGE] Self-referential prompt detected. Rewriting:\n  Original: "${rawPrompt}"\n  Rewritten: "${fallback}"`);
+        logSystemEvent('INFO', 'INFO', 'image', `Prompt rewritten (self-ref): "${rawPrompt.substring(0, 80)}" → "${fallback.substring(0, 80)}"`);
+        return fallback;
+    }
+
+    // Extremely vague / empty prompts → add artistic framing
+    if (lower.length < 5 || /^(anything|something|nothing|idk|idc|whatever|random|cool|nice|good)$/i.test(lower)) {
+        const vagueFallbacks = [
+            'an epic fantasy landscape with dragons and castles at sunset, detailed digital painting',
+            'a photorealistic tiger in a misty jungle at dawn, award-winning wildlife photography',
+            'a cozy cabin in the mountains during a snowstorm, warm light through the windows, cinematic',
+            'an astronaut floating in space above a colorful nebula, ultra detailed, dramatic lighting',
+            'a busy cyberpunk street market at night with neon signs and rain reflections, ultra detailed',
+        ];
+        const fallback = vagueFallbacks[Math.floor(Math.random() * vagueFallbacks.length)];
+        console.log(`[IMAGE] Vague prompt detected. Rewriting:\n  Original: "${rawPrompt}"\n  Rewritten: "${fallback}"`);
+        logSystemEvent('INFO', 'INFO', 'image', `Prompt rewritten (vague): "${rawPrompt}" → "${fallback.substring(0, 80)}"`);
+        return fallback;
+    }
+
+    // Prompt is fine — pass through unchanged
+    return rawPrompt;
+}
+
 // ===== IMAGE ATTACHMENT UTILITIES =====
 function hasImageAttachment(message) {
     if (message.attachments.size === 0) return false;
@@ -788,7 +850,10 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 await message.channel.sendTyping();
                 console.log('[IMAGE] Processing image request from Discord');
                 
-                const prompt = extractImagePrompt(message.content);
+                const rawPrompt = extractImagePrompt(message.content);
+                // Sanitize before sending to Gemini — rewrites self-referential/vague prompts
+                const prompt = sanitizeImagePrompt(rawPrompt);
+
                 const { buffer: imageData, mimeType } = await generateImage(prompt);
                 
                 const timestamp = Date.now();
