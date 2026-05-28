@@ -34,6 +34,12 @@ const CONFIG = {
     // Retry config for image generation API
     IMAGE_RETRY_MAX: 3,           // max total attempts
     IMAGE_RETRY_BASE_MS: 2000,    // initial wait: 2s, then 4s, then 8s
+    // IMPORTANT: This is the only Gemini model that supports native image OUTPUT.
+    // gemini-2.0-flash and gemini-2.5-flash are text+vision models — they can READ
+    // images but cannot GENERATE them. Using the wrong model name causes the API to
+    // either return a 503 (misleading "high demand") or fall back to text-only responses
+    // (returning a text explanation instead of an image part).
+    IMAGE_MODEL: 'gemini-2.0-flash-preview-image-generation',
 };
 
 // ===== RATE LIMITING FOR IMAGE GENERATION =====
@@ -61,9 +67,17 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses Gemini Flash native image generation via generateContent.
+// Uses Gemini's dedicated image generation model (gemini-2.0-flash-preview-image-generation)
+// via the generateContent REST API.
+//
+// IMPORTANT MODEL NOTES:
+//   - gemini-2.0-flash-preview-image-generation  ← CORRECT (generates image output)
+//   - gemini-2.0-flash                            ← WRONG for this (text+vision only)
+//   - gemini-2.5-flash                            ← WRONG for this (text+vision only)
+//   - gemini-3.1-flash-image-preview              ← DOES NOT EXIST (was causing 503s)
+//
 // Includes exponential backoff retry for transient server errors (503, 429, 500).
-// Non-retryable errors (400, 401, 403) fail immediately — no point retrying those.
+// Non-retryable errors (400, 401, 403) fail immediately.
 //
 // Retry schedule (CONFIG.IMAGE_RETRY_BASE_MS = 2000ms):
 //   Attempt 1: immediate
@@ -82,7 +96,7 @@ async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${CONFIG.IMAGE_MODEL}:generateContent?key=${apiKey}`;
 
     const body = {
         contents: [{
@@ -142,12 +156,14 @@ async function generateImage(prompt) {
         const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
 
         if (!imagePart) {
-            // Model returned text instead of an image (refusal, clarification, etc.)
+            // Model returned text instead of an image.
+            // This should only happen if the prompt was sanitized incorrectly or the model
+            // safety filters blocked it. Log it clearly and do NOT retry — it won't change.
             const textPart = parts.find(p => p.text);
             const modelText = textPart?.text || '(no text returned)';
             console.warn('[IMAGE] Model did not return an image. Model said:', modelText);
-            logSystemEvent('WARNING', 'WARNING', 'image', `Image gen returned no image. Model response: ${modelText.substring(0, 200)}`);
-            // Not a transient error — the model made a decision, don't retry
+            logSystemEvent('WARNING', 'WARNING', 'image', `Image gen returned no image part. Model said: ${modelText.substring(0, 200)}`);
+            // Not a transient error — the model made a content decision, retrying won't help
             throw new Error(`No image data returned from Gemini. Model said: "${modelText.substring(0, 150)}"`);
         }
 
@@ -907,8 +923,16 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 console.log('[IMAGE] Processing image request from Discord');
                 
                 const rawPrompt = extractImagePrompt(message.content);
-                // Sanitize before sending to Gemini — rewrites self-referential/vague prompts
-                const prompt = sanitizeImagePrompt(rawPrompt);
+                // Sanitize before sending to Gemini — rewrites self-referential/vague prompts.
+                // sanitizeImagePrompt() also runs against the full message.content as a second
+                // pass so that edge cases like "what do you look like" (which extractImagePrompt
+                // might not strip completely) are always caught before hitting the API.
+                const extractedPrompt = sanitizeImagePrompt(rawPrompt);
+                // Final safety pass on the full message content as well, in case extraction
+                // left self-referential language intact
+                const prompt = SELF_REFERENTIAL_PATTERNS.some(p => p.test(message.content.toLowerCase()))
+                    ? sanitizeImagePrompt(message.content)
+                    : extractedPrompt;
 
                 // generateImage() has built-in retry with exponential backoff.
                 // On a 503, it will silently retry up to IMAGE_RETRY_MAX times
