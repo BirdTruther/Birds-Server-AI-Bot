@@ -58,20 +58,23 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses the Gemini REST API directly with your existing GOOGLE_GENERATIVE_AI_API_KEY.
-// No Vertex AI, no GCP project, no extra .env variables needed.
+// Uses Gemini 2.0 Flash native image generation via generateContent.
+// This works with your existing GOOGLE_GENERATIVE_AI_API_KEY — no Vertex AI,
+// no GCP project, no extra dependencies needed.
+// The old imagen-3.0-generate-002:predict endpoint only works on Vertex AI,
+// NOT the standard Gemini Developer API key. This approach does.
 async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
 
-    // imagen-3.0-generate-002 is the correct model name for the v1beta Gemini REST API
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`;
 
     const body = {
-        instances: [{ prompt }],
-        parameters: {
-            sampleCount: 1,
-            aspectRatio: '1:1'
+        contents: [{
+            parts: [{ text: prompt }]
+        }],
+        generationConfig: {
+            responseModalities: ['TEXT', 'IMAGE']
         }
     };
 
@@ -83,14 +86,23 @@ async function generateImage(prompt) {
 
     if (!response.ok) {
         const errText = await response.text();
-        throw new Error(`Imagen API error ${response.status}: ${errText}`);
+        throw new Error(`Image generation API error ${response.status}: ${errText}`);
     }
 
     const data = await response.json();
-    const base64Data = data.predictions?.[0]?.bytesBase64Encoded;
-    if (!base64Data) throw new Error('No image data returned from Imagen API');
 
-    return Buffer.from(base64Data, 'base64');
+    // Response parts may contain text and/or image — find the image part
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+
+    if (!imagePart) {
+        throw new Error('No image data returned from Gemini image generation');
+    }
+
+    return {
+        buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
+        mimeType: imagePart.inlineData.mimeType
+    };
 }
 
 // ===== IMAGE REQUEST DETECTION =====
@@ -770,10 +782,12 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 console.log('[IMAGE] Processing image request from Discord');
                 
                 const prompt = extractImagePrompt(message.content);
-                const imageData = await generateImage(prompt);
+                const { buffer: imageData, mimeType } = await generateImage(prompt);
                 
                 const timestamp = Date.now();
-                const filename = `generated_${timestamp}.png`;
+                // Derive extension from mimeType (e.g. image/png -> png, image/jpeg -> jpg)
+                const ext = mimeType === 'image/jpeg' ? 'jpg' : (mimeType.split('/')[1] || 'png');
+                const filename = `generated_${timestamp}.${ext}`;
                 const filepath = path.join(os.tmpdir(), filename);
                 
                 console.log('[IMAGE] Saving to temp file:', filepath);
