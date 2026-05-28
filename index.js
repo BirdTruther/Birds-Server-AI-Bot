@@ -58,7 +58,7 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses Gemini 2.0 Flash native image generation via generateContent.
+// Uses Gemini 2.5 Flash native image generation via generateContent.
 // This works with your existing GOOGLE_GENERATIVE_AI_API_KEY — no Vertex AI,
 // no GCP project, no extra dependencies needed.
 // The old imagen-3.0-generate-002:predict endpoint only works on Vertex AI,
@@ -67,7 +67,7 @@ async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-preview-image-generation:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
 
     const body = {
         contents: [{
