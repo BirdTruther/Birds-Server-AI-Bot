@@ -30,7 +30,10 @@ const CONFIG = {
     MAIN_TRADERS: ['Prapor', 'Therapist', 'Fence', 'Skier', 'Peacekeeper', 'Mechanic', 'Ragman', 'Jaeger'],
     DUNGEON_AUTO_JOIN_DELAY: 3000,
     IMAGE_RATE_LIMIT_MINUTES: 5,
-    IMAGE_RATE_LIMIT_MAX: 3
+    IMAGE_RATE_LIMIT_MAX: 3,
+    // Retry config for image generation API
+    IMAGE_RETRY_MAX: 3,           // max total attempts
+    IMAGE_RETRY_BASE_MS: 2000,    // initial wait: 2s, then 4s, then 8s
 };
 
 // ===== RATE LIMITING FOR IMAGE GENERATION =====
@@ -58,13 +61,23 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses Gemini 3.1 Flash native image generation via generateContent.
-// Model: gemini-3.1-flash-image-preview — current recommended image gen model
-// as of May 2026. Works with the standard GOOGLE_GENERATIVE_AI_API_KEY.
+// Uses Gemini Flash native image generation via generateContent.
+// Includes exponential backoff retry for transient server errors (503, 429, 500).
+// Non-retryable errors (400, 401, 403) fail immediately — no point retrying those.
 //
-// NOTE: The model sometimes returns only a text part (safety refusal, clarifying
-// question, etc.) instead of an image. We now log that text so you can see WHY
-// it declined, rather than just getting a generic "No image data" error.
+// Retry schedule (CONFIG.IMAGE_RETRY_BASE_MS = 2000ms):
+//   Attempt 1: immediate
+//   Attempt 2: wait 2s
+//   Attempt 3: wait 4s
+//   → throws after all attempts exhausted
+
+// HTTP status codes that are worth retrying (transient server-side issues)
+const RETRYABLE_STATUS_CODES = new Set([429, 500, 502, 503, 504]);
+
+async function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
@@ -80,36 +93,79 @@ async function generateImage(prompt) {
         }
     };
 
-    const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
+    let lastError = null;
 
-    if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`Image generation API error ${response.status}: ${errText}`);
+    for (let attempt = 1; attempt <= CONFIG.IMAGE_RETRY_MAX; attempt++) {
+        // Exponential backoff before each retry (not before the first attempt)
+        if (attempt > 1) {
+            const waitMs = CONFIG.IMAGE_RETRY_BASE_MS * Math.pow(2, attempt - 2); // 2s, 4s, 8s...
+            console.log(`[IMAGE] Retry attempt ${attempt}/${CONFIG.IMAGE_RETRY_MAX} after ${waitMs}ms wait...`);
+            logSystemEvent('INFO', 'INFO', 'image', `Image gen retry ${attempt}/${CONFIG.IMAGE_RETRY_MAX} (waiting ${waitMs}ms) for prompt: "${prompt.substring(0, 60)}"`);
+            await sleep(waitMs);
+        }
+
+        let response;
+        try {
+            response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
+        } catch (networkErr) {
+            // Network-level failure (DNS, connection refused, etc.) — always retry
+            lastError = new Error(`Network error on attempt ${attempt}: ${networkErr.message}`);
+            console.warn(`[IMAGE] Network error on attempt ${attempt}:`, networkErr.message);
+            logSystemEvent('WARNING', 'WARNING', 'image', `Image gen network error attempt ${attempt}: ${networkErr.message}`);
+            continue;
+        }
+
+        if (!response.ok) {
+            const errText = await response.text();
+            lastError = new Error(`Image generation API error ${response.status}: ${errText}`);
+
+            if (RETRYABLE_STATUS_CODES.has(response.status)) {
+                // Transient error — log and retry
+                console.warn(`[IMAGE] Retryable error ${response.status} on attempt ${attempt}/${CONFIG.IMAGE_RETRY_MAX}`);
+                logSystemEvent('WARNING', 'WARNING', 'image', `Image gen HTTP ${response.status} on attempt ${attempt}/${CONFIG.IMAGE_RETRY_MAX}: ${errText.substring(0, 120)}`);
+                continue;
+            } else {
+                // Non-retryable (400 bad request, 401 auth, 403 forbidden) — fail immediately
+                console.error(`[IMAGE] Non-retryable error ${response.status} — aborting`);
+                logSystemEvent('ERROR', 'ERROR', 'image', `Image gen non-retryable HTTP ${response.status}: ${errText.substring(0, 120)}`);
+                throw lastError;
+            }
+        }
+
+        // --- Success: parse the response ---
+        const data = await response.json();
+        const parts = data.candidates?.[0]?.content?.parts || [];
+        const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
+
+        if (!imagePart) {
+            // Model returned text instead of an image (refusal, clarification, etc.)
+            const textPart = parts.find(p => p.text);
+            const modelText = textPart?.text || '(no text returned)';
+            console.warn('[IMAGE] Model did not return an image. Model said:', modelText);
+            logSystemEvent('WARNING', 'WARNING', 'image', `Image gen returned no image. Model response: ${modelText.substring(0, 200)}`);
+            // Not a transient error — the model made a decision, don't retry
+            throw new Error(`No image data returned from Gemini. Model said: "${modelText.substring(0, 150)}"`);
+        }
+
+        if (attempt > 1) {
+            console.log(`[IMAGE] Success on attempt ${attempt} after retries.`);
+            logSystemEvent('INFO', 'INFO', 'image', `Image gen succeeded on attempt ${attempt} after retries.`);
+        }
+
+        return {
+            buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
+            mimeType: imagePart.inlineData.mimeType
+        };
     }
 
-    const data = await response.json();
-
-    // Response parts may contain text and/or image — find the image part
-    const parts = data.candidates?.[0]?.content?.parts || [];
-    const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
-
-    if (!imagePart) {
-        // Log any text the model returned — this tells us WHY it didn't generate
-        const textPart = parts.find(p => p.text);
-        const modelText = textPart?.text || '(no text returned)';
-        console.warn('[IMAGE] Model did not return an image. Model said:', modelText);
-        logSystemEvent('WARNING', 'WARNING', 'image', `Image gen returned no image. Model response: ${modelText.substring(0, 200)}`);
-        throw new Error(`No image data returned from Gemini. Model said: "${modelText.substring(0, 150)}"`);
-    }
-
-    return {
-        buffer: Buffer.from(imagePart.inlineData.data, 'base64'),
-        mimeType: imagePart.inlineData.mimeType
-    };
+    // All attempts exhausted
+    console.error(`[IMAGE] All ${CONFIG.IMAGE_RETRY_MAX} attempts failed. Last error:`, lastError?.message);
+    logSystemEvent('ERROR', 'ERROR', 'image', `Image gen failed after ${CONFIG.IMAGE_RETRY_MAX} attempts: ${lastError?.message}`);
+    throw lastError || new Error(`Image generation failed after ${CONFIG.IMAGE_RETRY_MAX} attempts`);
 }
 
 // ===== IMAGE REQUEST DETECTION =====
@@ -854,7 +910,19 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 // Sanitize before sending to Gemini — rewrites self-referential/vague prompts
                 const prompt = sanitizeImagePrompt(rawPrompt);
 
-                const { buffer: imageData, mimeType } = await generateImage(prompt);
+                // generateImage() has built-in retry with exponential backoff.
+                // On a 503, it will silently retry up to IMAGE_RETRY_MAX times
+                // before throwing. Keep typing indicator alive during retries.
+                const typingInterval = setInterval(() => {
+                    message.channel.sendTyping().catch(() => {});
+                }, 8000);
+
+                let imageData, mimeType;
+                try {
+                    ({ buffer: imageData, mimeType } = await generateImage(prompt));
+                } finally {
+                    clearInterval(typingInterval);
+                }
                 
                 const timestamp = Date.now();
                 // Derive extension from mimeType (e.g. image/png -> png, image/jpeg -> jpg)
