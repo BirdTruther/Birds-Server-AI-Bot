@@ -64,7 +64,8 @@ async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
+    // imagen-3.0-generate-002 is the correct model name for the v1beta Gemini REST API
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${apiKey}`;
 
     const body = {
         instances: [{ prompt }],
