@@ -34,12 +34,14 @@ const CONFIG = {
     // Retry config for image generation API
     IMAGE_RETRY_MAX: 3,           // max total attempts
     IMAGE_RETRY_BASE_MS: 2000,    // initial wait: 2s, then 4s, then 8s
-    // IMPORTANT: This is the only Gemini model that supports native image OUTPUT.
-    // gemini-2.0-flash and gemini-2.5-flash are text+vision models — they can READ
-    // images but cannot GENERATE them. Using the wrong model name causes the API to
-    // either return a 503 (misleading "high demand") or fall back to text-only responses
-    // (returning a text explanation instead of an image part).
-    IMAGE_MODEL: 'gemini-2.0-flash-preview-image-generation',
+    // IMPORTANT: Model reference for native image OUTPUT via Gemini API.
+    // gemini-2.5-flash / gemini-2.0-flash are text+vision models — they can READ
+    // images but cannot GENERATE them.
+    //
+    // gemini-2.0-flash-preview-image-generation — RETIRED (404 as of May 2026)
+    // gemini-3.1-flash-image-preview             — CORRECT (Google "Nano Banana 2", current)
+    // gemini-2.5-flash-image                     — CORRECT (Google "Nano Banana", also valid)
+    IMAGE_MODEL: 'gemini-3.1-flash-image-preview',
 };
 
 // ===== RATE LIMITING FOR IMAGE GENERATION =====
@@ -67,17 +69,18 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses Gemini's dedicated image generation model (gemini-2.0-flash-preview-image-generation)
-// via the generateContent REST API.
+// Uses Gemini's dedicated image generation model (gemini-3.1-flash-image-preview)
+// via the generateContent REST API (v1beta endpoint).
 //
-// IMPORTANT MODEL NOTES:
-//   - gemini-2.0-flash-preview-image-generation  ← CORRECT (generates image output)
-//   - gemini-2.0-flash                            ← WRONG for this (text+vision only)
-//   - gemini-2.5-flash                            ← WRONG for this (text+vision only)
-//   - gemini-3.1-flash-image-preview              ← DOES NOT EXIST (was causing 503s)
+// IMPORTANT MODEL NOTES (as of May 2026):
+//   - gemini-3.1-flash-image-preview   ← CORRECT (Google "Nano Banana 2", generates image output)
+//   - gemini-2.5-flash-image           ← CORRECT (Google "Nano Banana", also generates images)
+//   - gemini-2.0-flash-preview-image-generation ← RETIRED / 404 — do not use
+//   - gemini-2.5-flash                 ← WRONG for this (text+vision only, cannot generate images)
+//   - gemini-2.0-flash                 ← WRONG for this (text+vision only, cannot generate images)
 //
 // Includes exponential backoff retry for transient server errors (503, 429, 500).
-// Non-retryable errors (400, 401, 403) fail immediately.
+// Non-retryable errors (400, 401, 403, 404) fail immediately.
 //
 // Retry schedule (CONFIG.IMAGE_RETRY_BASE_MS = 2000ms):
 //   Attempt 1: immediate
@@ -143,7 +146,7 @@ async function generateImage(prompt) {
                 logSystemEvent('WARNING', 'WARNING', 'image', `Image gen HTTP ${response.status} on attempt ${attempt}/${CONFIG.IMAGE_RETRY_MAX}: ${errText.substring(0, 120)}`);
                 continue;
             } else {
-                // Non-retryable (400 bad request, 401 auth, 403 forbidden) — fail immediately
+                // Non-retryable (400 bad request, 401 auth, 403 forbidden, 404 not found) — fail immediately
                 console.error(`[IMAGE] Non-retryable error ${response.status} — aborting`);
                 logSystemEvent('ERROR', 'ERROR', 'image', `Image gen non-retryable HTTP ${response.status}: ${errText.substring(0, 120)}`);
                 throw lastError;
