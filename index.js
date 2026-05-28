@@ -1,5 +1,5 @@
 // BIRDS-SERVER-AI-BOT
-// Discord + Twitch Multi-Platform Bot with AI &amp; Tarkov Integration
+// Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
 
 // ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
@@ -58,17 +58,12 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
+// Uses the existing Gemini API key via @ai-sdk/google — no GCP project needed.
 async function generateImage(prompt) {
     const { experimental_generateImage: generateImageFn } = require('ai');
-    const { createVertex } = require('@ai-sdk/google-vertex');
-    
-    const vertex = createVertex({
-        project: process.env.GOOGLE_CLOUD_PROJECT,
-        location: process.env.GOOGLE_CLOUD_LOCATION || 'us-central1',
-    });
     
     const result = await generateImageFn({
-        model: vertex.image('imagen-3.0-generate-002'),
+        model: google.image('imagen-3.0-generate-002'),
         prompt: prompt,
         size: '1024x1024',
     });
@@ -222,7 +217,6 @@ async function getWildRequestResponse(messageText, platform, channelId, username
         ? 'Twitch – under 400 chars. Keep it VERY short, chat scrolls fast.'
         : 'Discord – keep it punchy, 1-3 sentences.';
 
-    // Pull recent context so the roast can be conversationally aware
     const memoryContext = getSmartContext(platform, channelId);
 
     const roastPrompt = `${persona.systemPrompt}
@@ -263,11 +257,9 @@ ${memoryContext}
 
 async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = []) {
     try {
-        // Get smart context from SQLite memory system
         const memoryContext = getSmartContext(platform, channelId);
         const currentPersona = getCurrentPersona();
 
-        // Detect conversation depth so the model can build on threads naturally
         const recentLines = memoryContext.split('\n');
         const userLineCount = recentLines.filter(l => l.startsWith(`${username}:`)).length;
         const botLineCount  = recentLines.filter(l => l.startsWith('ThePatrick:')).length;
@@ -277,7 +269,6 @@ async function getAIResponse(message, platform = 'discord', channelId = 'default
             ? 'Twitch – under 400 chars. Short AF – chat scrolls fast.'
             : 'Discord – can go a bit longer but still keep it punchy.';
 
-        // Pick a random structural variation hint so every response opens differently
         const variationSeeds = [
             'Open with a reaction before answering.',
             'Answer first, then editorialize at the end.',
@@ -306,7 +297,6 @@ IMPORTANT — vary your response structure. Do NOT:
 - Use the same emoji you used in your last message
 - Give a response that could swap 1:1 with your previous one in this thread`;
 
-        // Add image context if images are present
         if (images && images.length > 0) {
             systemPrompt += `\n\nThe user sent ${images.length} image(s). Analyze them and respond based on what you actually see — be specific, not generic.`;
         }
@@ -317,10 +307,8 @@ IMPORTANT — vary your response structure. Do NOT:
         console.log(`[AI] Variation hint: ${variationHint}`);
         console.log(`[AI] Using model: gemini-2.5-flash`);
 
-        // Build content array for user message
         const userContent = [{ type: 'text', text: message }];
 
-        // Add images to content if present
         if (images && images.length > 0) {
             for (const image of images) {
                 userContent.push({
@@ -346,7 +334,6 @@ IMPORTANT — vary your response structure. Do NOT:
 
         console.log('[AI Response]', text);
 
-        // Store bot response in memory
         addToMemory(platform, channelId, 'ThePatrick', text, true);
 
         return text;
@@ -560,7 +547,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     if (self) return;
     
     console.log(`[TWITCH] ${tags.username}: ${message}`);
-    // Store in memory with channel as channelId
     addToMemory('twitch', channel, tags.username, message);
     
     const lowerMessage = message.toLowerCase();
@@ -638,7 +624,6 @@ twitchClient.on('message', async (channel, tags, message, self) => {
     
     if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
         lowerMessage.startsWith('!patrick')) {
-        // Wild request filter applies to Twitch too
         if (isWildRequest(message)) {
             const response = await getWildRequestResponse(message, 'twitch', channel, tags.username);
             await sendTwitchChunked(channel, response);
@@ -685,7 +670,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     
     console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
-    // Store in memory with channel ID
     addToMemory('discord', message.channelId, message.author.username, message.content);
     
     const lowerContent = message.content.toLowerCase();
@@ -742,10 +726,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
     
-    // Handle @mentions - check for image generation keywords or image understanding
     if (message.content.includes(`<@${discordClient.user.id}>`)) {
 
-        // Wild request filter — checked before anything else
         if (isWildRequest(message.content)) {
             const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
             await safeDiscordReply(message, response);
@@ -753,9 +735,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
             return;
         }
 
-        // Check if this is an image generation request
         if (detectImageRequest(message.content)) {
-            // Check rate limit
             const rateLimit = checkImageRateLimit(message.author.id);
             if (!rateLimit.allowed) {
                 const rateLimitMsg = getPersonaErrorMessage('rate_limit')(rateLimit.timeLeft);
@@ -764,7 +744,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 return;
             }
             
-            // Generate image
             try {
                 await message.channel.sendTyping();
                 console.log('[IMAGE] Processing image request from Discord');
@@ -772,23 +751,19 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 const prompt = extractImagePrompt(message.content);
                 const imageData = await generateImage(prompt);
                 
-                // Use system temp directory for file storage
                 const timestamp = Date.now();
                 const filename = `generated_${timestamp}.png`;
                 const filepath = path.join(os.tmpdir(), filename);
                 
                 console.log('[IMAGE] Saving to temp file:', filepath);
                 
-                // Write Buffer directly to file
                 fs.writeFileSync(filepath, imageData);
                 
-                // Send the file and capture the Discord CDN URL
                 const sentMessage = await message.reply({ 
                     content: `Here's your image for: "${prompt}" 🎨`,
                     files: [filepath]
                 });
                 
-                // Extract Discord CDN link from the sent message
                 let imageUrl = null;
                 if (sentMessage.attachments.size > 0) {
                     const attachment = sentMessage.attachments.first();
@@ -796,11 +771,9 @@ discordClient.on(Events.MessageCreate, async (message) => {
                     console.log('[IMAGE] Discord CDN URL:', imageUrl);
                 }
                 
-                // Clean up the temp file
                 fs.unlinkSync(filepath);
                 console.log('[IMAGE] Temp file cleaned up');
                 
-                // Log with Discord CDN link
                 logCommand('discord', message.author.username, 'image-gen', prompt, `Image generated: ${imageUrl || 'URL not captured'}`, false, imageUrl);
             } catch (error) {
                 console.error('[IMAGE] Error generating image:', error);
@@ -810,11 +783,9 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
             }
         } else {
-            // Check if message has image attachments for understanding
             const images = await getImageAttachments(message);
             
             if (images.length > 0) {
-                // Image understanding mode
                 try {
                     await message.channel.sendTyping();
                     console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) from ${message.author.username}`);
@@ -837,7 +808,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
                     logCommand('discord', message.author.username, 'image-understanding-error', message.content, errorMsg, true);
                 }
             } else {
-                // Regular text chat response
                 const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
                 await safeDiscordReply(message, response);
                 logCommand('discord', message.author.username, '@mention', message.content, response);
@@ -845,12 +815,10 @@ discordClient.on(Events.MessageCreate, async (message) => {
         }
     }
     
-    // Handle image attachments without @mention (when replying or just posting images)
     else if (hasImageAttachment(message) && message.reference) {
         try {
             const repliedTo = await message.channel.messages.fetch(message.reference.messageId);
             
-            // Only process if replying to the bot
             if (repliedTo.author.id === discordClient.user.id) {
                 const images = await getImageAttachments(message);
                 
@@ -890,7 +858,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         
         const lowerContent = message.content.toLowerCase();
         
-        // Handle commands in replies
         if (lowerContent.startsWith('!price ')) {
             const itemName = message.content.substring(7);
             const result = await getTarkovPrice(itemName);
@@ -930,7 +897,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
             return;
         }
 
-        // Wild request filter applies to replies too
         if (isWildRequest(message.content)) {
             const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
             await safeDiscordReply(message, response);
@@ -938,11 +904,9 @@ discordClient.on(Events.MessageCreate, async (message) => {
             return;
         }
         
-        // Check if reply includes images
         const images = await getImageAttachments(message);
         
         if (images.length > 0) {
-            // Image understanding in reply
             await message.channel.sendTyping();
             console.log(`[IMAGE UNDERSTANDING REPLY] Processing ${images.length} image(s) from ${message.author.username}`);
             
@@ -957,7 +921,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
             await safeDiscordReply(message, response);
             logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
         } else {
-            // AI response for non-commands
             const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
             await safeDiscordReply(message, response);
             logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
@@ -980,7 +943,6 @@ let lastCultistStates = {
 };
 
 async function checkCultistActivity() {
-  // Check live dashboard value first, fall back to locally loaded DB value
   let server1Active = false;
   let server2Active = false;
 
@@ -1005,7 +967,6 @@ async function checkCultistActivity() {
     return;
   }
 
-  // Notify on transitions
   if (server1Active && !lastCultistStates.server1.active) {
     await safeDiscordSend(channel, '🔴 **CULTIST ALERT** — Server 1: Cultists are active! 🔪');
     logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 1 cultists went active');
@@ -1026,7 +987,6 @@ async function checkCultistActivity() {
   lastCultistStates.server2.active = server2Active;
 }
 
-// Start cultist monitoring after Discord is ready
 discordClient.once('ready', () => {
     setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
     console.log('[CULTIST] Monitoring started');
@@ -1042,7 +1002,6 @@ if (global.setDiscordClientForExport) {
 
 // ===== DISCORD LOGIN =====
 discordClient.login(process.env.DISCORD_TOKEN).then(() => {
-    // Register Discord client for export system after login
     if (global.setDiscordClientForExport) {
         global.setDiscordClientForExport(discordClient);
         console.log('[EXPORT] Discord client registered post-login');
@@ -1053,7 +1012,6 @@ discordClient.login(process.env.DISCORD_TOKEN).then(() => {
     process.exit(1);
 });
 
-// Log successful startup after short delay
 setTimeout(() => {
     logSystemEvent('STARTUP', 'INFO', 'system', '✅ Bot fully initialized and running');
 }, 5000);
