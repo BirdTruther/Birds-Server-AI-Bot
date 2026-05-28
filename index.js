@@ -58,16 +58,18 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses Gemini 2.5 Flash native image generation via generateContent.
-// This works with your existing GOOGLE_GENERATIVE_AI_API_KEY — no Vertex AI,
-// no GCP project, no extra dependencies needed.
-// The old imagen-3.0-generate-002:predict endpoint only works on Vertex AI,
-// NOT the standard Gemini Developer API key. This approach does.
+// Uses Gemini 3.1 Flash native image generation via generateContent.
+// Model: gemini-3.1-flash-image-preview — current recommended image gen model
+// as of May 2026. Works with the standard GOOGLE_GENERATIVE_AI_API_KEY.
+//
+// NOTE: The model sometimes returns only a text part (safety refusal, clarifying
+// question, etc.) instead of an image. We now log that text so you can see WHY
+// it declined, rather than just getting a generic "No image data" error.
 async function generateImage(prompt) {
     const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
     if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
 
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-image-preview:generateContent?key=${apiKey}`;
 
     const body = {
         contents: [{
@@ -96,7 +98,12 @@ async function generateImage(prompt) {
     const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
 
     if (!imagePart) {
-        throw new Error('No image data returned from Gemini image generation');
+        // Log any text the model returned — this tells us WHY it didn't generate
+        const textPart = parts.find(p => p.text);
+        const modelText = textPart?.text || '(no text returned)';
+        console.warn('[IMAGE] Model did not return an image. Model said:', modelText);
+        logSystemEvent('WARNING', 'WARNING', 'image', `Image gen returned no image. Model response: ${modelText.substring(0, 200)}`);
+        throw new Error(`No image data returned from Gemini. Model said: "${modelText.substring(0, 150)}"`);
     }
 
     return {
