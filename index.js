@@ -58,17 +58,37 @@ function checkImageRateLimit(userId) {
 }
 
 // ===== IMAGE GENERATION =====
-// Uses the existing Gemini API key via @ai-sdk/google — no GCP project needed.
+// Uses the Gemini REST API directly with your existing GOOGLE_GENERATIVE_AI_API_KEY.
+// No Vertex AI, no GCP project, no extra .env variables needed.
 async function generateImage(prompt) {
-    const { experimental_generateImage: generateImageFn } = require('ai');
-    
-    const result = await generateImageFn({
-        model: google.image('imagen-3.0-generate-002'),
-        prompt: prompt,
-        size: '1024x1024',
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!apiKey) throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is not set');
+
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-001:predict?key=${apiKey}`;
+
+    const body = {
+        instances: [{ prompt }],
+        parameters: {
+            sampleCount: 1,
+            aspectRatio: '1:1'
+        }
+    };
+
+    const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
     });
-    
-    const base64Data = result.images[0].base64;
+
+    if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Imagen API error ${response.status}: ${errText}`);
+    }
+
+    const data = await response.json();
+    const base64Data = data.predictions?.[0]?.bytesBase64Encoded;
+    if (!base64Data) throw new Error('No image data returned from Imagen API');
+
     return Buffer.from(base64Data, 'base64');
 }
 
