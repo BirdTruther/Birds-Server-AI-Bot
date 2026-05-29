@@ -42,7 +42,56 @@ const CONFIG = {
     // gemini-3.1-flash-image-preview             — CORRECT (Google "Nano Banana 2", current)
     // gemini-2.5-flash-image                     — CORRECT (Google "Nano Banana", also valid)
     IMAGE_MODEL: 'gemini-3.1-flash-image-preview',
+
+    // AI text model cascade — primary is tried first; on overload (503/529) fallback is used.
+    // gemini-2.5-flash  → best quality, but subject to demand spikes
+    // gemini-2.0-flash  → fast, reliable fallback that almost never 503s
+    AI_PRIMARY_MODEL: 'gemini-2.5-flash',
+    AI_FALLBACK_MODEL: 'gemini-2.0-flash',
 };
+
+// ===== AI MODEL FALLBACK WRAPPER =====
+// Calls the primary model (gemini-2.5-flash). If Google returns a
+// high-demand / overload error (message contains "high demand", "503",
+// "overloaded", or "529"), automatically retries once on the fallback
+// model (gemini-2.0-flash) so the bot keeps responding during spikes.
+async function generateTextWithFallback(options) {
+    // Attempt primary model
+    try {
+        const result = await generateText({
+            ...options,
+            model: google(CONFIG.AI_PRIMARY_MODEL),
+        });
+        return result;
+    } catch (primaryErr) {
+        const msg = (primaryErr?.message || '').toLowerCase();
+        const isOverload =
+            msg.includes('high demand') ||
+            msg.includes('503') ||
+            msg.includes('overloaded') ||
+            msg.includes('529') ||
+            msg.includes('temporarily unavailable') ||
+            msg.includes('retry');
+
+        if (!isOverload) {
+            // Not an overload error — re-throw so callers handle it normally
+            throw primaryErr;
+        }
+
+        // Log the fallback switch
+        console.warn(`[AI] ${CONFIG.AI_PRIMARY_MODEL} overloaded — falling back to ${CONFIG.AI_FALLBACK_MODEL}`);
+        logSystemEvent('WARNING', 'WARNING', 'ai',
+            `Primary model overloaded, falling back to ${CONFIG.AI_FALLBACK_MODEL}: ${primaryErr.message.substring(0, 120)}`
+        );
+
+        // Attempt fallback model — let this throw naturally if it also fails
+        const result = await generateText({
+            ...options,
+            model: google(CONFIG.AI_FALLBACK_MODEL),
+        });
+        return result;
+    }
+}
 
 // ===== RATE LIMITING FOR IMAGE GENERATION =====
 const imageRateLimits = new Map();
@@ -415,8 +464,7 @@ ${memoryContext}
     console.log(`[WILD FILTER] Triggered for ${username}: "${messageText.substring(0, 80)}..."`);
 
     try {
-        const { text } = await generateText({
-            model: google('gemini-2.5-flash'),
+        const { text } = await generateTextWithFallback({
             messages: [
                 { role: 'system', content: roastPrompt },
                 { role: 'user', content: messageText }
@@ -482,7 +530,7 @@ IMPORTANT — vary your response structure. Do NOT:
         console.log(`[AI] Context length: ${memoryContext.length} chars`);
         console.log(`[AI] Images attached: ${images.length}`);
         console.log(`[AI] Variation hint: ${variationHint}`);
-        console.log(`[AI] Using model: gemini-2.5-flash`);
+        console.log(`[AI] Primary model: ${CONFIG.AI_PRIMARY_MODEL} (fallback: ${CONFIG.AI_FALLBACK_MODEL})`);
 
         const userContent = [{ type: 'text', text: message }];
 
@@ -495,8 +543,7 @@ IMPORTANT — vary your response structure. Do NOT:
             }
         }
 
-        const { text } = await generateText({
-            model: google('gemini-2.5-flash'),
+        const { text } = await generateTextWithFallback({
             messages: [
                 {
                     role: 'system',
