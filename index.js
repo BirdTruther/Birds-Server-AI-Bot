@@ -1018,31 +1018,35 @@ discordClient.on(Events.MessageCreate, async (message) => {
     }
     
     else if (hasImageAttachment(message) && message.reference) {
+        // Guard: skip if the referenced message was already deleted (10008)
+        let repliedToMsg = null;
         try {
-            const repliedTo = await message.channel.messages.fetch(message.reference.messageId);
+            repliedToMsg = await message.channel.messages.fetch(message.reference.messageId);
+        } catch (err) {
+            if (err.code === 10008) return; // Message deleted — silently ignore
+            console.error('[IMAGE UNDERSTANDING REPLY] Fetch error:', err);
+            logSystemEvent('ERROR', 'WARNING', 'discord', 'Failed to fetch referenced message', err);
+            return;
+        }
+
+        if (repliedToMsg.author.id === discordClient.user.id) {
+            const images = await getImageAttachments(message);
             
-            if (repliedTo.author.id === discordClient.user.id) {
-                const images = await getImageAttachments(message);
+            if (images.length > 0) {
+                await message.channel.sendTyping();
+                console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) in reply from ${message.author.username}`);
                 
-                if (images.length > 0) {
-                    await message.channel.sendTyping();
-                    console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) in reply from ${message.author.username}`);
-                    
-                    const response = await getAIResponse(
-                        message.content || "What's in this image?",
-                        'discord',
-                        message.channelId,
-                        message.author.username,
-                        images
-                    );
-                    
-                    await safeDiscordReply(message, response);
-                    logCommand('discord', message.author.username, 'image-understanding-reply', message.content, response);
-                }
+                const response = await getAIResponse(
+                    message.content || "What's in this image?",
+                    'discord',
+                    message.channelId,
+                    message.author.username,
+                    images
+                );
+                
+                await safeDiscordReply(message, response);
+                logCommand('discord', message.author.username, 'image-understanding-reply', message.content, response);
             }
-        } catch (error) {
-            console.error('[IMAGE UNDERSTANDING REPLY] Error:', error);
-            logSystemEvent('ERROR', 'WARNING', 'discord', 'Image understanding in reply failed', error);
         }
     }
 });
@@ -1051,85 +1055,90 @@ discordClient.on(Events.MessageCreate, async (message) => {
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.reference) return;
     
+    // Guard: if the referenced message was deleted (10008), silently skip
+    let repliedTo;
     try {
-        const repliedTo = await message.channel.messages.fetch(message.reference.messageId);
-        if (repliedTo.author.id !== discordClient.user.id) return;
-        
-        console.log(`[REPLY-TO-BOT] ${message.author.username}: ${message.content}`);
-        addToMemory('discord', message.channelId, message.author.username, message.content);
-        
-        const lowerContent = message.content.toLowerCase();
-        
-        if (lowerContent.startsWith('!price ')) {
-            const itemName = message.content.substring(7);
-            const result = await getTarkovPrice(itemName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!price-reply', itemName, result);
-            return;
-        }
-        
-        if (lowerContent.startsWith('!bestammo ')) {
-            const searchCaliber = message.content.substring(10).trim();
-            const result = await getBestAmmo(searchCaliber);
-            await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!bestammo-reply', searchCaliber, result);
-            return;
-        }
-        
-        if (lowerContent === '!trader') {
-            const result = await getTraderResets();
-            await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!trader-reply', message.content, result);
-            return;
-        }
-        
-        if (lowerContent.startsWith('!map ')) {
-            const mapName = message.content.substring(5);
-            const result = await getMapInfo(mapName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!map-reply', mapName, result);
-            return;
-        }
-        
-        if (lowerContent.startsWith('!player ')) {
-            const playerName = message.content.substring(8).trim();
-            const result = await getPlayerStats(playerName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!player-reply', playerName, result);
-            return;
-        }
+        repliedTo = await message.channel.messages.fetch(message.reference.messageId);
+    } catch (err) {
+        if (err.code === 10008) return; // Message deleted — not an error
+        console.error('[REPLY-TO-BOT] Fetch error:', err);
+        logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler: failed to fetch referenced message', err);
+        return;
+    }
 
-        if (isWildRequest(message.content)) {
-            const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
-            await safeDiscordReply(message, response);
-            logCommand('discord', message.author.username, 'wild-request-reply', message.content, response);
-            return;
-        }
+    if (repliedTo.author.id !== discordClient.user.id) return;
+    
+    console.log(`[REPLY-TO-BOT] ${message.author.username}: ${message.content}`);
+    addToMemory('discord', message.channelId, message.author.username, message.content);
+    
+    const lowerContent = message.content.toLowerCase();
+    
+    if (lowerContent.startsWith('!price ')) {
+        const itemName = message.content.substring(7);
+        const result = await getTarkovPrice(itemName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!price-reply', itemName, result);
+        return;
+    }
+    
+    if (lowerContent.startsWith('!bestammo ')) {
+        const searchCaliber = message.content.substring(10).trim();
+        const result = await getBestAmmo(searchCaliber);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!bestammo-reply', searchCaliber, result);
+        return;
+    }
+    
+    if (lowerContent === '!trader') {
+        const result = await getTraderResets();
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!trader-reply', message.content, result);
+        return;
+    }
+    
+    if (lowerContent.startsWith('!map ')) {
+        const mapName = message.content.substring(5);
+        const result = await getMapInfo(mapName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!map-reply', mapName, result);
+        return;
+    }
+    
+    if (lowerContent.startsWith('!player ')) {
+        const playerName = message.content.substring(8).trim();
+        const result = await getPlayerStats(playerName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!player-reply', playerName, result);
+        return;
+    }
+
+    if (isWildRequest(message.content)) {
+        const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
+        await safeDiscordReply(message, response);
+        logCommand('discord', message.author.username, 'wild-request-reply', message.content, response);
+        return;
+    }
+    
+    const images = await getImageAttachments(message);
+    
+    if (images.length > 0) {
+        await message.channel.sendTyping();
+        console.log(`[IMAGE UNDERSTANDING REPLY] Processing ${images.length} image(s) from ${message.author.username}`);
         
-        const images = await getImageAttachments(message);
+        const response = await getAIResponse(
+            message.content || "What's in this image?",
+            'discord',
+            message.channelId,
+            message.author.username,
+            images
+        );
         
-        if (images.length > 0) {
-            await message.channel.sendTyping();
-            console.log(`[IMAGE UNDERSTANDING REPLY] Processing ${images.length} image(s) from ${message.author.username}`);
-            
-            const response = await getAIResponse(
-                message.content || "What's in this image?",
-                'discord',
-                message.channelId,
-                message.author.username,
-                images
-            );
-            
-            await safeDiscordReply(message, response);
-            logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
-        } else {
-            const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-            await safeDiscordReply(message, response);
-            logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
-        }
-    } catch (error) {
-        console.error('[REPLY ERROR]', error);
-        logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler error', error);
+        await safeDiscordReply(message, response);
+        logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
+    } else {
+        const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
+        await safeDiscordReply(message, response);
+        logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
     }
 });
 
