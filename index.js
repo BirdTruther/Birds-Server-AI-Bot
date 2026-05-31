@@ -746,6 +746,84 @@ async function getCS2SkinPrice(skinName) {
     }
 }
 
+// --- !cs2float <inspect link> ---
+// Fetches float value and wear info for a CS2 skin via the CSFloat API.
+// Accepts a Steam inspect link (steam://rungame/730/...) or a direct inspect URL.
+// Returns: skin name, float value, wear tier, pattern index, and CSFloat listing link if available.
+async function getCS2Float(inspectLink) {
+    const apiKey = process.env.CSFLOAT_API_KEY;
+    if (!apiKey) return 'CS2 float lookup is not configured (missing CSFLOAT_API_KEY).';
+
+    // Validate the input looks like a CS2 inspect link
+    if (!inspectLink || (!inspectLink.includes('steam://rungame/730') && !inspectLink.includes('csgo_econ_action_preview'))) {
+        return '❌ Invalid inspect link. Right-click a skin in-game or on the Steam Market → "Inspect in Game" and paste that link.\nExample: `!cs2float steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20...`';
+    }
+
+    try {
+        const encoded = encodeURIComponent(inspectLink);
+        const url = `https://api.csfloat.com/?url=${encoded}`;
+
+        const response = await fetch(url, {
+            headers: {
+                'Authorization': apiKey,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error(`[CS2 Float] API error ${response.status}: ${errText}`);
+            logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float API error ${response.status}`);
+
+            if (response.status === 401) return '❌ CSFloat API key is invalid or expired. Check your CSFLOAT_API_KEY.';
+            if (response.status === 429) return '⏳ CSFloat rate limit hit. Try again in a moment.';
+            if (response.status === 400) return '❌ Invalid inspect link format. Make sure you copied the full link.';
+            return `❌ CSFloat API error (${response.status}). Try again later.`;
+        }
+
+        const data = await response.json();
+        const item = data?.iteminfo || data;
+
+        if (!item || !item.floatvalue) {
+            return '❌ Could not retrieve float data. The inspect link may be expired or invalid.';
+        }
+
+        const floatVal   = parseFloat(item.floatvalue).toFixed(10);
+        const paintSeed  = item.paintseed ?? 'N/A';
+        const paintIndex = item.paintindex ?? 'N/A';
+        const weaponName = item.full_item_name || item.weapon_type || 'Unknown Skin';
+        const stickers   = item.stickers?.length > 0
+            ? item.stickers.map(s => s.name).join(', ')
+            : 'None';
+
+        // Determine wear tier from float value
+        let wearTier = 'Unknown';
+        const fv = parseFloat(item.floatvalue);
+        if      (fv < 0.07)  wearTier = 'Factory New';
+        else if (fv < 0.15)  wearTier = 'Minimal Wear';
+        else if (fv < 0.38)  wearTier = 'Field-Tested';
+        else if (fv < 0.45)  wearTier = 'Well-Worn';
+        else                 wearTier = 'Battle-Scarred';
+
+        // Rarity of float within wear tier (lower = rarer for FN/MW, higher = rarer for BS)
+        let floatRarity = '';
+        if (fv < 0.01)       floatRarity = ' 🌟 (Low-tier FN — extremely rare!)';
+        else if (fv > 0.999) floatRarity = ' 💀 (Max float — collector item!)';
+
+        return [
+            `🔍 **${weaponName}**`,
+            `📊 Float: \`${floatVal}\` — **${wearTier}**${floatRarity}`,
+            `🎨 Pattern: ${paintSeed} | Paint Index: ${paintIndex}`,
+            `🪧 Stickers: ${stickers}`,
+        ].join('\n');
+
+    } catch (error) {
+        console.error('[CS2 Float Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float fetch failed: ${error.message}`);
+        return `❌ Error fetching float data. Try again later.`;
+    }
+}
+
 // --- !cs2stats <steamid or vanity url> ---
 // Fetches CS2 player stats via the official Steam Web API.
 // Accepts a 64-bit SteamID (e.g. 76561198xxxxxxxxx) or a vanity URL name.
@@ -1120,6 +1198,14 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
 
+    if (lowerMessage.startsWith('!cs2float ')) {
+        const inspectLink = message.substring(10).trim();
+        const result = await getCS2Float(inspectLink);
+        await sendTwitchChunked(channel, result);
+        logCommand('twitch', tags.username, '!cs2float', inspectLink.substring(0, 60), result);
+        return;
+    }
+
     if (lowerMessage.startsWith('!cs2stats ')) {
         const steamInput = message.substring(10).trim();
         const result = await getCS2PlayerStats(steamInput);
@@ -1273,6 +1359,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const result = await getCS2SkinPrice(skinName);
         await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!cs2price', skinName, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2float ')) {
+        const inspectLink = message.content.substring(10).trim();
+        const result = await getCS2Float(inspectLink);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2float', inspectLink.substring(0, 60), result);
         return;
     }
 
@@ -1523,6 +1617,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const result = await getCS2SkinPrice(skinName);
         await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!cs2price-reply', skinName, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2float ')) {
+        const inspectLink = message.content.substring(10).trim();
+        const result = await getCS2Float(inspectLink);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2float-reply', inspectLink.substring(0, 60), result);
         return;
     }
 
