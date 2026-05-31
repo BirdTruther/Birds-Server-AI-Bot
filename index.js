@@ -561,6 +561,12 @@ async function getCS2SkinPrice(skinName) {
     }
 }
 
+// ===== CS2 FLOAT CHECKER =====
+// Supports both inspect link formats:
+//   Format 1 (inventory): steam://rungame/730/.../+csgo_econ_action_preview S76561...A123...D456
+//   Format 2 (market/server): steam://run/730//+csgo_econ_action_preview 2030B59B... (hex string)
+// The CSFloat API accepts the raw inspect link directly, so we pass it as-is
+// instead of trying to parse S/A/D values ourselves.
 async function getCS2Float(inspectLink) {
     if (!inspectLink || !inspectLink.includes('csgo_econ_action_preview')) {
         return [
@@ -570,18 +576,13 @@ async function getCS2Float(inspectLink) {
         ].join('\n');
     }
     try {
-        const decoded = decodeURIComponent(inspectLink);
-        const sMatch = decoded.match(/S(\d+)/);
-        const aMatch = decoded.match(/A(\d+)/);
-        const dMatch = decoded.match(/D(\d+)/);
-        if (!sMatch || !aMatch || !dMatch) {
-            return '❌ Could not parse the inspect link parameters (S/A/D values missing). Make sure you copied the complete link.';
-        }
-        const steamId = sMatch[1];
-        const assetId = aMatch[1];
-        const paramD  = dMatch[1];
-        const apiUrl  = `https://api.csfloat.com/?url=${encodeURIComponent(inspectLink)}`;
-        const response = await fetch(apiUrl, { headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' } });
+        const apiUrl = `https://api.csfloat.com/?url=${encodeURIComponent(inspectLink)}`;
+        const response = await fetch(apiUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' }
+        });
+
+        if (response.status === 429) return '⏳ CSFloat rate limit hit. Try again in a moment.';
+
         if (response.ok) {
             const data = await response.json();
             const item = data?.iteminfo || data;
@@ -608,14 +609,13 @@ async function getCS2Float(inspectLink) {
                 ].join('\n');
             }
         }
-        if (response.status === 429) return '⏳ CSFloat rate limit hit. Try again in a moment.';
+
+        // API unavailable but link is valid — give fallback with direct CSFloat link
         return [
-            `🔍 **Inspect Link Parsed** (float API unavailable right now)`,
-            `Steam ID: ${steamId}`,
-            `Asset ID: ${assetId}`,
-            `D Param:  ${paramD}`,
-            `🔗 View on CSFloat: https://csfloat.com/db?inspectLink=${encodeURIComponent(inspectLink)}`,
+            `🔍 **Inspect Link Received** (float API unavailable right now)`,
+            `🔗 Try manually: https://csfloat.com/db?inspectLink=${encodeURIComponent(inspectLink)}`,
         ].join('\n');
+
     } catch (error) {
         console.error('[CS2 Float Error]', error);
         logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float failed: ${error.message}`);
