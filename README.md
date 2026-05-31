@@ -1,6 +1,6 @@
 # Birds-Server-AI-Bot
 
-A multi-platform Discord and Twitch bot with Escape from Tarkov integration, AI personality with image generation and understanding, and real-time web dashboard.
+A multi-platform Discord and Twitch bot with Escape from Tarkov integration, CS2 integration, AI personality with image generation and understanding, and real-time web dashboard.
 
 ## Features
 
@@ -23,6 +23,34 @@ A multi-platform Discord and Twitch bot with Escape from Tarkov integration, AI 
 - `!trader` - Trader reset times (EST timezone)
 - `!map [mapname]` - Map info with boss spawns
 - `!player [name]` - Player stats via EFT API (PMC/SCAV K/D, level)
+
+### 🔫 CS2 Integration Commands
+
+- `!cs2price [skin name]` - Look up current Steam Market prices for any CS2 skin
+  - Returns lowest price, 30-day median, active listing count, and a direct market link
+  - Example: `!cs2price AK-47 | Redline (Field-Tested)`
+- `!cs2float [inspect link]` - Get the float value and pattern seed for any CS2 skin
+  - Paste the full inspect link from your inventory or the Steam Market (right-click → Inspect in Game)
+  - Returns float value, wear tier, pattern seed, and any stickers on the skin
+  - Supports both inventory and market inspect link formats
+  - Example: `!cs2float steam://rungame/730/.../+csgo_econ_action_preview ...`
+- `!cs2stats [username or SteamID64]` - Pull all-time CS2 stats for a Steam player
+  - Returns K/D ratio, kills, deaths, headshot %, accuracy, matches played, win rate, MVPs, bombs planted/defused, and hours played
+  - Accepts Steam vanity URL username or full 17-digit SteamID64
+  - Player's Steam profile must be set to **Public** for stats to be visible
+  - Example: `!cs2stats shroud` or `!cs2stats 76561197960287930`
+- `!cs2map [map name]` - Get competitive callouts and tips for any active duty map
+  - Covers: Mirage, Inferno, Nuke, Ancient, Anubis, Dust 2, Vertigo
+  - Returns map setting, CT/T balance rating, full callout list, and a pro tip
+  - Example: `!cs2map mirage`
+- `!cs2case [case name] [count] [case price]` - Simulate opening CS2 cases
+  - Uses real Valve drop rate odds (79.9% Mil-Spec → 0.26% Knife/Gloves)
+  - Includes StatTrak simulation (10% chance per drop)
+  - Shows total cost including $2.49 key cost per case
+  - Max 100 cases per command
+  - Example: `!cs2case Recoil Case 10 0.50`
+
+> **Note:** `!cs2stats` requires a `STEAM_API_KEY` in your `.env` file. Get one free at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey).
 
 ### 💬 General Commands
 
@@ -86,6 +114,9 @@ A real-time web dashboard running on `http://localhost:3001` with:
 ### APIs
 - **tarkov.dev** - GraphQL queries for item prices, ammo stats, maps
 - **eft-api.tech** - REST API for player statistics
+- **Steam Market API** - CS2 skin prices and listing data
+- **Steam Web API** - CS2 player statistics and profile lookups
+- **CSFloat API** - CS2 skin float values and pattern seeds
 - **meme-api.com** - Random meme fetching
 
 ### Dependencies
@@ -112,6 +143,7 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - Twitch OAuth Token
 - Google AI API Key (for Gemini)
 - EFT API Key (optional, for player stats)
+- Steam Web API Key (optional, for `!cs2stats`)
 
 ### Setup
 
@@ -136,6 +168,7 @@ A real-time web dashboard running on `http://localhost:3001` with:
    TWITCH_CHANNEL=your_channel_name
    GOOGLE_GENERATIVE_AI_API_KEY=your_google_ai_api_key
    EFT_API_KEY=your_eft_api_key
+   STEAM_API_KEY=your_steam_api_key
    ```
 
 4. **Run the bot**
@@ -163,6 +196,8 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Image Generation** - 60 second cooldown per user
 - **Conversation Memory** - Smart SQLite-based context selection
 - **Image Understanding** - Supports JPEG, PNG, GIF, WebP formats
+- **CS2 Case Key Cost** - $2.49 per key (configurable in `CONFIG.CS2_KEY_COST_USD`)
+- **CS2 Case Max Opens** - 100 per command (configurable in `CONFIG.CS2_CASE_MAX_OPENS`)
 
 ### Smart Memory System
 
@@ -210,6 +245,7 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - AI image generation with rate limiting
 - **AI image understanding with multimodal support**
 - Tarkov API integrations
+- CS2 API integrations (Steam Market, Steam Web API, CSFloat)
 - Auto-join functionality
 - Smart conversation memory system
 
@@ -323,3 +359,6 @@ Developed by BirdTruther for the Birds Server community.
 - Google Gemini AI (2.5 Flash & 2.5 Flash Image)
 - Tarkov.dev API
 - EFT-API.tech
+- Steam Market API
+- Steam Web API
+- CSFloat API
