@@ -1,5 +1,5 @@
 // BIRDS-SERVER-AI-BOT
-// Discord + Twitch Multi-Platform Bot with AI & Tarkov Integration
+// Discord + Twitch Multi-Platform Bot with AI, Tarkov & CS2 Integration
 
 // ===== DEPENDENCIES =====
 const { Client, Events, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
@@ -48,6 +48,10 @@ const CONFIG = {
     // gemini-2.0-flash  → fast, reliable fallback that almost never 503s
     AI_PRIMARY_MODEL: 'gemini-2.5-flash',
     AI_FALLBACK_MODEL: 'gemini-2.0-flash',
+
+    // CS2 config
+    CS2_KEY_COST_USD: 2.49,       // Valve's fixed key price — never changes
+    CS2_CASE_MAX_OPENS: 100,      // max cases per !cs2case command
 };
 
 // ===== AI MODEL FALLBACK WRAPPER =====
@@ -696,6 +700,292 @@ async function getPlayerStats(playerName) {
     }
 }
 
+// ===== CS2 API SERVICE =====
+
+// --- !cs2price <skin name> ---
+// Fetches current skin price from CSGOSkins.GG API.
+// Returns lowest listed price and Steam Market price side by side.
+async function getCS2SkinPrice(skinName) {
+    const apiKey = process.env.CSGOSKINS_API_KEY;
+    if (!apiKey) return 'CS2 price lookup is not configured (missing CSGOSKINS_API_KEY).';
+
+    try {
+        const encoded = encodeURIComponent(skinName);
+        const url = `https://api.csgoskins.gg/v1/items/prices?name=${encoded}`;
+        const response = await fetch(url, {
+            headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+
+        if (!response.ok) {
+            const errText = await response.text();
+            console.error(`[CS2 Price] API error ${response.status}: ${errText}`);
+            logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2price API error ${response.status} for "${skinName}"`);
+            return `Could not fetch price for "${skinName}" (API error ${response.status}).`;
+        }
+
+        const data = await response.json();
+        // CSGOSkins.GG returns an array of items — grab the first closest match
+        const items = data?.items || data?.data || data;
+        if (!Array.isArray(items) || items.length === 0) {
+            return `No results found for "${skinName}". Try a more specific name like "AK-47 | Redline (Field-Tested)".`;
+        }
+
+        const item = items[0];
+        const name   = item.name || skinName;
+        const steam  = item.prices?.steam   ? `$${parseFloat(item.prices.steam).toFixed(2)}`   : 'N/A';
+        const lowest = item.prices?.lowest  ? `$${parseFloat(item.prices.lowest).toFixed(2)}`  : 'N/A';
+        const buff   = item.prices?.buff163  ? `$${parseFloat(item.prices.buff163).toFixed(2)}` : null;
+
+        let result = `🔫 **${name}** | Steam: ${steam} | Lowest: ${lowest}`;
+        if (buff) result += ` | Buff163: ${buff}`;
+        return result;
+    } catch (error) {
+        console.error('[CS2 Price Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2price fetch failed for "${skinName}": ${error.message}`);
+        return `Error fetching CS2 price for "${skinName}".`;
+    }
+}
+
+// --- !cs2stats <steamid or vanity url> ---
+// Fetches CS2 player stats via the official Steam Web API.
+// Accepts a 64-bit SteamID (e.g. 76561198xxxxxxxxx) or a vanity URL name.
+// Vanity URLs are resolved to SteamID64 first via ResolveVanityURL.
+async function getCS2PlayerStats(steamInput) {
+    const apiKey = process.env.STEAM_API_KEY;
+    if (!apiKey) return 'CS2 stats lookup is not configured (missing STEAM_API_KEY).';
+
+    try {
+        let steamId = steamInput.trim();
+
+        // If input is not a 17-digit numeric SteamID64, try resolving it as a vanity URL
+        if (!/^\d{17}$/.test(steamId)) {
+            const vanityUrl = `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${apiKey}&vanityurl=${encodeURIComponent(steamId)}`;
+            const vanityRes = await fetch(vanityUrl);
+            const vanityData = await vanityRes.json();
+            if (vanityData?.response?.success === 1) {
+                steamId = vanityData.response.steamid;
+            } else {
+                return `Could not find a Steam account for "${steamInput}". Try using your full SteamID64 (17-digit number).`;
+            }
+        }
+
+        // Fetch CS2 (appid 730) stats
+        const statsUrl = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/?appid=730&key=${apiKey}&steamid=${steamId}`;
+        const statsRes = await fetch(statsUrl);
+
+        if (!statsRes.ok) {
+            if (statsRes.status === 403) {
+                return `Stats for that account are private. The player needs to make their game stats public in Steam privacy settings.`;
+            }
+            return `Could not retrieve stats (Steam API error ${statsRes.status}).`;
+        }
+
+        const statsData = await statsRes.json();
+        const stats = statsData?.playerstats?.stats;
+
+        if (!stats || stats.length === 0) {
+            return `No CS2 stats found for that account. Stats may be private or the player hasn't played CS2.`;
+        }
+
+        // Pull key stats by name from the stats array
+        const getStat = (name) => stats.find(s => s.name === name)?.value || 0;
+
+        const kills          = getStat('total_kills').toLocaleString();
+        const deaths         = getStat('total_deaths').toLocaleString();
+        const wins           = getStat('total_wins').toLocaleString();
+        const matchesPlayed  = getStat('total_matches_played').toLocaleString();
+        const headshotKills  = getStat('total_kills_headshot').toLocaleString();
+        const mvps           = getStat('total_mvps').toLocaleString();
+        const timePlayed     = getStat('total_time_played');
+        const hoursPlayed    = (timePlayed / 3600).toFixed(0);
+
+        const kdRaw = getStat('total_deaths') > 0
+            ? (getStat('total_kills') / getStat('total_deaths')).toFixed(2)
+            : getStat('total_kills').toFixed(2);
+
+        const hsPercent = getStat('total_kills') > 0
+            ? ((getStat('total_kills_headshot') / getStat('total_kills')) * 100).toFixed(1)
+            : '0.0';
+
+        const playerName = statsData.playerstats.steamID || steamInput;
+
+        return [
+            `🎮 **CS2 Stats** for SteamID: ${steamId}`,
+            `K/D: ${kdRaw} | Kills: ${kills} | Deaths: ${deaths}`,
+            `Wins: ${wins} | Matches: ${matchesPlayed} | MVPs: ${mvps}`,
+            `Headshots: ${headshotKills} (${hsPercent}%) | Hours: ${hoursPlayed}h`,
+        ].join('\n');
+    } catch (error) {
+        console.error('[CS2 Stats Error]', error);
+        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2stats fetch failed for "${steamInput}": ${error.message}`);
+        return `Error fetching CS2 stats for "${steamInput}".`;
+    }
+}
+
+// --- !cs2map <map name> ---
+// Returns callouts and key info for CS2 active duty maps.
+// Fully static — no API needed. Update CS2_MAP_DATA as the map pool changes.
+const CS2_MAP_DATA = {
+    mirage: {
+        name: 'Mirage',
+        setting: 'Moroccan city',
+        side: 'CT-sided',
+        callouts: 'A Site: Palace, Ramp, CT, Jungle, Stairs, Ticket Booth | B Site: Short, Van, Bench, Default, B Apps | Mid: Window, Catwalk, Top Mid, Connector, Underpass',
+        tip: 'Window control mid is everything — whoever owns it controls the map.',
+    },
+    inferno: {
+        name: 'Inferno',
+        setting: 'Italian village',
+        side: 'CT-sided',
+        callouts: 'A Site: Pit, Library, Short, CT, Arch, Balcony | B Site: Banana, Car, Spools, Coffins, Dark | Mid: Top Mid, Mid Apartments',
+        tip: 'Banana control determines most B executes — smoke it or lose it.',
+    },
+    nuke: {
+        name: 'Nuke',
+        setting: 'Nuclear facility',
+        side: 'CT-sided',
+        callouts: 'Upper: Ramp, Secret, Lobby, Silo, Outside | Lower: Lower A, Vents, Heaven, Hell | B Site: Squeaky, B Hut',
+        tip: 'Nuke rewards map knowledge above all else — learn the vents.',
+    },
+    ancient: {
+        name: 'Ancient',
+        setting: 'Mayan ruins',
+        side: 'Balanced',
+        callouts: 'A Site: Donut, Temple, CT, Ramp, Ruins | B Site: River, Cave, Elbow, Pillar | Mid: Mid, Speed',
+        tip: 'Mid speed round to Cave can catch CT rotations completely off guard.',
+    },
+    anubis: {
+        name: 'Anubis',
+        setting: 'Egyptian ruins',
+        side: 'Balanced',
+        callouts: 'A Site: Speed, Palace, Fountain, Connector | B Site: Bridge, Water, Hovel, Canal | Mid: Mid, Alley',
+        tip: 'Bridge control on B is crucial — it cuts off CT rotation.',
+    },
+    dust2: {
+        name: 'Dust 2',
+        setting: 'Middle Eastern town',
+        side: 'T-sided',
+        callouts: 'A Site: Long, Short, CT, Pit, Ramp | B Site: Tunnels, B Doors, B Platform, Window | Mid: Catwalk, Xbox, Top Mid',
+        tip: 'Long A control early game is a huge advantage — commit to it or leave it.',
+    },
+    vertigo: {
+        name: 'Vertigo',
+        setting: 'Skyscraper construction',
+        side: 'CT-sided',
+        callouts: 'A Site: Ramp, Stairs, Scaffolding, A Default | B Site: Elevator, B Corner, B Default | Mid: Mid, Boost',
+        tip: 'Elevator mid control gives Ts an info advantage on both sites.',
+    },
+};
+
+function getCS2MapInfo(mapInput) {
+    const key = mapInput.toLowerCase().replace(/[^a-z0-9]/g, '').replace('dust2', 'dust2').replace('dust_2', 'dust2');
+
+    // Try exact key match first, then partial match
+    let map = CS2_MAP_DATA[key];
+    if (!map) {
+        const partialKey = Object.keys(CS2_MAP_DATA).find(k => k.includes(key) || key.includes(k));
+        map = partialKey ? CS2_MAP_DATA[partialKey] : null;
+    }
+
+    if (!map) {
+        const available = Object.values(CS2_MAP_DATA).map(m => m.name).join(', ');
+        return `Map "${mapInput}" not found. Available maps: ${available}`;
+    }
+
+    return [
+        `🗺️ **${map.name}** | ${map.setting} | ${map.side}`,
+        `📍 Callouts: ${map.callouts}`,
+        `💡 Tip: ${map.tip}`,
+    ].join('\n');
+}
+
+// --- !cs2case <case name> <count> <case cost> ---
+// Simulates opening CS2 cases using Valve's officially disclosed drop rates.
+// Rates source: China Ministry of Culture disclosure (2017), verified by community.
+//
+// Usage:  !cs2case Kilowatt 10 1.50
+//   case name  = any string (cosmetic only, used in output)
+//   count      = number of cases to open (1–100)
+//   case cost  = USD price of the case itself (key is always $2.49)
+//
+// Drop rate tiers (official Valve odds):
+//   Mil-Spec (Blue)    79.92%
+//   Restricted (Purple) 15.98%
+//   Classified (Pink)   3.20%
+//   Covert (Red)        0.64%
+//   Knife/Gloves (Gold) 0.26%
+//   StatTrak multiplier: ~10% chance on any drop
+const CS2_CASE_ODDS = [
+    { tier: '🔵 Mil-Spec',   rarity: 'Blue',   chance: 0.7992 },
+    { tier: '🟣 Restricted', rarity: 'Purple', chance: 0.1598 },
+    { tier: '🩷 Classified', rarity: 'Pink',   chance: 0.0320 },
+    { tier: '🔴 Covert',     rarity: 'Red',    chance: 0.0064 },
+    { tier: '🟡 Knife/Gloves', rarity: 'Gold', chance: 0.0026 },
+];
+const CS2_STATTRAK_CHANCE = 0.10; // 10% chance of StatTrak on any drop
+
+function simulateCS2Case(caseName, count, caseCostUSD) {
+    // Input validation
+    const numCases = Math.min(Math.max(Math.floor(count), 1), CONFIG.CS2_CASE_MAX_OPENS);
+    const caseCost = Math.max(parseFloat(caseCostUSD) || 0, 0);
+    const keyCost  = CONFIG.CS2_KEY_COST_USD;
+    const totalCostPerCase = caseCost + keyCost;
+    const totalCost = (totalCostPerCase * numCases).toFixed(2);
+
+    // Simulate each case opening
+    const results = { Blue: 0, Purple: 0, Pink: 0, Red: 0, Gold: 0 };
+    let statTrakCount = 0;
+
+    for (let i = 0; i < numCases; i++) {
+        const roll = Math.random();
+        let cumulative = 0;
+        for (const tier of CS2_CASE_ODDS) {
+            cumulative += tier.chance;
+            if (roll <= cumulative) {
+                results[tier.rarity]++;
+                if (Math.random() <= CS2_STATTRAK_CHANCE) statTrakCount++;
+                break;
+            }
+        }
+    }
+
+    // Build outcome lines — only show tiers that actually dropped
+    const outcomeLines = CS2_CASE_ODDS
+        .filter(t => results[t.rarity] > 0)
+        .map(t => `${t.tier}: ${results[t.rarity]}x`)
+        .join(' | ');
+
+    // Flavor comment based on results
+    let flavor = '💀 Rough run — the market is not your friend today.';
+    if (results.Gold > 0)  flavor = '🎉 YOU HIT A KNIFE/GLOVES! Screenshot that NOW!';
+    else if (results.Red > 0)  flavor = '🔥 A Covert drop?! That\'s actually solid.';
+    else if (results.Pink > 0) flavor = '😤 A Classified — not bad, not great.';
+    else if (results.Purple >= numCases * 0.3) flavor = '📦 Mostly Restricted. Could be worse... barely.';
+
+    return [
+        `📦 **CS2 Case Simulator** — ${caseName} (${numCases} opened)`,
+        `💰 Case: $${caseCost.toFixed(2)} + Key: $${keyCost.toFixed(2)} = **$${totalCostPerCase.toFixed(2)}/open** | Total spent: **$${totalCost}**`,
+        `📊 Results: ${outcomeLines || 'Nothing notable'}`,
+        `🎰 StatTrak drops: ${statTrakCount}`,
+        flavor,
+    ].join('\n');
+}
+
+function parseCS2CaseCommand(args) {
+    // Parse: !cs2case <case name (can be multi-word)> <count> <cost>
+    // The last two tokens are always count and cost; everything before is the case name.
+    const tokens = args.trim().split(/\s+/);
+    if (tokens.length < 3) return null;
+
+    const cost  = parseFloat(tokens[tokens.length - 1]);
+    const count = parseInt(tokens[tokens.length - 2], 10);
+
+    if (isNaN(count) || isNaN(cost)) return null;
+
+    const caseName = tokens.slice(0, tokens.length - 2).join(' ') || 'Unknown Case';
+    return { caseName, count, cost };
+}
+
 // ===== MEME FETCHER =====
 async function fetchMeme() {
     try {
@@ -821,6 +1111,46 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
 
+    // CS2 commands on Twitch
+    if (lowerMessage.startsWith('!cs2price ')) {
+        const skinName = message.substring(10).trim();
+        const result = await getCS2SkinPrice(skinName);
+        await sendTwitchChunked(channel, result);
+        logCommand('twitch', tags.username, '!cs2price', skinName, result);
+        return;
+    }
+
+    if (lowerMessage.startsWith('!cs2stats ')) {
+        const steamInput = message.substring(10).trim();
+        const result = await getCS2PlayerStats(steamInput);
+        await sendTwitchChunked(channel, result);
+        logCommand('twitch', tags.username, '!cs2stats', steamInput, result);
+        return;
+    }
+
+    if (lowerMessage.startsWith('!cs2map ')) {
+        const mapInput = message.substring(8).trim();
+        const result = getCS2MapInfo(mapInput);
+        await sendTwitchChunked(channel, result);
+        logCommand('twitch', tags.username, '!cs2map', mapInput, result);
+        return;
+    }
+
+    if (lowerMessage.startsWith('!cs2case ')) {
+        const args = message.substring(9).trim();
+        const parsed = parseCS2CaseCommand(args);
+        if (!parsed) {
+            const usage = 'Usage: !cs2case <case name> <count> <case cost> — e.g. !cs2case Kilowatt 10 1.50';
+            twitchClient.say(channel, usage);
+            logCommand('twitch', tags.username, '!cs2case', args, usage, true);
+        } else {
+            const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
+            await sendTwitchChunked(channel, result);
+            logCommand('twitch', tags.username, '!cs2case', args, result);
+        }
+        return;
+    }
+
     if (tags.username.toLowerCase() === 'tangiabot' && 
         (lowerMessage.includes('started a tangia dungeon') || 
          lowerMessage.includes('started a tangia boss fight')) && 
@@ -937,6 +1267,46 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
+    // CS2 commands on Discord
+    if (lowerContent.startsWith('!cs2price ')) {
+        const skinName = message.content.substring(10).trim();
+        const result = await getCS2SkinPrice(skinName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2price', skinName, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2stats ')) {
+        const steamInput = message.content.substring(10).trim();
+        const result = await getCS2PlayerStats(steamInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2stats', steamInput, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2map ')) {
+        const mapInput = message.content.substring(8).trim();
+        const result = getCS2MapInfo(mapInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2map', mapInput, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2case ')) {
+        const args = message.content.substring(9).trim();
+        const parsed = parseCS2CaseCommand(args);
+        if (!parsed) {
+            const usage = '❌ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
+            await safeDiscordReply(message, usage);
+            logCommand('discord', message.author.username, '!cs2case', args, usage, true);
+        } else {
+            const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
+            await safeDiscordReply(message, result);
+            logCommand('discord', message.author.username, '!cs2case', args, result);
+        }
+        return;
+    }
+
     if (lowerContent.includes('meme')) {
         const meme = await fetchMeme();
         if (meme) {
@@ -973,20 +1343,11 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 console.log('[IMAGE] Processing image request from Discord');
                 
                 const rawPrompt = extractImagePrompt(message.content);
-                // Sanitize before sending to Gemini — rewrites self-referential/vague prompts.
-                // sanitizeImagePrompt() also runs against the full message.content as a second
-                // pass so that edge cases like "what do you look like" (which extractImagePrompt
-                // might not strip completely) are always caught before hitting the API.
                 const extractedPrompt = sanitizeImagePrompt(rawPrompt);
-                // Final safety pass on the full message content as well, in case extraction
-                // left self-referential language intact
                 const prompt = SELF_REFERENTIAL_PATTERNS.some(p => p.test(message.content.toLowerCase()))
                     ? sanitizeImagePrompt(message.content)
                     : extractedPrompt;
 
-                // generateImage() has built-in retry with exponential backoff.
-                // On a 503, it will silently retry up to IMAGE_RETRY_MAX times
-                // before throwing. Keep typing indicator alive during retries.
                 const typingInterval = setInterval(() => {
                     message.channel.sendTyping().catch(() => {});
                 }, 8000);
@@ -999,7 +1360,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
                 }
                 
                 const timestamp = Date.now();
-                // Derive extension from mimeType (e.g. image/png -> png, image/jpeg -> jpg)
                 const ext = mimeType === 'image/jpeg' ? 'jpg' : (mimeType.split('/')[1] || 'png');
                 const filename = `generated_${timestamp}.${ext}`;
                 const filepath = path.join(os.tmpdir(), filename);
@@ -1065,12 +1425,11 @@ discordClient.on(Events.MessageCreate, async (message) => {
     }
     
     else if (hasImageAttachment(message) && message.reference) {
-        // Guard: skip if the referenced message was already deleted (10008)
         let repliedToMsg = null;
         try {
             repliedToMsg = await message.channel.messages.fetch(message.reference.messageId);
         } catch (err) {
-            if (err.code === 10008) return; // Message deleted — silently ignore
+            if (err.code === 10008) return;
             console.error('[IMAGE UNDERSTANDING REPLY] Fetch error:', err);
             logSystemEvent('ERROR', 'WARNING', 'discord', 'Failed to fetch referenced message', err);
             return;
@@ -1102,12 +1461,11 @@ discordClient.on(Events.MessageCreate, async (message) => {
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot || !message.reference) return;
     
-    // Guard: if the referenced message was deleted (10008), silently skip
     let repliedTo;
     try {
         repliedTo = await message.channel.messages.fetch(message.reference.messageId);
     } catch (err) {
-        if (err.code === 10008) return; // Message deleted — not an error
+        if (err.code === 10008) return;
         console.error('[REPLY-TO-BOT] Fetch error:', err);
         logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler: failed to fetch referenced message', err);
         return;
@@ -1156,6 +1514,46 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const result = await getPlayerStats(playerName);
         await safeDiscordReply(message, result);
         logCommand('discord', message.author.username, '!player-reply', playerName, result);
+        return;
+    }
+
+    // CS2 commands in reply-to-bot handler
+    if (lowerContent.startsWith('!cs2price ')) {
+        const skinName = message.content.substring(10).trim();
+        const result = await getCS2SkinPrice(skinName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2price-reply', skinName, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2stats ')) {
+        const steamInput = message.content.substring(10).trim();
+        const result = await getCS2PlayerStats(steamInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2stats-reply', steamInput, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2map ')) {
+        const mapInput = message.content.substring(8).trim();
+        const result = getCS2MapInfo(mapInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', message.author.username, '!cs2map-reply', mapInput, result);
+        return;
+    }
+
+    if (lowerContent.startsWith('!cs2case ')) {
+        const args = message.content.substring(9).trim();
+        const parsed = parseCS2CaseCommand(args);
+        if (!parsed) {
+            const usage = '❌ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
+            await safeDiscordReply(message, usage);
+            logCommand('discord', message.author.username, '!cs2case-reply', args, usage, true);
+        } else {
+            const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
+            await safeDiscordReply(message, result);
+            logCommand('discord', message.author.username, '!cs2case-reply', args, result);
+        }
         return;
     }
 
