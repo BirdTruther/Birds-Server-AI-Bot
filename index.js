@@ -703,131 +703,156 @@ async function getPlayerStats(playerName) {
 // ===== CS2 API SERVICE =====
 
 // --- !cs2price <skin name> ---
-// Fetches current skin price from CSGOSkins.GG API.
-// Returns lowest listed price and Steam Market price side by side.
+// FIX: Rewritten to use Steam Community Market search API — no API key required.
+// Old version used CSGOSkins.GG which required a paid API key and had wrong response shape.
 async function getCS2SkinPrice(skinName) {
-    const apiKey = process.env.CSGOSKINS_API_KEY;
-    if (!apiKey) return 'CS2 price lookup is not configured (missing CSGOSKINS_API_KEY).';
-
     try {
+        // Steam Community Market search — no API key required
         const encoded = encodeURIComponent(skinName);
-        const url = `https://api.csgoskins.gg/v1/items/prices?name=${encoded}`;
-        const response = await fetch(url, {
-            headers: { 'Authorization': `Bearer ${apiKey}` }
+        const searchUrl = `https://steamcommunity.com/market/search/render/?query=${encoded}&appid=730&search_descriptions=0&count=3&norender=1`;
+
+        const searchRes = await fetch(searchUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' }
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            console.error(`[CS2 Price] API error ${response.status}: ${errText}`);
-            logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2price API error ${response.status} for "${skinName}"`);
-            return `Could not fetch price for "${skinName}" (API error ${response.status}).`;
+        if (!searchRes.ok) {
+            return `❌ Steam Market returned an error (${searchRes.status}). Try again in a moment.`;
         }
 
-        const data = await response.json();
-        // CSGOSkins.GG returns an array of items — grab the first closest match
-        const items = data?.items || data?.data || data;
-        if (!Array.isArray(items) || items.length === 0) {
-            return `No results found for "${skinName}". Try a more specific name like "AK-47 | Redline (Field-Tested)".`;
+        const searchData = await searchRes.json();
+        const results = searchData?.results;
+
+        if (!results || results.length === 0) {
+            return `❌ No results found for **"${skinName}"** on Steam Market.\nTip: Use the full name like \`AK-47 | Redline (Field-Tested)\``;
         }
 
-        const item = items[0];
-        const name   = item.name || skinName;
-        const steam  = item.prices?.steam   ? `$${parseFloat(item.prices.steam).toFixed(2)}`   : 'N/A';
-        const lowest = item.prices?.lowest  ? `$${parseFloat(item.prices.lowest).toFixed(2)}`  : 'N/A';
-        const buff   = item.prices?.buff163  ? `$${parseFloat(item.prices.buff163).toFixed(2)}` : null;
+        const item = results[0];
+        const name       = item.name || skinName;
+        const lowestUSD  = item.sell_price_text || 'N/A';
+        const listCount  = item.sell_listings?.toLocaleString() || '?';
 
-        let result = `🔫 **${name}** | Steam: ${steam} | Lowest: ${lowest}`;
-        if (buff) result += ` | Buff163: ${buff}`;
-        return result;
+        // Fetch the price overview for median price detail
+        const hashName   = encodeURIComponent(item.hash_name || name);
+        const priceUrl   = `https://steamcommunity.com/market/priceoverview/?appid=730&currency=1&market_hash_name=${hashName}`;
+        const priceRes   = await fetch(priceUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' }
+        });
+
+        let medianPrice = 'N/A';
+        if (priceRes.ok) {
+            const priceData = await priceRes.json();
+            medianPrice = priceData?.median_price || priceData?.lowest_price || 'N/A';
+        }
+
+        return [
+            `🔫 **${name}**`,
+            `💰 Lowest: ${lowestUSD} | Median (30d): ${medianPrice}`,
+            `📦 Listings: ${listCount}`,
+            `🔗 https://steamcommunity.com/market/listings/730/${encodeURIComponent(item.hash_name || name)}`,
+        ].join('\n');
+
     } catch (error) {
         console.error('[CS2 Price Error]', error);
         logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2price fetch failed for "${skinName}": ${error.message}`);
-        return `Error fetching CS2 price for "${skinName}".`;
+        return `❌ Error fetching CS2 price for "${skinName}". Try again later.`;
     }
 }
 
 // --- !cs2float <inspect link> ---
-// Fetches float value and wear info for a CS2 skin via the CSFloat API.
-// Accepts a Steam inspect link (steam://rungame/730/...) or a direct inspect URL.
-// Returns: skin name, float value, wear tier, pattern index, and CSFloat listing link if available.
+// FIX: Old version used a retired endpoint requiring CSFLOAT_API_KEY.
+// New version tries the CSFloat public endpoint (no key needed for basic float),
+// with a graceful fallback that returns parsed link params + CSFloat web link.
 async function getCS2Float(inspectLink) {
-    const apiKey = process.env.CSFLOAT_API_KEY;
-    if (!apiKey) return 'CS2 float lookup is not configured (missing CSFLOAT_API_KEY).';
-
-    // Validate the input looks like a CS2 inspect link
-    if (!inspectLink || (!inspectLink.includes('steam://rungame/730') && !inspectLink.includes('csgo_econ_action_preview'))) {
-        return '❌ Invalid inspect link. Right-click a skin in-game or on the Steam Market → "Inspect in Game" and paste that link.\nExample: `!cs2float steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20...`';
+    if (!inspectLink || !inspectLink.includes('csgo_econ_action_preview')) {
+        return [
+            '❌ Invalid inspect link.',
+            'Right-click a skin in your CS2 inventory or on the Steam Market → **"Inspect in Game"** and paste that full link.',
+            'Example: `!cs2float steam://rungame/730/76561202255233023/+csgo_econ_action_preview%20S76561...A...D...`',
+        ].join('\n');
     }
 
     try {
-        const encoded = encodeURIComponent(inspectLink);
-        const url = `https://api.csfloat.com/?url=${encoded}`;
+        // Extract the S, A, D parameters from the inspect link
+        const decoded = decodeURIComponent(inspectLink);
+        const sMatch = decoded.match(/S(\d+)/);
+        const aMatch = decoded.match(/A(\d+)/);
+        const dMatch = decoded.match(/D(\d+)/);
 
-        const response = await fetch(url, {
-            headers: {
-                'Authorization': apiKey,
-                'Content-Type': 'application/json'
-            }
+        if (!sMatch || !aMatch || !dMatch) {
+            return '❌ Could not parse the inspect link parameters (S/A/D values missing). Make sure you copied the complete link.';
+        }
+
+        const steamId  = sMatch[1];
+        const assetId  = aMatch[1];
+        const paramD   = dMatch[1];
+
+        // Use CSFloat public inspect endpoint (no key needed for basic float)
+        const apiUrl = `https://api.csfloat.com/?url=${encodeURIComponent(inspectLink)}`;
+        const response = await fetch(apiUrl, {
+            headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' }
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            console.error(`[CS2 Float] API error ${response.status}: ${errText}`);
-            logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float API error ${response.status}`);
+        if (response.ok) {
+            const data = await response.json();
+            const item = data?.iteminfo || data;
 
-            if (response.status === 401) return '❌ CSFloat API key is invalid or expired. Check your CSFLOAT_API_KEY.';
-            if (response.status === 429) return '⏳ CSFloat rate limit hit. Try again in a moment.';
-            if (response.status === 400) return '❌ Invalid inspect link format. Make sure you copied the full link.';
-            return `❌ CSFloat API error (${response.status}). Try again later.`;
+            if (item?.floatvalue) {
+                const fv        = parseFloat(item.floatvalue);
+                const floatVal  = fv.toFixed(10);
+                const paintSeed = item.paintseed ?? 'N/A';
+                const skinName  = item.full_item_name || item.weapon_type || 'Unknown Skin';
+                const stickers  = item.stickers?.length > 0
+                    ? item.stickers.map(s => s.name).join(', ')
+                    : 'None';
+
+                let wear = 'Battle-Scarred';
+                if      (fv < 0.07) wear = 'Factory New';
+                else if (fv < 0.15) wear = 'Minimal Wear';
+                else if (fv < 0.38) wear = 'Field-Tested';
+                else if (fv < 0.45) wear = 'Well-Worn';
+
+                let rare = '';
+                if (fv < 0.01)  rare = ' 🌟 (Rare low float!)';
+                if (fv > 0.999) rare = ' 💀 (Max float!)';
+
+                return [
+                    `🔍 **${skinName}**`,
+                    `📊 Float: \`${floatVal}\` — **${wear}**${rare}`,
+                    `🎨 Pattern Seed: ${paintSeed}`,
+                    `🪧 Stickers: ${stickers}`,
+                    `🔗 https://csfloat.com/db?inspectLink=${encodeURIComponent(inspectLink)}`,
+                ].join('\n');
+            }
         }
 
-        const data = await response.json();
-        const item = data?.iteminfo || data;
-
-        if (!item || !item.floatvalue) {
-            return '❌ Could not retrieve float data. The inspect link may be expired or invalid.';
+        // Fallback: CSFloat endpoint unavailable — return parsed link params only
+        if (response.status === 429) {
+            return '⏳ CSFloat rate limit hit. Try again in a moment.';
         }
-
-        const floatVal   = parseFloat(item.floatvalue).toFixed(10);
-        const paintSeed  = item.paintseed ?? 'N/A';
-        const paintIndex = item.paintindex ?? 'N/A';
-        const weaponName = item.full_item_name || item.weapon_type || 'Unknown Skin';
-        const stickers   = item.stickers?.length > 0
-            ? item.stickers.map(s => s.name).join(', ')
-            : 'None';
-
-        // Determine wear tier from float value
-        let wearTier = 'Unknown';
-        const fv = parseFloat(item.floatvalue);
-        if      (fv < 0.07)  wearTier = 'Factory New';
-        else if (fv < 0.15)  wearTier = 'Minimal Wear';
-        else if (fv < 0.38)  wearTier = 'Field-Tested';
-        else if (fv < 0.45)  wearTier = 'Well-Worn';
-        else                 wearTier = 'Battle-Scarred';
-
-        // Rarity of float within wear tier (lower = rarer for FN/MW, higher = rarer for BS)
-        let floatRarity = '';
-        if (fv < 0.01)       floatRarity = ' 🌟 (Low-tier FN — extremely rare!)';
-        else if (fv > 0.999) floatRarity = ' 💀 (Max float — collector item!)';
 
         return [
-            `🔍 **${weaponName}**`,
-            `📊 Float: \`${floatVal}\` — **${wearTier}**${floatRarity}`,
-            `🎨 Pattern: ${paintSeed} | Paint Index: ${paintIndex}`,
-            `🪧 Stickers: ${stickers}`,
+            `🔍 **Inspect Link Parsed** (float API unavailable right now)`,
+            `Steam ID: ${steamId}`,
+            `Asset ID: ${assetId}`,
+            `D Param:  ${paramD}`,
+            `🔗 View on CSFloat: https://csfloat.com/db?inspectLink=${encodeURIComponent(inspectLink)}`,
         ].join('\n');
 
     } catch (error) {
         console.error('[CS2 Float Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float fetch failed: ${error.message}`);
-        return `❌ Error fetching float data. Try again later.`;
+        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float failed: ${error.message}`);
+        return '❌ Error processing inspect link. Try again later.';
     }
 }
 
 // --- !cs2stats <steamid or vanity url> ---
-// Fetches CS2 player stats via the official Steam Web API.
-// Accepts a 64-bit SteamID (e.g. 76561198xxxxxxxxx) or a vanity URL name.
-// Vanity URLs are resolved to SteamID64 first via ResolveVanityURL.
+// FIX: Old version had three bugs:
+//   1. total_matches_played in CS2 (appid 730) returns ROUNDS played, not matches.
+//      total_rounds_played is the correct stat for rounds; total_matches_played = competitive matches.
+//   2. Win rate was calculated as wins/matches — wrong. Fixed to wins/rounds (round win rate).
+//   3. playerName was read from statsData.playerstats.steamID (just the numeric ID).
+//      Fixed to fetch the actual display name via GetPlayerSummaries.
+//   Also added: shots fired / accuracy, bombs planted/defused, better error messaging.
 async function getCS2PlayerStats(steamInput) {
     const apiKey = process.env.STEAM_API_KEY;
     if (!apiKey) return 'CS2 stats lookup is not configured (missing STEAM_API_KEY).';
@@ -835,68 +860,79 @@ async function getCS2PlayerStats(steamInput) {
     try {
         let steamId = steamInput.trim();
 
-        // If input is not a 17-digit numeric SteamID64, try resolving it as a vanity URL
+        // Resolve vanity URL → SteamID64
         if (!/^\d{17}$/.test(steamId)) {
-            const vanityUrl = `https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${apiKey}&vanityurl=${encodeURIComponent(steamId)}`;
-            const vanityRes = await fetch(vanityUrl);
+            const vanityRes  = await fetch(`https://api.steampowered.com/ISteamUser/ResolveVanityURL/v1/?key=${apiKey}&vanityurl=${encodeURIComponent(steamId)}`);
             const vanityData = await vanityRes.json();
             if (vanityData?.response?.success === 1) {
                 steamId = vanityData.response.steamid;
             } else {
-                return `Could not find a Steam account for "${steamInput}". Try using your full SteamID64 (17-digit number).`;
+                return `❌ Could not find a Steam account for **"${steamInput}"**.\nTry using your full SteamID64 (17-digit number from steamid.io).`;
             }
         }
 
-        // Fetch CS2 (appid 730) stats
-        const statsUrl = `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/?appid=730&key=${apiKey}&steamid=${steamId}`;
-        const statsRes = await fetch(statsUrl);
+        // Fetch display name from GetPlayerSummaries (fixes the steamID-as-name bug)
+        let displayName = steamId; // fallback if summary fetch fails
+        try {
+            const summaryRes  = await fetch(`https://api.steampowered.com/ISteamUser/GetPlayerSummaries/v2/?key=${apiKey}&steamids=${steamId}`);
+            const summaryData = await summaryRes.json();
+            const player      = summaryData?.response?.players?.[0];
+            if (player?.personaname) displayName = player.personaname;
+        } catch (_) { /* non-fatal — keep steamId as fallback name */ }
+
+        // Fetch CS2 stats (appid 730)
+        const statsRes = await fetch(`https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/?appid=730&key=${apiKey}&steamid=${steamId}`);
 
         if (!statsRes.ok) {
-            if (statsRes.status === 403) {
-                return `Stats for that account are private. The player needs to make their game stats public in Steam privacy settings.`;
-            }
-            return `Could not retrieve stats (Steam API error ${statsRes.status}).`;
+            if (statsRes.status === 403) return `❌ **${displayName}**'s stats are set to private.\nThey need to go to Steam → Edit Profile → Privacy Settings → set **Game Details** to Public.`;
+            return `❌ Could not retrieve stats (Steam API error ${statsRes.status}).`;
         }
 
         const statsData = await statsRes.json();
-        const stats = statsData?.playerstats?.stats;
+        const stats     = statsData?.playerstats?.stats;
 
         if (!stats || stats.length === 0) {
-            return `No CS2 stats found for that account. Stats may be private or the player hasn't played CS2.`;
+            return `❌ No CS2 stats found for **${displayName}**. Stats may be private or they haven't played CS2.`;
         }
 
-        // Pull key stats by name from the stats array
         const getStat = (name) => stats.find(s => s.name === name)?.value || 0;
 
-        const kills          = getStat('total_kills').toLocaleString();
-        const deaths         = getStat('total_deaths').toLocaleString();
-        const wins           = getStat('total_wins').toLocaleString();
-        const matchesPlayed  = getStat('total_matches_played').toLocaleString();
-        const headshotKills  = getStat('total_kills_headshot').toLocaleString();
-        const mvps           = getStat('total_mvps').toLocaleString();
-        const timePlayed     = getStat('total_time_played');
-        const hoursPlayed    = (timePlayed / 3600).toFixed(0);
+        // Correct CS2 stat names:
+        // total_rounds_played  = total rounds played (all modes)
+        // total_matches_played = competitive matches played (not rounds!)
+        // total_wins           = round wins (not match wins)
+        const kills         = getStat('total_kills');
+        const deaths        = getStat('total_deaths');
+        const hsKills       = getStat('total_kills_headshot');
+        const wins          = getStat('total_wins');           // round wins
+        const roundsPlayed  = getStat('total_rounds_played'); // total rounds across all modes
+        const matchesPlayed = getStat('total_matches_played');// competitive matches played
+        const mvps          = getStat('total_mvps');
+        const shotsFired    = getStat('total_shots_fired');
+        const shotsHit      = getStat('total_shots_hit');
+        const timePlayed    = getStat('total_time_played');
+        const bombsPlanted  = getStat('total_planted_bombs');
+        const bombsDefused  = getStat('total_defused_bombs');
 
-        const kdRaw = getStat('total_deaths') > 0
-            ? (getStat('total_kills') / getStat('total_deaths')).toFixed(2)
-            : getStat('total_kills').toFixed(2);
-
-        const hsPercent = getStat('total_kills') > 0
-            ? ((getStat('total_kills_headshot') / getStat('total_kills')) * 100).toFixed(1)
-            : '0.0';
-
-        const playerName = statsData.playerstats.steamID || steamInput;
+        const hoursPlayed  = (timePlayed / 3600).toFixed(0);
+        const kd           = deaths > 0 ? (kills / deaths).toFixed(2) : kills.toFixed(2);
+        const hsPercent    = kills > 0 ? ((hsKills / kills) * 100).toFixed(1) : '0.0';
+        const accuracy     = shotsFired > 0 ? ((shotsHit / shotsFired) * 100).toFixed(1) : '0.0';
+        const winRate      = roundsPlayed > 0 ? ((wins / roundsPlayed) * 100).toFixed(1) : '0.0';
 
         return [
-            `🎮 **CS2 Stats** for SteamID: ${steamId}`,
-            `K/D: ${kdRaw} | Kills: ${kills} | Deaths: ${deaths}`,
-            `Wins: ${wins} | Matches: ${matchesPlayed} | MVPs: ${mvps}`,
-            `Headshots: ${headshotKills} (${hsPercent}%) | Hours: ${hoursPlayed}h`,
+            `🎮 **CS2 Stats — ${displayName}**`,
+            `⚔️  K/D: ${kd} | Kills: ${kills.toLocaleString()} | Deaths: ${deaths.toLocaleString()}`,
+            `🎯 Headshots: ${hsKills.toLocaleString()} (${hsPercent}%) | Accuracy: ${accuracy}%`,
+            `🏆 Matches Played: ${matchesPlayed.toLocaleString()} | Round Win Rate: ${winRate}% | MVPs: ${mvps.toLocaleString()}`,
+            `💣 Bombs Planted: ${bombsPlanted.toLocaleString()} | Defused: ${bombsDefused.toLocaleString()} | Hours: ${hoursPlayed}h`,
+            `⚠️ *Stats are all-time totals (casual + competitive combined) via Steam API.*`,
         ].join('\n');
+
     } catch (error) {
         console.error('[CS2 Stats Error]', error);
         logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2stats fetch failed for "${steamInput}": ${error.message}`);
-        return `Error fetching CS2 stats for "${steamInput}".`;
+        return `❌ Error fetching CS2 stats for "${steamInput}".`;
     }
 }
 
@@ -1237,111 +1273,103 @@ twitchClient.on('message', async (channel, tags, message, self) => {
         return;
     }
 
+    // Tangia dungeon auto-join
     if (tags.username.toLowerCase() === 'tangiabot' && 
         (lowerMessage.includes('started a tangia dungeon') || 
-         lowerMessage.includes('started a tangia boss fight')) && 
-        lowerMessage.includes('!join')) {
-        setTimeout(() => {
+         lowerMessage.includes('dungeon has started'))) {
+        setTimeout(async () => {
             twitchClient.say(channel, '!join');
-            console.log('[DUNGEON/BOSS] Auto-joined!');
-            logCommand('twitch', 'BOT', 'auto-join', 'Tangia event detected', '!join');
+            logSystemEvent('INFO', 'INFO', 'tangia', 'Auto-joined Tangia dungeon');
         }, CONFIG.DUNGEON_AUTO_JOIN_DELAY);
         return;
     }
-    
-    if (lowerMessage.includes('meme')) {
-        const meme = await fetchMeme();
-        if (meme) {
-            await sendTwitchChunked(channel, `${meme.title} ${meme.url}`);
-            logCommand('twitch', tags.username, 'meme', message, meme.title);
-        } else {
-            const errorMsg = 'Could not fetch a meme right now. Try again later.';
-            twitchClient.say(channel, errorMsg);
-            logCommand('twitch', tags.username, 'meme', message, errorMsg, true);
+
+    // AI response on @mention or command
+    if (lowerMessage.includes(`@${process.env.TWITCH_BOT_USERNAME?.toLowerCase()}`) ||
+        lowerMessage.startsWith('!ask ') ||
+        lowerMessage.startsWith('!ai ')) {
+        
+        let userMessage = message
+            .replace(new RegExp(`@${process.env.TWITCH_BOT_USERNAME}`, 'gi'), '')
+            .replace(/^!ask\s+/i, '')
+            .replace(/^!ai\s+/i, '')
+            .trim();
+
+        if (!userMessage) return;
+
+        addToMemory('twitch', channel, tags.username, userMessage);
+
+        if (isWildRequest(userMessage)) {
+            const roast = await getWildRequestResponse(userMessage, 'twitch', channel, tags.username);
+            await sendTwitchChunked(channel, roast);
+            logCommand('twitch', tags.username, '@mention (wild)', userMessage, roast);
+            return;
         }
-        return;
-    }
-    
-    if (lowerMessage.includes('@' + process.env.TWITCH_BOT_USERNAME.toLowerCase()) || 
-        lowerMessage.startsWith('!patrick')) {
-        if (isWildRequest(message)) {
-            const response = await getWildRequestResponse(message, 'twitch', channel, tags.username);
-            await sendTwitchChunked(channel, response);
-            logCommand('twitch', tags.username, 'wild-request', message, response);
-        } else {
-            const response = await getAIResponse(message, 'twitch', channel, tags.username);
-            await sendTwitchChunked(channel, response);
-            logCommand('twitch', tags.username, '@mention', message, response);
-        }
+
+        const response = await getAIResponse(userMessage, 'twitch', channel, tags.username);
+        await sendTwitchChunked(channel, response);
+        logCommand('twitch', tags.username, '@mention', userMessage, response);
     }
 });
 
 // ===== DISCORD CLIENT SETUP =====
-const discordClient = new Client({ 
+const discordClient = new Client({
     intents: [
-        GatewayIntentBits.Guilds, 
-        GatewayIntentBits.GuildMessages, 
-        GatewayIntentBits.MessageContent
-    ] 
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.DirectMessages,
+    ]
 });
 
-discordClient.on('ready', (readyClient) => {
-    console.log(`✅ Discord logged in as ${readyClient.user.tag}`);
-    logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord logged in as ${readyClient.user.tag}`);
+discordClient.once(Events.ClientReady, (client) => {
+    console.log(`✅ Discord bot ready as ${client.user.tag}`);
+    logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord bot ready as ${client.user.tag}`);
+    
+    // Start cultist monitor
+    startCultistMonitor(client);
 });
 
-discordClient.on('error', (error) => {
-    console.error('[DISCORD ERROR]', error);
-    logSystemEvent('ERROR', 'ERROR', 'discord', 'Discord client error', error);
-});
-
-discordClient.on('shardDisconnect', (event) => {
-    console.log(`❌ Discord disconnected: ${event.reason || 'Unknown'}`);
-    logSystemEvent('CONNECTION', 'WARNING', 'discord', `❌ Discord disconnected: ${event.reason || 'Unknown'}`);
-});
-
-discordClient.on('shardReconnecting', () => {
-    console.log('🔄 Discord reconnecting...');
-    logSystemEvent('CONNECTION', 'INFO', 'discord', '🔄 Discord reconnecting...');
-});
-
-// ===== DISCORD MESSAGE HANDLER =====
+// ===== DISCORD MESSAGE HANDLER (MAIN) =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
-    
-    console.log(`[DISCORD] ${message.author.username}: ${message.content}`);
-    addToMemory('discord', message.channelId, message.author.username, message.content);
-    
+
     const lowerContent = message.content.toLowerCase();
-    
+    const channelId    = message.channelId;
+    const username     = message.author.username;
+
+    addToMemory('discord', channelId, username, message.content);
+    console.log(`[DISCORD] ${username}: ${message.content}`);
+
+    // --- Tarkov commands ---
     if (lowerContent.startsWith('!price ')) {
-        const itemName = message.content.substring(7);
+        const itemName = message.content.substring(7).trim();
         const result = await getTarkovPrice(itemName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!price', itemName, result);
+        logCommand('discord', username, '!price', itemName, result);
         return;
     }
-    
+
     if (lowerContent.startsWith('!bestammo ')) {
         const searchCaliber = message.content.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!bestammo', searchCaliber, result);
+        logCommand('discord', username, '!bestammo', searchCaliber, result);
         return;
     }
-    
+
     if (lowerContent === '!trader') {
         const result = await getTraderResets();
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!trader', message.content, result);
+        logCommand('discord', username, '!trader', message.content, result);
         return;
     }
-    
+
     if (lowerContent.startsWith('!map ')) {
-        const mapName = message.content.substring(5);
+        const mapName = message.content.substring(5).trim();
         const result = await getMapInfo(mapName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!map', mapName, result);
+        logCommand('discord', username, '!map', mapName, result);
         return;
     }
 
@@ -1349,16 +1377,16 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const playerName = message.content.substring(8).trim();
         const result = await getPlayerStats(playerName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!player', playerName, result);
+        logCommand('discord', username, '!player', playerName, result);
         return;
     }
 
-    // CS2 commands on Discord
+    // --- CS2 commands ---
     if (lowerContent.startsWith('!cs2price ')) {
         const skinName = message.content.substring(10).trim();
         const result = await getCS2SkinPrice(skinName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2price', skinName, result);
+        logCommand('discord', username, '!cs2price', skinName, result);
         return;
     }
 
@@ -1366,7 +1394,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const inspectLink = message.content.substring(10).trim();
         const result = await getCS2Float(inspectLink);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2float', inspectLink.substring(0, 60), result);
+        logCommand('discord', username, '!cs2float', inspectLink.substring(0, 60), result);
         return;
     }
 
@@ -1374,7 +1402,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const steamInput = message.content.substring(10).trim();
         const result = await getCS2PlayerStats(steamInput);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2stats', steamInput, result);
+        logCommand('discord', username, '!cs2stats', steamInput, result);
         return;
     }
 
@@ -1382,7 +1410,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const mapInput = message.content.substring(8).trim();
         const result = getCS2MapInfo(mapInput);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2map', mapInput, result);
+        logCommand('discord', username, '!cs2map', mapInput, result);
         return;
     }
 
@@ -1390,386 +1418,283 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const args = message.content.substring(9).trim();
         const parsed = parseCS2CaseCommand(args);
         if (!parsed) {
-            const usage = '❌ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
+            const usage = '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
             await safeDiscordReply(message, usage);
-            logCommand('discord', message.author.username, '!cs2case', args, usage, true);
+            logCommand('discord', username, '!cs2case', args, usage, true);
         } else {
             const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
             await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!cs2case', args, result);
+            logCommand('discord', username, '!cs2case', args, result);
         }
         return;
     }
 
+    // --- Misc commands ---
     if (lowerContent.includes('meme')) {
         const meme = await fetchMeme();
         if (meme) {
-            await message.channel.send({ content: meme.title, files: [meme.url] });
-            logCommand('discord', message.author.username, 'meme', message.content, meme.title);
+            await safeDiscordReply(message, `**${meme.title}**\n${meme.url}`);
+            logCommand('discord', username, 'meme', message.content, meme.url);
         } else {
-            const errorMsg = 'Could not fetch a meme right now. Try again later.';
-            await safeDiscordSend(message.channel, errorMsg);
-            logCommand('discord', message.author.username, 'meme', message.content, errorMsg, true);
+            await safeDiscordReply(message, "Couldn't fetch a meme right now. Try again!");
         }
         return;
     }
-    
-    if (message.content.includes(`<@${discordClient.user.id}>`)) {
 
-        if (isWildRequest(message.content)) {
-            const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
-            await safeDiscordReply(message, response);
-            logCommand('discord', message.author.username, 'wild-request', message.content, response);
+    if (lowerContent.includes('!code') || lowerContent.includes('!github')) {
+        const response = `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`;
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, '!code', message.content, response);
+        return;
+    }
+
+    if (lowerContent.startsWith('!persona ')) {
+        const personaName = message.content.substring(9).trim();
+        const result = setPersona(personaName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!persona', personaName, result);
+        return;
+    }
+
+    if (lowerContent === '!personas') {
+        const personas = getAvailablePersonas();
+        const current  = getCurrentPersona();
+        const list = personas.map(p => p.name === current.name ? `**${p.name}** (active)` : p.name).join(', ');
+        await safeDiscordReply(message, `Available personas: ${list}`);
+        return;
+    }
+
+    if (lowerContent === '!clearmemory') {
+        clearChannelMemory('discord', channelId);
+        await safeDiscordReply(message, '🧹 Memory cleared for this channel.');
+        logCommand('discord', username, '!clearmemory', '', 'Memory cleared');
+        return;
+    }
+
+    // --- @mention AI handler ---
+    const botMention = `<@${discordClient.user.id}>`;
+    if (message.mentions.has(discordClient.user)) {
+        const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
+        if (!userMessage && !hasImageAttachment(message)) return;
+
+        if (isWildRequest(userMessage)) {
+            const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
+            await safeDiscordReply(message, roast);
+            logCommand('discord', username, '@mention (wild)', userMessage, roast);
             return;
         }
 
-        if (detectImageRequest(message.content)) {
-            const rateLimit = checkImageRateLimit(message.author.id);
-            if (!rateLimit.allowed) {
-                const rateLimitMsg = getPersonaErrorMessage('rate_limit')(rateLimit.timeLeft);
-                await safeDiscordReply(message, rateLimitMsg);
-                logCommand('discord', message.author.username, 'image-rate-limit', message.content, rateLimitMsg);
+        if (detectImageRequest(userMessage)) {
+            const rateCheck = checkImageRateLimit(message.author.id);
+            if (!rateCheck.allowed) {
+                await safeDiscordReply(message, `⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
                 return;
             }
-            
+            const rawPrompt     = extractImagePrompt(userMessage);
+            const cleanPrompt   = sanitizeImagePrompt(rawPrompt);
             try {
                 await message.channel.sendTyping();
-                console.log('[IMAGE] Processing image request from Discord');
-                
-                const rawPrompt = extractImagePrompt(message.content);
-                const extractedPrompt = sanitizeImagePrompt(rawPrompt);
-                const prompt = SELF_REFERENTIAL_PATTERNS.some(p => p.test(message.content.toLowerCase()))
-                    ? sanitizeImagePrompt(message.content)
-                    : extractedPrompt;
-
-                const typingInterval = setInterval(() => {
-                    message.channel.sendTyping().catch(() => {});
-                }, 8000);
-
-                let imageData, mimeType;
-                try {
-                    ({ buffer: imageData, mimeType } = await generateImage(prompt));
-                } finally {
-                    clearInterval(typingInterval);
-                }
-                
-                const timestamp = Date.now();
-                const ext = mimeType === 'image/jpeg' ? 'jpg' : (mimeType.split('/')[1] || 'png');
-                const filename = `generated_${timestamp}.${ext}`;
-                const filepath = path.join(os.tmpdir(), filename);
-                
-                console.log('[IMAGE] Saving to temp file:', filepath);
-                
-                fs.writeFileSync(filepath, imageData);
-                
-                const sentMessage = await message.reply({ 
-                    content: `Here's your image for: "${prompt}" 🎨`,
-                    files: [filepath]
-                });
-                
-                let imageUrl = null;
-                if (sentMessage.attachments.size > 0) {
-                    const attachment = sentMessage.attachments.first();
-                    imageUrl = attachment.url;
-                    console.log('[IMAGE] Discord CDN URL:', imageUrl);
-                }
-                
-                fs.unlinkSync(filepath);
-                console.log('[IMAGE] Temp file cleaned up');
-                
-                logCommand('discord', message.author.username, 'image-gen', prompt, `Image generated: ${imageUrl || 'URL not captured'}`, false, imageUrl);
-            } catch (error) {
-                console.error('[IMAGE] Error generating image:', error);
-                logSystemEvent('ERROR', 'ERROR', 'discord', 'Image generation failed', error);
-                const errorMsg = getPersonaErrorMessage('image_gen');
-                await safeDiscordReply(message, errorMsg);
-                logCommand('discord', message.author.username, 'image-gen-error', message.content, errorMsg, true);
+                const { buffer, mimeType } = await generateImage(cleanPrompt);
+                const ext        = mimeType.split('/')[1] || 'png';
+                const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+                await message.reply({ files: [attachment] });
+                logCommand('discord', username, '@mention (image)', cleanPrompt, '[image generated]');
+            } catch (imgErr) {
+                console.error('[IMAGE GEN ERROR]', imgErr);
+                await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
             }
-        } else {
-            const images = await getImageAttachments(message);
-            
-            if (images.length > 0) {
-                try {
-                    await message.channel.sendTyping();
-                    console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) from ${message.author.username}`);
-                    
-                    const response = await getAIResponse(
-                        message.content || "What's in this image?",
-                        'discord',
-                        message.channelId,
-                        message.author.username,
-                        images
-                    );
-                    
-                    await safeDiscordReply(message, response);
-                    logCommand('discord', message.author.username, 'image-understanding', message.content, response);
-                } catch (error) {
-                    console.error('[IMAGE UNDERSTANDING] Error:', error);
-                    logSystemEvent('ERROR', 'ERROR', 'discord', 'Image understanding failed', error);
-                    const errorMsg = getPersonaErrorMessage('image_read');
-                    await safeDiscordReply(message, errorMsg);
-                    logCommand('discord', message.author.username, 'image-understanding-error', message.content, errorMsg, true);
-                }
-            } else {
-                const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-                await safeDiscordReply(message, response);
-                logCommand('discord', message.author.username, '@mention', message.content, response);
-            }
-        }
-    }
-    
-    else if (hasImageAttachment(message) && message.reference) {
-        let repliedToMsg = null;
-        try {
-            repliedToMsg = await message.channel.messages.fetch(message.reference.messageId);
-        } catch (err) {
-            if (err.code === 10008) return;
-            console.error('[IMAGE UNDERSTANDING REPLY] Fetch error:', err);
-            logSystemEvent('ERROR', 'WARNING', 'discord', 'Failed to fetch referenced message', err);
             return;
         }
 
-        if (repliedToMsg.author.id === discordClient.user.id) {
-            const images = await getImageAttachments(message);
-            
-            if (images.length > 0) {
-                await message.channel.sendTyping();
-                console.log(`[IMAGE UNDERSTANDING] Processing ${images.length} image(s) in reply from ${message.author.username}`);
-                
-                const response = await getAIResponse(
-                    message.content || "What's in this image?",
-                    'discord',
-                    message.channelId,
-                    message.author.username,
-                    images
-                );
-                
-                await safeDiscordReply(message, response);
-                logCommand('discord', message.author.username, 'image-understanding-reply', message.content, response);
-            }
+        if (hasImageAttachment(message)) {
+            const images   = await getImageAttachments(message);
+            const response = await getAIResponse(userMessage || 'What do you see in this image?', 'discord', channelId, username, images);
+            await safeDiscordReply(message, response);
+            logCommand('discord', username, '@mention (vision)', userMessage, response);
+            return;
         }
+
+        const response = await getAIResponse(userMessage, 'discord', channelId, username);
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, '@mention', userMessage, response);
     }
 });
 
-// ===== REPLY-TO-BOT HANDLER =====
+// ===== DISCORD MESSAGE HANDLER (IMAGE REPLY) =====
+// Handles when a user replies to any message and attaches an image
 discordClient.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot || !message.reference) return;
-    
-    let repliedTo;
+    if (message.author.bot) return;
+    if (!message.reference) return;
+    if (!hasImageAttachment(message)) return;
+
+    const channelId = message.channelId;
+    const username  = message.author.username;
+
     try {
-        repliedTo = await message.channel.messages.fetch(message.reference.messageId);
+        const referencedMsg = await message.channel.messages.fetch(message.reference.messageId);
+        const context = referencedMsg?.content ? `Replying to: "${referencedMsg.content.substring(0, 200)}"` : '';
+        const images  = await getImageAttachments(message);
+        const prompt  = message.content.trim() || 'What do you see in this image?';
+
+        const response = await getAIResponse(
+            context ? `${context}\n\nUser says: ${prompt}` : prompt,
+            'discord', channelId, username, images
+        );
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, 'image-reply', prompt, response);
     } catch (err) {
-        if (err.code === 10008) return;
-        console.error('[REPLY-TO-BOT] Fetch error:', err);
-        logSystemEvent('ERROR', 'WARNING', 'discord', 'Reply handler: failed to fetch referenced message', err);
+        console.error('[IMAGE REPLY ERROR]', err);
+    }
+});
+
+// ===== DISCORD MESSAGE HANDLER (REPLY TO BOT) =====
+// When anyone replies to a bot message, re-run all command and AI logic
+discordClient.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+    if (!message.reference) return;
+
+    const channelId = message.channelId;
+    const username  = message.author.username;
+
+    try {
+        const referencedMsg = await message.channel.messages.fetch(message.reference.messageId);
+        if (!referencedMsg?.author?.bot) return; // only care about replies to the bot
+        if (referencedMsg.author.id !== discordClient.user.id) return;
+    } catch {
         return;
     }
 
-    if (repliedTo.author.id !== discordClient.user.id) return;
-    
-    console.log(`[REPLY-TO-BOT] ${message.author.username}: ${message.content}`);
-    addToMemory('discord', message.channelId, message.author.username, message.content);
-    
     const lowerContent = message.content.toLowerCase();
-    
+    addToMemory('discord', channelId, username, message.content);
+
+    // Re-run all prefix commands in reply context
     if (lowerContent.startsWith('!price ')) {
-        const itemName = message.content.substring(7);
+        const itemName = message.content.substring(7).trim();
         const result = await getTarkovPrice(itemName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!price-reply', itemName, result);
         return;
     }
-    
     if (lowerContent.startsWith('!bestammo ')) {
         const searchCaliber = message.content.substring(10).trim();
         const result = await getBestAmmo(searchCaliber);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!bestammo-reply', searchCaliber, result);
         return;
     }
-    
     if (lowerContent === '!trader') {
         const result = await getTraderResets();
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!trader-reply', message.content, result);
         return;
     }
-    
     if (lowerContent.startsWith('!map ')) {
-        const mapName = message.content.substring(5);
+        const mapName = message.content.substring(5).trim();
         const result = await getMapInfo(mapName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!map-reply', mapName, result);
         return;
     }
-    
-    if (lowerContent.startsWith('!player ')) {
-        const playerName = message.content.substring(8).trim();
-        const result = await getPlayerStats(playerName);
-        await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!player-reply', playerName, result);
-        return;
-    }
-
-    // CS2 commands in reply-to-bot handler
     if (lowerContent.startsWith('!cs2price ')) {
         const skinName = message.content.substring(10).trim();
         const result = await getCS2SkinPrice(skinName);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2price-reply', skinName, result);
         return;
     }
-
     if (lowerContent.startsWith('!cs2float ')) {
         const inspectLink = message.content.substring(10).trim();
         const result = await getCS2Float(inspectLink);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2float-reply', inspectLink.substring(0, 60), result);
         return;
     }
-
     if (lowerContent.startsWith('!cs2stats ')) {
         const steamInput = message.content.substring(10).trim();
         const result = await getCS2PlayerStats(steamInput);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2stats-reply', steamInput, result);
         return;
     }
-
     if (lowerContent.startsWith('!cs2map ')) {
         const mapInput = message.content.substring(8).trim();
         const result = getCS2MapInfo(mapInput);
         await safeDiscordReply(message, result);
-        logCommand('discord', message.author.username, '!cs2map-reply', mapInput, result);
         return;
     }
-
     if (lowerContent.startsWith('!cs2case ')) {
         const args = message.content.substring(9).trim();
         const parsed = parseCS2CaseCommand(args);
         if (!parsed) {
-            const usage = '❌ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
-            await safeDiscordReply(message, usage);
-            logCommand('discord', message.author.username, '!cs2case-reply', args, usage, true);
+            await safeDiscordReply(message, '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`');
         } else {
             const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
             await safeDiscordReply(message, result);
-            logCommand('discord', message.author.username, '!cs2case-reply', args, result);
         }
         return;
     }
 
-    if (isWildRequest(message.content)) {
-        const response = await getWildRequestResponse(message.content, 'discord', message.channelId, message.author.username);
-        await safeDiscordReply(message, response);
-        logCommand('discord', message.author.username, 'wild-request-reply', message.content, response);
+    // Default: treat reply as AI conversation
+    const userMessage = message.content.trim();
+    if (!userMessage) return;
+
+    if (isWildRequest(userMessage)) {
+        const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
+        await safeDiscordReply(message, roast);
         return;
     }
-    
-    const images = await getImageAttachments(message);
-    
-    if (images.length > 0) {
-        await message.channel.sendTyping();
-        console.log(`[IMAGE UNDERSTANDING REPLY] Processing ${images.length} image(s) from ${message.author.username}`);
-        
-        const response = await getAIResponse(
-            message.content || "What's in this image?",
-            'discord',
-            message.channelId,
-            message.author.username,
-            images
-        );
-        
+
+    if (hasImageAttachment(message)) {
+        const images   = await getImageAttachments(message);
+        const response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
         await safeDiscordReply(message, response);
-        logCommand('discord', message.author.username, 'reply-to-bot-with-image', message.content, response);
-    } else {
-        const response = await getAIResponse(message.content, 'discord', message.channelId, message.author.username);
-        await safeDiscordReply(message, response);
-        logCommand('discord', message.author.username, 'reply-to-bot', message.content, response);
+        return;
     }
+
+    const response = await getAIResponse(userMessage, 'discord', channelId, username);
+    await safeDiscordReply(message, response);
+    logCommand('discord', username, 'reply-to-bot', userMessage, response);
 });
 
-// ===== CULTIST MONITORING SYSTEM =====
-const CULTIST_CONFIG = {
-    CHANNEL_ID: '1001340004259352678',
-    CHECK_INTERVAL_MS: 300000
-};
+// ===== CULTIST MONITOR =====
+// Polls cultist status every 5 minutes and sends Discord alerts when they're active
+const { initDatabase, getCultistStatuses, updateCultistStatus } = require('./database.js');
 
-let lastCultistStates = {
-    server1: { active: false },
-    server2: { active: false }
-};
+const CULTIST_ALERT_CHANNEL_ID = process.env.CULTIST_ALERT_CHANNEL_ID;
 
-async function checkCultistActivity() {
-  let server1Active = false;
-  let server2Active = false;
-
-  try {
-    const { db } = require('./database.js');
-
-    const row1 = db.prepare("SELECT value FROM bot_data WHERE key = 'cultist_server1_active'").get();
-    const row2 = db.prepare("SELECT value FROM bot_data WHERE key = 'cultist_server2_active'").get();
-
-    server1Active = row1?.value === '1' || row1?.value === 'true';
-    server2Active = row2?.value === '1' || row2?.value === 'true';
-
-    console.log(`[CULTIST CHECK] Server1: ${server1Active}, Server2: ${server2Active}`);
-  } catch (err) {
-    console.error('[CULTIST] DB read error:', err.message);
-    return;
-  }
-
-  const channel = discordClient.channels.cache.get(CULTIST_CONFIG.CHANNEL_ID);
-  if (!channel) {
-    console.log('[CULTIST] Channel not found');
-    return;
-  }
-
-  if (server1Active && !lastCultistStates.server1.active) {
-    await safeDiscordSend(channel, '🔴 **CULTIST ALERT** — Server 1: Cultists are active! 🔪');
-    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 1 cultists went active');
-  } else if (!server1Active && lastCultistStates.server1.active) {
-    await safeDiscordSend(channel, '✅ **Cultists cleared** — Server 1 is safe.');
-    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 1 cultists cleared');
-  }
-
-  if (server2Active && !lastCultistStates.server2.active) {
-    await safeDiscordSend(channel, '🔴 **CULTIST ALERT** — Server 2: Cultists are active! 🔪');
-    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 2 cultists went active');
-  } else if (!server2Active && lastCultistStates.server2.active) {
-    await safeDiscordSend(channel, '✅ **Cultists cleared** — Server 2 is safe.');
-    logSystemEvent('CULTIST', 'INFO', 'monitor', 'Server 2 cultists cleared');
-  }
-
-  lastCultistStates.server1.active = server1Active;
-  lastCultistStates.server2.active = server2Active;
-}
-
-discordClient.once('ready', () => {
-    setInterval(checkCultistActivity, CULTIST_CONFIG.CHECK_INTERVAL_MS);
-    console.log('[CULTIST] Monitoring started');
-    logSystemEvent('STARTUP', 'INFO', 'cultist', 'Cultist monitoring started');
-});
-
-// ===== EXPORT SYSTEM BRIDGE =====
-if (global.setDiscordClientForExport) {
-    global.setDiscordClientForExport(discordClient);
-    console.log('[EXPORT] Discord client registered for export system');
-    logSystemEvent('STARTUP', 'INFO', 'export', 'Discord client registered for export system');
-}
-
-// ===== DISCORD LOGIN =====
-discordClient.login(process.env.DISCORD_TOKEN).then(() => {
-    if (global.setDiscordClientForExport) {
-        global.setDiscordClientForExport(discordClient);
-        console.log('[EXPORT] Discord client registered post-login');
+async function checkCultistStatus(client) {
+    try {
+        const statuses = await getCultistStatuses();
+        for (const status of statuses) {
+            if (status.isActive && !status.alerted) {
+                const channel = await client.channels.fetch(CULTIST_ALERT_CHANNEL_ID);
+                if (channel) {
+                    await safeDiscordSend(channel, `🔪 **Cultist Alert** — Cultists are active on **${status.serverName}**!`);
+                    await updateCultistStatus(status.serverId, true, true);
+                    logSystemEvent('INFO', 'INFO', 'cultist', `Cultist alert sent for ${status.serverName}`);
+                }
+            } else if (!status.isActive && status.alerted) {
+                await updateCultistStatus(status.serverId, false, false);
+            }
+        }
+    } catch (err) {
+        console.error('[CULTIST MONITOR]', err);
+        logSystemEvent('ERROR', 'WARNING', 'cultist', `Cultist monitor error: ${err.message}`);
     }
-}).catch((error) => {
+}
+
+function startCultistMonitor(client) {
+    initDatabase().then(() => {
+        logSystemEvent('INFO', 'INFO', 'cultist', 'Cultist monitor started');
+        setInterval(() => checkCultistStatus(client), 5 * 60 * 1000);
+    }).catch(err => {
+        console.error('[DB INIT ERROR]', err);
+        logSystemEvent('ERROR', 'ERROR', 'database', `DB init failed: ${err.message}`);
+    });
+}
+
+// ===== START DISCORD =====
+discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error('[DISCORD LOGIN ERROR]', error);
     logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
-    process.exit(1);
 });
 
-setTimeout(() => {
-    logSystemEvent('STARTUP', 'INFO', 'system', '✅ Bot fully initialized and running');
-}, 5000);
+// ===== DASHBOARD SERVER =====
+try {
+    require('./dashboard-server.js');
+} catch (err) {
+    console.warn('[DASHBOARD] Could not start dashboard server:', err.message);
+}
