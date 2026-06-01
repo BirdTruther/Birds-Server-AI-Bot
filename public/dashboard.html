@@ -819,7 +819,7 @@
                 const container = document.getElementById('logs-container');
                 if (!logs || logs.length === 0) { container.innerHTML = '<div class="logs-empty">No logs found.</div>'; return; }
                 container.innerHTML = logs.slice().reverse().map(log => {
-                    const time = new Date(log.timestamp).toLocaleTimeString();
+                    const time = new Date(log.timestamp).toLocaleString();
                     const platform = log.platform || 'discord';
                     const errorClass = log.error ? ' error' : '';
                     return `<div class="log-entry ${platform}${errorClass}">

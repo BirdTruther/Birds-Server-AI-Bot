@@ -154,7 +154,7 @@ app.get('/api/bot/logs', (req, res) => {
   try {
     const dbLogs = getLogs(platform || 'all', maxResults);
     const totalCount = getLogCount();
-    const formattedLogs = dbLogs.map(log => ({
+    const formattedLogs = dbLogs.reverse().map(log => ({
       platform: log.platform, username: log.username, command: log.command,
       message: log.message, response: log.response, image_url: log.image_url,
       error: log.error === 1, timestamp: log.timestamp, id: log.id
