@@ -53,7 +53,8 @@ async function generateTextWithFallback(options) {
             msg.includes('temporarily unavailable') || msg.includes('retry');
         if (!isOverload) throw primaryErr;
         console.warn(`[AI] ${CONFIG.AI_PRIMARY_MODEL} overloaded — falling back to ${CONFIG.AI_FALLBACK_MODEL}`);
-        logSystemEvent('WARNING', 'WARNING', 'ai',
+        // FIX 1: was ('WARNING', 'WARNING', ...) — logType and severity were swapped
+        logSystemEvent('AI_FALLBACK', 'WARNING', 'ai',
             `Primary model overloaded, falling back to ${CONFIG.AI_FALLBACK_MODEL}: ${primaryErr.message.substring(0, 120)}`);
         return await generateText({ ...options, model: google(CONFIG.AI_FALLBACK_MODEL) });
     }
@@ -255,7 +256,8 @@ async function safeDiscordReply(message, content) {
         }
     } catch (error) {
         console.error('[DISCORD REPLY ERROR]', error);
-        logSystemEvent('ERROR', 'WARNING', 'discord', 'Safe reply failed', error);
+        // FIX 1: was ('ERROR', 'WARNING', ...) — logType was wrong
+        logSystemEvent('DISCORD_ERROR', 'WARNING', 'discord', 'Safe reply failed', error);
     }
 }
 
@@ -269,7 +271,8 @@ async function safeDiscordSend(channel, content) {
         }
     } catch (error) {
         console.error('[DISCORD SEND ERROR]', error);
-        logSystemEvent('ERROR', 'WARNING', 'discord', 'Safe send failed', error);
+        // FIX 1: was ('ERROR', 'WARNING', ...) — logType was wrong
+        logSystemEvent('DISCORD_ERROR', 'WARNING', 'discord', 'Safe send failed', error);
     }
 }
 
@@ -324,7 +327,7 @@ ${memoryContext}
         return text;
     } catch (error) {
         console.error('[WILD FILTER] Roast generation failed:', error);
-        logSystemEvent('ERROR', 'WARNING', 'filter', `Wild request roast failed for ${username}`, error);
+        logSystemEvent('FILTER_ERROR', 'WARNING', 'filter', `Wild request roast failed for ${username}`, error);
         return getPersonaErrorMessage('general');
     }
 }
@@ -394,7 +397,7 @@ IMPORTANT — vary your response structure. Do NOT:
         return text;
     } catch (error) {
         console.error('[AI Error]', error);
-        logSystemEvent('ERROR', 'ERROR', 'ai', `AI response failed: ${error.message}`, error);
+        logSystemEvent('AI_ERROR', 'ERROR', 'ai', `AI response failed: ${error.message}`, error);
         return getPersonaErrorMessage('general');
     }
 }
@@ -424,7 +427,7 @@ async function getTarkovPrice(itemName) {
         return `No item found: ${itemName}`;
     } catch (error) {
         console.error('[Tarkov Price Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Price lookup failed for ${itemName}`, error);
+        logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Price lookup failed for ${itemName}`, error);
         return `Error fetching: ${itemName}`;
     }
 }
@@ -457,7 +460,7 @@ async function getBestAmmo(searchCaliber) {
         return `No ${searchCaliber} ammo found. Try partial names like "m995" or ".300"`;
     } catch (error) {
         console.error('[Best Ammo Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Best ammo lookup failed for ${searchCaliber}`, error);
+        logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Best ammo lookup failed for ${searchCaliber}`, error);
         return `Error: ${searchCaliber}`;
     }
 }
@@ -479,7 +482,7 @@ async function getTraderResets() {
         return `Traders: ${traderList}`;
     } catch (error) {
         console.error('[Trader Resets Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', 'Trader resets lookup failed', error);
+        logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', 'Trader resets lookup failed', error);
         return 'Error fetching traders';
     }
 }
@@ -496,7 +499,7 @@ async function getMapInfo(mapName) {
         return `No map: ${mapName}`;
     } catch (error) {
         console.error('[Map Info Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Map info lookup failed for ${mapName}`, error);
+        logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Map info lookup failed for ${mapName}`, error);
         return `Error: ${mapName}`;
     }
 }
@@ -516,7 +519,7 @@ async function getPlayerStats(playerName) {
         return `No player found: ${playerName}`;
     } catch (error) {
         console.error('[Player Stats Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'tarkov', `Player stats lookup failed for ${playerName}`, error);
+        logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Player stats lookup failed for ${playerName}`, error);
         return `Error fetching player: ${playerName}`;
     }
 }
@@ -556,7 +559,7 @@ async function getCS2SkinPrice(skinName) {
         ].join('\n');
     } catch (error) {
         console.error('[CS2 Price Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2price fetch failed for "${skinName}": ${error.message}`);
+        logSystemEvent('CS2_ERROR', 'WARNING', 'cs2', `cs2price fetch failed for "${skinName}": ${error.message}`);
         return `❌ Error fetching CS2 price for "${skinName}". Try again later.`;
     }
 }
@@ -618,7 +621,7 @@ async function getCS2Float(inspectLink) {
 
     } catch (error) {
         console.error('[CS2 Float Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2float failed: ${error.message}`);
+        logSystemEvent('CS2_ERROR', 'WARNING', 'cs2', `cs2float failed: ${error.message}`);
         return '❌ Error processing inspect link. Try again later.';
     }
 }
@@ -680,7 +683,7 @@ async function getCS2PlayerStats(steamInput) {
         ].join('\n');
     } catch (error) {
         console.error('[CS2 Stats Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'cs2', `cs2stats fetch failed for "${steamInput}": ${error.message}`);
+        logSystemEvent('CS2_ERROR', 'WARNING', 'cs2', `cs2stats fetch failed for "${steamInput}": ${error.message}`);
         return `❌ Error fetching CS2 stats for "${steamInput}".`;
     }
 }
@@ -779,7 +782,7 @@ async function fetchMeme() {
         return null;
     } catch (error) {
         console.error('[Meme Fetch Error]', error);
-        logSystemEvent('ERROR', 'WARNING', 'meme', 'Meme fetch failed', error);
+        logSystemEvent('MEME_ERROR', 'WARNING', 'meme', 'Meme fetch failed', error);
         return null;
     }
 }
@@ -968,6 +971,10 @@ const discordClient = new Client({
 discordClient.once(Events.ClientReady, (client) => {
     console.log(`✅ Discord bot ready as ${client.user.tag}`);
     logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord bot ready as ${client.user.tag}`);
+    // FIX 3: Register Discord client with dashboard-server so memorial export works
+    if (typeof global.setDiscordClientForExport === 'function') {
+        global.setDiscordClientForExport(client);
+    }
     startCultistMonitor(client);
 });
 
@@ -1342,7 +1349,7 @@ function startCultistMonitor(client) {
             }
         } catch (err) {
             console.error('[CULTIST MONITOR ERROR]', err);
-            logSystemEvent('ERROR', 'WARNING', 'cultist', `Monitor error: ${err.message}`);
+            logSystemEvent('CULTIST_ERROR', 'WARNING', 'cultist', `Monitor error: ${err.message}`);
         }
     }, 5 * 60 * 1000);
 }
