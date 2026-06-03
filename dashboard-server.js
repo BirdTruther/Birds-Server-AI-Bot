@@ -2,6 +2,7 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
+const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
 
 // Load cultist enabled state from DB on startup (persists across reboots)
 let cultistState = {
@@ -14,15 +15,6 @@ console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 
 
 // Expose getter so index.js can always read the live value
 global.getCultistEnabled = () => cultistState.enabled;
-
-// Persona state management
-let botPersona = {
-  current: 'aggressive',
-  lastChanged: new Date().toISOString()
-};
-
-// Export function for bot to access current persona
-global.getBotPersona = () => botPersona.current;
 
 // Command logs storage (in-memory cache for real-time updates, max 500 entries)
 const MAX_LOGS = 500;
@@ -127,25 +119,31 @@ app.post('/api/cultist/toggle', (req, res) => {
 
 app.get('/api/bot/status', (req, res) => {
   const uptimeSeconds = process.uptime();
-  // FIX 1: use formatUptime() instead of toISOString().substr(11,8) which wraps after 24h
   const uptimeStr = formatUptime(uptimeSeconds);
   res.json({ status: 'ONLINE', uptime: uptimeStr, lastCheck: new Date().toLocaleTimeString(), memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB' });
 });
 
+// ===== FIX: Persona endpoints now read/write through persona-manager.js directly =====
+// This eliminates the de-sync between the dashboard's local botPersona state and
+// the actual runtime state in persona-manager.js
 app.get('/api/persona/current', (req, res) => {
-  res.json({ success: true, persona: botPersona.current, lastChanged: botPersona.lastChanged });
+  const available = getAvailablePersonas();
+  const persona = getCurrentPersona();
+  // Find the key for the current persona by matching the name
+  const currentKey = available.find(k => k === persona.name?.toLowerCase()) || available[0];
+  res.json({ success: true, persona: currentKey });
 });
 
 app.post('/api/persona/set', (req, res) => {
   const { persona } = req.body;
-  const validPersonas = ['aggressive', 'sassy', 'nice', 'conspiracy', 'sleepy'];
-  if (!validPersonas.includes(persona)) {
-    return res.status(400).json({ success: false, error: 'Invalid persona. Valid options: ' + validPersonas.join(', ') });
+  const valid = getAvailablePersonas();
+  if (!valid.includes(persona)) {
+    return res.status(400).json({ success: false, error: 'Invalid persona. Valid options: ' + valid.join(', ') });
   }
-  botPersona.current = persona;
-  botPersona.lastChanged = new Date().toISOString();
+  const success = setPersona(persona);
+  if (!success) return res.status(400).json({ success: false, error: 'Persona switch failed' });
   console.log(`[API] Persona changed to: ${persona}`);
-  res.json({ success: true, persona: botPersona.current, lastChanged: botPersona.lastChanged });
+  res.json({ success: true, persona });
 });
 
 app.get('/api/bot/logs', (req, res) => {
@@ -466,5 +464,5 @@ app.listen(PORT, () => {
     message: `Dashboard server started on port ${PORT}`
   });
   console.log(`Dashboard on http://localhost:${PORT}/`);
-  console.log(`Current persona: ${botPersona.current}`);
+  console.log(`Current persona: ${getCurrentPersona().name}`);
 });
