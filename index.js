@@ -39,6 +39,10 @@ const CONFIG = {
     AI_FALLBACK_MODEL: 'gemini-2.0-flash',
     CS2_KEY_COST_USD: 2.49,
     CS2_CASE_MAX_OPENS: 100,
+    // FIX 1: Maximum allowed attachment size in bytes (5MB)
+    MAX_IMAGE_BYTES: 5 * 1024 * 1024,
+    // FIX 2: Steam price cache TTL in milliseconds (30 minutes)
+    CS2_PRICE_CACHE_TTL_MS: 30 * 60 * 1000,
 };
 
 // ===== AI MODEL FALLBACK WRAPPER =====
@@ -53,7 +57,6 @@ async function generateTextWithFallback(options) {
             msg.includes('temporarily unavailable') || msg.includes('retry');
         if (!isOverload) throw primaryErr;
         console.warn(`[AI] ${CONFIG.AI_PRIMARY_MODEL} overloaded — falling back to ${CONFIG.AI_FALLBACK_MODEL}`);
-        // FIX 1: was ('WARNING', 'WARNING', ...) — logType and severity were swapped
         logSystemEvent('AI_FALLBACK', 'WARNING', 'ai',
             `Primary model overloaded, falling back to ${CONFIG.AI_FALLBACK_MODEL}: ${primaryErr.message.substring(0, 120)}`);
         return await generateText({ ...options, model: google(CONFIG.AI_FALLBACK_MODEL) });
@@ -224,12 +227,23 @@ function hasImageAttachment(message) {
     );
 }
 
+// FIX 1: Guard against OOM by checking Content-Length before downloading.
+// Attachments over CONFIG.MAX_IMAGE_BYTES (5MB) are skipped with a warning log.
 async function getImageAttachments(message) {
     const images = [];
     for (const [, attachment] of message.attachments) {
         if (attachment.contentType?.startsWith('image/') ||
             /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name || '')) {
             try {
+                // Pre-flight HEAD request to read Content-Length without downloading the body
+                const headRes = await fetch(attachment.url, { method: 'HEAD' });
+                const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
+                if (contentLength > CONFIG.MAX_IMAGE_BYTES) {
+                    console.warn(`[IMAGE] Attachment "${attachment.name}" is ${(contentLength / 1024 / 1024).toFixed(1)}MB — exceeds ${CONFIG.MAX_IMAGE_BYTES / 1024 / 1024}MB limit, skipping.`);
+                    logSystemEvent('IMAGE_SKIP', 'WARNING', 'image',
+                        `Attachment "${attachment.name}" skipped: ${(contentLength / 1024 / 1024).toFixed(1)}MB exceeds size limit`);
+                    continue;
+                }
                 const response = await fetch(attachment.url);
                 const arrayBuffer = await response.arrayBuffer();
                 images.push({
@@ -256,7 +270,6 @@ async function safeDiscordReply(message, content) {
         }
     } catch (error) {
         console.error('[DISCORD REPLY ERROR]', error);
-        // FIX 1: was ('ERROR', 'WARNING', ...) — logType was wrong
         logSystemEvent('DISCORD_ERROR', 'WARNING', 'discord', 'Safe reply failed', error);
     }
 }
@@ -271,7 +284,6 @@ async function safeDiscordSend(channel, content) {
         }
     } catch (error) {
         console.error('[DISCORD SEND ERROR]', error);
-        // FIX 1: was ('ERROR', 'WARNING', ...) — logType was wrong
         logSystemEvent('DISCORD_ERROR', 'WARNING', 'discord', 'Safe send failed', error);
     }
 }
@@ -526,14 +538,32 @@ async function getPlayerStats(playerName) {
 
 // ===== CS2 API SERVICE =====
 
+// FIX 2: In-memory cache for Steam skin prices to avoid rate limiting (429s).
+// Each entry: { result: string, expiresAt: number }
+// TTL is CONFIG.CS2_PRICE_CACHE_TTL_MS (30 minutes).
+const cs2PriceCache = new Map();
+
 async function getCS2SkinPrice(skinName) {
     try {
+        // Normalise key so "ak47 redline" and "AK47 Redline" share a cache entry
+        const cacheKey = skinName.trim().toLowerCase();
+        const cached = cs2PriceCache.get(cacheKey);
+        if (cached && Date.now() < cached.expiresAt) {
+            console.log(`[CS2 Cache] HIT for "${skinName}" — serving cached price.`);
+            return cached.result;
+        }
+
         const encoded = encodeURIComponent(skinName);
         const searchUrl = `https://steamcommunity.com/market/search/render/?query=${encoded}&appid=730&search_descriptions=0&count=3&norender=1`;
         const searchRes = await fetch(searchUrl, {
             headers: { 'User-Agent': 'Mozilla/5.0 (compatible; BirdBot/1.0)' }
         });
-        if (!searchRes.ok) return `❌ Steam Market returned an error (${searchRes.status}). Try again in a moment.`;
+        if (!searchRes.ok) {
+            if (searchRes.status === 429) {
+                logSystemEvent('CS2_RATE_LIMIT', 'WARNING', 'cs2', `Steam rate limit hit for "${skinName}"`);
+            }
+            return `❌ Steam Market returned an error (${searchRes.status}). Try again in a moment.`;
+        }
         const searchData = await searchRes.json();
         const results = searchData?.results;
         if (!results || results.length === 0) {
@@ -551,12 +581,17 @@ async function getCS2SkinPrice(skinName) {
             const priceData = await priceRes.json();
             medianPrice = priceData?.median_price || priceData?.lowest_price || 'N/A';
         }
-        return [
+        const result = [
             `🔫 **${name}**`,
             `💰 Lowest: ${lowestUSD} | Median (30d): ${medianPrice}`,
             `📦 Listings: ${listCount}`,
             `🔗 https://steamcommunity.com/market/listings/730/${encodeURIComponent(item.hash_name || name)}`,
         ].join('\n');
+
+        // Store in cache with expiry timestamp
+        cs2PriceCache.set(cacheKey, { result, expiresAt: Date.now() + CONFIG.CS2_PRICE_CACHE_TTL_MS });
+        console.log(`[CS2 Cache] STORED "${skinName}" — expires in ${CONFIG.CS2_PRICE_CACHE_TTL_MS / 60000} minutes.`);
+        return result;
     } catch (error) {
         console.error('[CS2 Price Error]', error);
         logSystemEvent('CS2_ERROR', 'WARNING', 'cs2', `cs2price fetch failed for "${skinName}": ${error.message}`);
