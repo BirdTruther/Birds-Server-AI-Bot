@@ -1016,6 +1016,11 @@ discordClient.once(Events.ClientReady, (client) => {
 // ===== DISCORD MESSAGE HANDLER (MAIN) =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
+    // FIX 4: Reply messages are handled exclusively by the IMAGE REPLY and REPLY TO BOT
+    // listeners below. Without this guard the main handler would also fire on every reply,
+    // causing addToMemory to run twice and occasionally triggering a second AI response.
+    if (message.reference) return;
+
     const lowerContent = message.content.toLowerCase();
     const channelId    = message.channelId;
     const username     = message.author.username;
@@ -1227,6 +1232,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
         const channelId    = message.channelId;
         const username     = message.author.username;
 
+        // FIX 4: Only add to memory here — image replies already called addToMemory in their handler.
+        // This guard prevents a duplicate memory entry when the IMAGE REPLY handler already ran.
         addToMemory('discord', channelId, username, message.content);
 
         // Re-check all prefix commands in reply context
@@ -1297,120 +1304,4 @@ discordClient.on(Events.MessageCreate, async (message) => {
             const parsed = parseCS2CaseCommand(args);
             if (!parsed) {
                 const usage = '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
-                await safeDiscordReply(message, usage);
-            } else {
-                const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
-                await safeDiscordReply(message, result);
-                logCommand('discord', username, '!cs2case (reply)', args, result);
-            }
-            return;
-        }
-
-        // Plain reply → AI response
-        const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
-        if (!userMessage) return;
-
-        if (isWildRequest(userMessage)) {
-            const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
-            await safeDiscordReply(message, roast);
-            logCommand('discord', username, 'reply (wild)', userMessage, roast);
-            return;
-        }
-
-        const response = await getAIResponse(userMessage, 'discord', channelId, username);
-        await safeDiscordReply(message, response);
-        logCommand('discord', username, 'reply', userMessage, response);
-    } catch (err) {
-        console.error('[REPLY HANDLER ERROR]', err);
-    }
-});
-
-// ===== CULTIST MONITOR =====
-function startCultistMonitor(client) {
-    const cultistChannelId = process.env.CULTIST_CHANNEL_ID;
-    const monitorEnabled   = getSetting('cultist_monitor_enabled') === 'true';
-
-    console.log(`[DASHBOARD] Cultist monitoring loaded as: ${monitorEnabled ? 'ENABLED' : 'DISABLED'}`);
-
-    if (!monitorEnabled || !cultistChannelId) return;
-
-    const CULTIST_SERVER_IDS = [
-        process.env.CULTIST_SERVER_1,
-        process.env.CULTIST_SERVER_2,
-    ].filter(Boolean);
-
-    if (CULTIST_SERVER_IDS.length === 0) {
-        console.log('[CULTIST] No server IDs configured — monitor idle.');
-        return;
-    }
-
-    let lastAlertTime = 0;
-    const ALERT_COOLDOWN_MS = 5 * 60 * 1000; // 5 minutes
-
-    setInterval(async () => {
-        try {
-            const now = Date.now();
-            if (now - lastAlertTime < ALERT_COOLDOWN_MS) return;
-
-            const channel = await client.channels.fetch(cultistChannelId).catch(() => null);
-            if (!channel) return;
-
-            // Check each server for cultist activity
-            for (const serverId of CULTIST_SERVER_IDS) {
-                const statusKey = `cultist_status_${serverId}`;
-                const currentStatus = getSetting(statusKey);
-
-                // Fetch live status from tarkov.dev
-                const query = gql`query { maps(name: "woods") { name bosses { boss { name } spawnChance } } }`;
-                const data = await request(CONFIG.TARKOV_API_URL, query).catch(() => null);
-                if (!data) continue;
-
-                const bossInfo = data.maps?.[0]?.bosses?.find(b => b.boss?.name?.toLowerCase().includes('cultist'));
-                if (!bossInfo) continue;
-
-                const isActive = bossInfo.spawnChance > 0;
-                const statusVal = isActive ? 'active' : 'inactive';
-
-                if (currentStatus !== statusVal) {
-                    setSetting(statusKey, statusVal);
-                    if (isActive) {
-                        lastAlertTime = now;
-                        await safeDiscordSend(channel,
-                            `🔪 **Cultist Alert!** Cultists have been spotted on server ${serverId}! Check Woods/Shoreline/Lighthouse.`
-                        );
-                        logSystemEvent('INFO', 'INFO', 'cultist', `Cultist alert sent for server ${serverId}`);
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('[CULTIST MONITOR ERROR]', err);
-            logSystemEvent('CULTIST_ERROR', 'WARNING', 'cultist', `Monitor error: ${err.message}`);
-        }
-    }, 5 * 60 * 1000);
-}
-
-// ===== DASHBOARD SERVER =====
-require('./dashboard-server.js');
-
-// ===== LOGIN =====
-discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
-    console.error('[DISCORD LOGIN ERROR]', error);
-    logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
-    process.exit(1);
-});
-
-process.on('SIGTERM', () => {
-    console.log('[SHUTDOWN] Received SIGTERM — shutting down gracefully.');
-    logSystemEvent('SHUTDOWN', 'INFO', 'system', 'Bot shutting down (SIGTERM)');
-    discordClient.destroy();
-    twitchClient.disconnect();
-    process.exit(0);
-});
-
-process.on('SIGINT', () => {
-    console.log('[SHUTDOWN] Received SIGINT — shutting down gracefully.');
-    logSystemEvent('SHUTDOWN', 'INFO', 'system', 'Bot shutting down (SIGINT)');
-    discordClient.destroy();
-    twitchClient.disconnect();
-    process.exit(0);
-});
+ 
