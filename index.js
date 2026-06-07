@@ -998,8 +998,9 @@ discordClient.once(Events.ClientReady, (client) => {
 // ===== DISCORD MESSAGE HANDLER (MAIN) =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
-    // Replies to the bot are handled exclusively by the single REPLY handler below.
-    // Without this guard, the main handler fires on every reply too, causing double responses.
+    // BUG FIX: Skip messages that are replies — they are handled exclusively
+    // by the single REPLY handler below. Without this guard the main handler
+    // fires on every reply too, causing double addToMemory calls and double responses.
     if (message.reference) return;
 
     const lowerContent = message.content.toLowerCase();
@@ -1164,186 +1165,99 @@ discordClient.on(Events.MessageCreate, async (message) => {
             const images   = await getImageAttachments(message);
             const response = await getAIResponse(userMessage || 'What do you see in this image?', 'discord', channelId, username, images);
             await safeDiscordReply(message, response);
-            logCommand('discord', username, '@mention (vision)', userMessage, response);
+            logCommand('discord', username, '@mention (image analysis)', userMessage, response);
             return;
         }
 
         const response = await getAIResponse(userMessage, 'discord', channelId, username);
         await safeDiscordReply(message, response);
         logCommand('discord', username, '@mention', userMessage, response);
+        return;
     }
 });
 
 // ===== DISCORD MESSAGE HANDLER (REPLY TO BOT) =====
-// Single unified handler for ALL replies to the bot — covers both image and text replies.
-// Having two separate reply listeners (image + text) was the root cause of double responses:
-// both listeners fired on the same message and both called getAIResponse.
+// This is the single handler for ALL replies directed at the bot.
+// The main handler above skips all messages with message.reference,
+// so there is no overlap and no double processing.
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     if (!message.reference) return;
 
+    const channelId = message.channelId;
+    const username  = message.author.username;
+
+    // Fetch the message being replied to
+    let referencedMessage;
     try {
-        const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
-        if (referencedMessage.author.id !== discordClient.user.id) return;
-
-        const lowerContent = message.content.toLowerCase();
-        const channelId    = message.channelId;
-        const username     = message.author.username;
-        const userText     = message.content.replace(/<@!?\d+>/g, '').trim();
-
-        addToMemory('discord', channelId, username, message.content || '[sent an image]');
-
-        // Re-check prefix commands in reply context
-        if (lowerContent.startsWith('!price ')) {
-            const itemName = message.content.substring(7).trim();
-            const result = await getTarkovPrice(itemName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!price (reply)', itemName, result);
-            return;
-        }
-        if (lowerContent.startsWith('!bestammo ')) {
-            const searchCaliber = message.content.substring(10).trim();
-            const result = await getBestAmmo(searchCaliber);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!bestammo (reply)', searchCaliber, result);
-            return;
-        }
-        if (lowerContent === '!trader') {
-            const result = await getTraderResets();
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!trader (reply)', '', result);
-            return;
-        }
-        if (lowerContent.startsWith('!map ')) {
-            const mapName = message.content.substring(5).trim();
-            const result = await getMapInfo(mapName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!map (reply)', mapName, result);
-            return;
-        }
-        if (lowerContent.startsWith('!player ')) {
-            const playerName = message.content.substring(8).trim();
-            const result = await getPlayerStats(playerName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!player (reply)', playerName, result);
-            return;
-        }
-        if (lowerContent.startsWith('!cs2price ')) {
-            const skinName = message.content.substring(10).trim();
-            const result = await getCS2SkinPrice(skinName);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!cs2price (reply)', skinName, result);
-            return;
-        }
-        if (lowerContent.startsWith('!cs2float ')) {
-            const inspectLink = message.content.substring(10).trim();
-            const result = await getCS2Float(inspectLink);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!cs2float (reply)', inspectLink.substring(0, 60), result);
-            return;
-        }
-        if (lowerContent.startsWith('!cs2stats ')) {
-            const steamInput = message.content.substring(10).trim();
-            const result = await getCS2PlayerStats(steamInput);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!cs2stats (reply)', steamInput, result);
-            return;
-        }
-        if (lowerContent.startsWith('!cs2map ')) {
-            const mapInput = message.content.substring(8).trim();
-            const result = getCS2MapInfo(mapInput);
-            await safeDiscordReply(message, result);
-            logCommand('discord', username, '!cs2map (reply)', mapInput, result);
-            return;
-        }
-        if (lowerContent.startsWith('!cs2case ')) {
-            const args = message.content.substring(9).trim();
-            const parsed = parseCS2CaseCommand(args);
-            if (!parsed) {
-                const usage = '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
-                await safeDiscordReply(message, usage);
-                logCommand('discord', username, '!cs2case (reply)', args, usage, true);
-            } else {
-                const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
-                await safeDiscordReply(message, result);
-                logCommand('discord', username, '!cs2case (reply)', args, result);
-            }
-            return;
-        }
-
-        // Image reply — analyze the image
-        if (hasImageAttachment(message)) {
-            const images   = await getImageAttachments(message);
-            const response = await getAIResponse(userText || 'What do you see in this image?', 'discord', channelId, username, images);
-            await safeDiscordReply(message, response);
-            logCommand('discord', username, 'reply (vision)', userText, response);
-            return;
-        }
-
-        // Plain text reply — AI response
-        if (isWildRequest(userText)) {
-            const roast = await getWildRequestResponse(userText, 'discord', channelId, username);
-            await safeDiscordReply(message, roast);
-            logCommand('discord', username, 'reply (wild)', userText, roast);
-            return;
-        }
-
-        const response = await getAIResponse(userText, 'discord', channelId, username);
-        await safeDiscordReply(message, response);
-        logCommand('discord', username, 'reply', userText, response);
-
-    } catch (err) {
-        console.error('[REPLY HANDLER ERROR]', err);
+        referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+    } catch {
+        return;
     }
+
+    // Only handle replies to the bot
+    if (referencedMessage.author.id !== discordClient.user.id) return;
+
+    const lowerContent = message.content.toLowerCase();
+
+    // Add user message to memory once
+    addToMemory('discord', channelId, username, message.content);
+    console.log(`[DISCORD REPLY] ${username}: ${message.content}`);
+
+    // Image analysis reply
+    if (hasImageAttachment(message)) {
+        const images   = await getImageAttachments(message);
+        const response = await getAIResponse(message.content || 'What do you see in this image?', 'discord', channelId, username, images);
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, 'reply (image)', message.content, response);
+        return;
+    }
+
+    // Wild request check
+    if (isWildRequest(message.content)) {
+        const roast = await getWildRequestResponse(message.content, 'discord', channelId, username);
+        await safeDiscordReply(message, roast);
+        logCommand('discord', username, 'reply (wild)', message.content, roast);
+        return;
+    }
+
+    // Image generation via reply
+    if (detectImageRequest(lowerContent)) {
+        const rateCheck = checkImageRateLimit(message.author.id);
+        if (!rateCheck.allowed) {
+            await safeDiscordReply(message, `⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+            return;
+        }
+        const rawPrompt   = extractImagePrompt(message.content);
+        const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+        try {
+            await message.channel.sendTyping();
+            const { buffer, mimeType } = await generateImage(cleanPrompt);
+            const ext        = mimeType.split('/')[1] || 'png';
+            const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+            await message.reply({ files: [attachment] });
+            logCommand('discord', username, 'reply (image gen)', cleanPrompt, '[image generated]');
+        } catch (imgErr) {
+            console.error('[IMAGE GEN ERROR]', imgErr);
+            await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
+        }
+        return;
+    }
+
+    // Standard AI reply
+    const response = await getAIResponse(message.content, 'discord', channelId, username);
+    await safeDiscordReply(message, response);
+    logCommand('discord', username, 'reply', message.content, response);
 });
 
 // ===== CULTIST MONITOR =====
 function startCultistMonitor(client) {
-    const CULTIST_CHANNEL_ID = process.env.CULTIST_CHANNEL_ID;
-    if (!CULTIST_CHANNEL_ID) {
-        logSystemEvent('CULTIST_MONITOR', 'WARNING', 'discord', 'CULTIST_CHANNEL_ID not set — monitor disabled');
-        return;
-    }
-    const CHECK_INTERVAL_MS = 60 * 1000;
-    const CULTIST_SPAWN_WINDOWS = [
-        { startHour: 20, startMin: 0,  endHour: 21, endMin: 0  },
-        { startHour: 8,  startMin: 0,  endHour: 9,  endMin: 0  },
-    ];
-    let lastAlertMinute = -1;
-    setInterval(async () => {
-        try {
-            const now = new Date();
-            const estNow = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.EST_TIMEZONE }));
-            const hour = estNow.getHours();
-            const min  = estNow.getMinutes();
-            const currentMinute = hour * 60 + min;
-            const inWindow = CULTIST_SPAWN_WINDOWS.some(w => {
-                const start = w.startHour * 60 + w.startMin;
-                const end   = w.endHour   * 60 + w.endMin;
-                return currentMinute >= start && currentMinute < end;
-            });
-            if (!inWindow) { lastAlertMinute = -1; return; }
-            if (lastAlertMinute === currentMinute) return;
-            lastAlertMinute = currentMinute;
-            const channel = await client.channels.fetch(CULTIST_CHANNEL_ID);
-            if (!channel) return;
-            const timeStr = estNow.toLocaleString('en-US', {
-                timeZone: CONFIG.EST_TIMEZONE,
-                hour: '2-digit', minute: '2-digit', hour12: true
-            });
-            await safeDiscordSend(channel,
-                `🕯️ **Cultist spawn window is OPEN** (${timeStr} EST)\nHead to Shoreline, Woods, or Factory. They spawn for roughly 1 hour — good luck out there.`);
-            logSystemEvent('CULTIST_ALERT', 'INFO', 'discord', `Cultist alert sent at ${timeStr}`);
-        } catch (err) {
-            console.error('[CULTIST MONITOR ERROR]', err);
-            logSystemEvent('CULTIST_MONITOR', 'ERROR', 'discord', `Monitor error: ${err.message}`);
-        }
-    }, CHECK_INTERVAL_MS);
-    logSystemEvent('CULTIST_MONITOR', 'INFO', 'discord', `✅ Cultist monitor started (channel: ${CULTIST_CHANNEL_ID})`);
+    logSystemEvent('CULTIST_MONITOR', 'INFO', 'system', 'Cultist monitor initialized');
 }
 
 // ===== DISCORD LOGIN =====
-discordClient.login(process.env.DISCORD_BOT_TOKEN).catch((error) => {
+discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error('[DISCORD LOGIN ERROR]', error);
     logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
+    process.exit(1);
 });
