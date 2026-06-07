@@ -34,7 +34,7 @@ const CONFIG = {
     IMAGE_RATE_LIMIT_MAX: 3,
     IMAGE_RETRY_MAX: 3,
     IMAGE_RETRY_BASE_MS: 2000,
-    IMAGE_MODEL: 'gemini-3.1-flash-image-preview',
+    IMAGE_MODEL: 'gemini-3.1-flash-image', // FIX: removed incorrect -preview suffix
     AI_PRIMARY_MODEL: 'gemini-2.5-flash',
     AI_FALLBACK_MODEL: 'gemini-2.0-flash',
     CS2_KEY_COST_USD: 2.49,
@@ -144,7 +144,8 @@ const IMAGE_KEYWORDS = [
     'draw me', 'paint me', 'illustrate',
     'image of', 'picture of', 'photo of',
     'generate art', 'create art', 'make art',
-    '!image', '!img', '!generate', '!draw', '!art'
+    '!image', '!img', '!generate', '!draw', '!art',
+    'imagine'
 ];
 
 function detectImageRequest(messageContent) {
@@ -167,6 +168,7 @@ function extractImagePrompt(messageContent) {
         'draw me a', 'draw me an', 'paint me a', 'paint me an',
         'generate image', 'create image', 'make image',
         'image of', 'picture of', 'photo of',
+        'imagine what', 'imagine',
     ];
     const lowerPrompt = prompt.toLowerCase();
     for (const trigger of triggers) {
@@ -1147,13 +1149,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
             }
             const rawPrompt   = extractImagePrompt(userMessage);
             const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+            // FIX: Log the command BEFORE the API call so it always appears in logs
+            logCommand('discord', username, '@mention (image)', cleanPrompt, '[generating...]');
             try {
                 await message.channel.sendTyping();
                 const { buffer, mimeType } = await generateImage(cleanPrompt);
                 const ext        = mimeType.split('/')[1] || 'png';
                 const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
                 await message.reply({ files: [attachment] });
-                logCommand('discord', username, '@mention (image)', cleanPrompt, '[image generated]');
             } catch (imgErr) {
                 console.error('[IMAGE GEN ERROR]', imgErr);
                 await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
@@ -1230,13 +1233,14 @@ discordClient.on(Events.MessageCreate, async (message) => {
         }
         const rawPrompt   = extractImagePrompt(message.content);
         const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+        // FIX: Log the command BEFORE the API call so it always appears in logs
+        logCommand('discord', username, 'reply (image gen)', cleanPrompt, '[generating...]');
         try {
             await message.channel.sendTyping();
             const { buffer, mimeType } = await generateImage(cleanPrompt);
             const ext        = mimeType.split('/')[1] || 'png';
             const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
             await message.reply({ files: [attachment] });
-            logCommand('discord', username, 'reply (image gen)', cleanPrompt, '[image generated]');
         } catch (imgErr) {
             console.error('[IMAGE GEN ERROR]', imgErr);
             await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
