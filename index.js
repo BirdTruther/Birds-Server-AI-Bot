@@ -39,9 +39,7 @@ const CONFIG = {
     AI_FALLBACK_MODEL: 'gemini-2.0-flash',
     CS2_KEY_COST_USD: 2.49,
     CS2_CASE_MAX_OPENS: 100,
-    // FIX 1: Maximum allowed attachment size in bytes (5MB)
     MAX_IMAGE_BYTES: 5 * 1024 * 1024,
-    // FIX 2: Steam price cache TTL in milliseconds (30 minutes)
     CS2_PRICE_CACHE_TTL_MS: 30 * 60 * 1000,
 };
 
@@ -227,15 +225,12 @@ function hasImageAttachment(message) {
     );
 }
 
-// FIX 1: Guard against OOM by checking Content-Length before downloading.
-// Attachments over CONFIG.MAX_IMAGE_BYTES (5MB) are skipped with a warning log.
 async function getImageAttachments(message) {
     const images = [];
     for (const [, attachment] of message.attachments) {
         if (attachment.contentType?.startsWith('image/') ||
             /\.(jpg|jpeg|png|gif|webp)$/i.test(attachment.name || '')) {
             try {
-                // Pre-flight HEAD request to read Content-Length without downloading the body
                 const headRes = await fetch(attachment.url, { method: 'HEAD' });
                 const contentLength = parseInt(headRes.headers.get('content-length') || '0', 10);
                 if (contentLength > CONFIG.MAX_IMAGE_BYTES) {
@@ -538,14 +533,10 @@ async function getPlayerStats(playerName) {
 
 // ===== CS2 API SERVICE =====
 
-// FIX 2: In-memory cache for Steam skin prices to avoid rate limiting (429s).
-// Each entry: { result: string, expiresAt: number }
-// TTL is CONFIG.CS2_PRICE_CACHE_TTL_MS (30 minutes).
 const cs2PriceCache = new Map();
 
 async function getCS2SkinPrice(skinName) {
     try {
-        // Normalise key so "ak47 redline" and "AK47 Redline" share a cache entry
         const cacheKey = skinName.trim().toLowerCase();
         const cached = cs2PriceCache.get(cacheKey);
         if (cached && Date.now() < cached.expiresAt) {
@@ -588,7 +579,6 @@ async function getCS2SkinPrice(skinName) {
             `🔗 https://steamcommunity.com/market/listings/730/${encodeURIComponent(item.hash_name || name)}`,
         ].join('\n');
 
-        // Store in cache with expiry timestamp
         cs2PriceCache.set(cacheKey, { result, expiresAt: Date.now() + CONFIG.CS2_PRICE_CACHE_TTL_MS });
         console.log(`[CS2 Cache] STORED "${skinName}" — expires in ${CONFIG.CS2_PRICE_CACHE_TTL_MS / 60000} minutes.`);
         return result;
@@ -599,12 +589,6 @@ async function getCS2SkinPrice(skinName) {
     }
 }
 
-// ===== CS2 FLOAT CHECKER =====
-// Supports both inspect link formats:
-//   Format 1 (inventory): steam://rungame/730/.../+csgo_econ_action_preview S76561...A123...D456
-//   Format 2 (market/server): steam://run/730//+csgo_econ_action_preview 2030B59B... (hex string)
-// The CSFloat API accepts the raw inspect link directly, so we pass it as-is
-// instead of trying to parse S/A/D values ourselves.
 async function getCS2Float(inspectLink) {
     if (!inspectLink || !inspectLink.includes('csgo_econ_action_preview')) {
         return [
@@ -648,7 +632,6 @@ async function getCS2Float(inspectLink) {
             }
         }
 
-        // API unavailable but link is valid — give fallback with direct CSFloat link
         return [
             `🔍 **Inspect Link Received** (float API unavailable right now)`,
             `🔗 Try manually: https://csfloat.com/db?inspectLink=${encodeURIComponent(inspectLink)}`,
@@ -1006,7 +989,6 @@ const discordClient = new Client({
 discordClient.once(Events.ClientReady, (client) => {
     console.log(`✅ Discord bot ready as ${client.user.tag}`);
     logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord bot ready as ${client.user.tag}`);
-    // FIX 3: Register Discord client with dashboard-server so memorial export works
     if (typeof global.setDiscordClientForExport === 'function') {
         global.setDiscordClientForExport(client);
     }
@@ -1016,9 +998,8 @@ discordClient.once(Events.ClientReady, (client) => {
 // ===== DISCORD MESSAGE HANDLER (MAIN) =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
-    // FIX 4: Reply messages are handled exclusively by the IMAGE REPLY and REPLY TO BOT
-    // listeners below. Without this guard the main handler would also fire on every reply,
-    // causing addToMemory to run twice and occasionally triggering a second AI response.
+    // Replies to the bot are handled exclusively by the single REPLY handler below.
+    // Without this guard, the main handler fires on every reply too, causing double responses.
     if (message.reference) return;
 
     const lowerContent = message.content.toLowerCase();
@@ -1193,32 +1174,10 @@ discordClient.on(Events.MessageCreate, async (message) => {
     }
 });
 
-// ===== DISCORD MESSAGE HANDLER (IMAGE REPLY) =====
-discordClient.on(Events.MessageCreate, async (message) => {
-    if (message.author.bot) return;
-    if (!message.reference) return;
-    if (!hasImageAttachment(message)) return;
-
-    try {
-        const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
-        if (referencedMessage.author.id !== discordClient.user.id) return;
-
-        const channelId = message.channelId;
-        const username  = message.author.username;
-        const userText  = message.content.replace(/<@!?\d+>/g, '').trim();
-
-        addToMemory('discord', channelId, username, userText || '[sent an image]');
-
-        const images   = await getImageAttachments(message);
-        const response = await getAIResponse(userText || 'What do you see in this image?', 'discord', channelId, username, images);
-        await safeDiscordReply(message, response);
-        logCommand('discord', username, 'reply (vision)', userText, response);
-    } catch (err) {
-        console.error('[IMAGE REPLY HANDLER ERROR]', err);
-    }
-});
-
 // ===== DISCORD MESSAGE HANDLER (REPLY TO BOT) =====
+// Single unified handler for ALL replies to the bot — covers both image and text replies.
+// Having two separate reply listeners (image + text) was the root cause of double responses:
+// both listeners fired on the same message and both called getAIResponse.
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
     if (!message.reference) return;
@@ -1226,17 +1185,15 @@ discordClient.on(Events.MessageCreate, async (message) => {
     try {
         const referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
         if (referencedMessage.author.id !== discordClient.user.id) return;
-        if (hasImageAttachment(message)) return; // handled by image-reply listener
 
         const lowerContent = message.content.toLowerCase();
         const channelId    = message.channelId;
         const username     = message.author.username;
+        const userText     = message.content.replace(/<@!?\d+>/g, '').trim();
 
-        // FIX 4: Only add to memory here — image replies already called addToMemory in their handler.
-        // This guard prevents a duplicate memory entry when the IMAGE REPLY handler already ran.
-        addToMemory('discord', channelId, username, message.content);
+        addToMemory('discord', channelId, username, message.content || '[sent an image]');
 
-        // Re-check all prefix commands in reply context
+        // Re-check prefix commands in reply context
         if (lowerContent.startsWith('!price ')) {
             const itemName = message.content.substring(7).trim();
             const result = await getTarkovPrice(itemName);
@@ -1304,4 +1261,89 @@ discordClient.on(Events.MessageCreate, async (message) => {
             const parsed = parseCS2CaseCommand(args);
             if (!parsed) {
                 const usage = '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
- 
+                await safeDiscordReply(message, usage);
+                logCommand('discord', username, '!cs2case (reply)', args, usage, true);
+            } else {
+                const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
+                await safeDiscordReply(message, result);
+                logCommand('discord', username, '!cs2case (reply)', args, result);
+            }
+            return;
+        }
+
+        // Image reply — analyze the image
+        if (hasImageAttachment(message)) {
+            const images   = await getImageAttachments(message);
+            const response = await getAIResponse(userText || 'What do you see in this image?', 'discord', channelId, username, images);
+            await safeDiscordReply(message, response);
+            logCommand('discord', username, 'reply (vision)', userText, response);
+            return;
+        }
+
+        // Plain text reply — AI response
+        if (isWildRequest(userText)) {
+            const roast = await getWildRequestResponse(userText, 'discord', channelId, username);
+            await safeDiscordReply(message, roast);
+            logCommand('discord', username, 'reply (wild)', userText, roast);
+            return;
+        }
+
+        const response = await getAIResponse(userText, 'discord', channelId, username);
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, 'reply', userText, response);
+
+    } catch (err) {
+        console.error('[REPLY HANDLER ERROR]', err);
+    }
+});
+
+// ===== CULTIST MONITOR =====
+function startCultistMonitor(client) {
+    const CULTIST_CHANNEL_ID = process.env.CULTIST_CHANNEL_ID;
+    if (!CULTIST_CHANNEL_ID) {
+        logSystemEvent('CULTIST_MONITOR', 'WARNING', 'discord', 'CULTIST_CHANNEL_ID not set — monitor disabled');
+        return;
+    }
+    const CHECK_INTERVAL_MS = 60 * 1000;
+    const CULTIST_SPAWN_WINDOWS = [
+        { startHour: 20, startMin: 0,  endHour: 21, endMin: 0  },
+        { startHour: 8,  startMin: 0,  endHour: 9,  endMin: 0  },
+    ];
+    let lastAlertMinute = -1;
+    setInterval(async () => {
+        try {
+            const now = new Date();
+            const estNow = new Date(now.toLocaleString('en-US', { timeZone: CONFIG.EST_TIMEZONE }));
+            const hour = estNow.getHours();
+            const min  = estNow.getMinutes();
+            const currentMinute = hour * 60 + min;
+            const inWindow = CULTIST_SPAWN_WINDOWS.some(w => {
+                const start = w.startHour * 60 + w.startMin;
+                const end   = w.endHour   * 60 + w.endMin;
+                return currentMinute >= start && currentMinute < end;
+            });
+            if (!inWindow) { lastAlertMinute = -1; return; }
+            if (lastAlertMinute === currentMinute) return;
+            lastAlertMinute = currentMinute;
+            const channel = await client.channels.fetch(CULTIST_CHANNEL_ID);
+            if (!channel) return;
+            const timeStr = estNow.toLocaleString('en-US', {
+                timeZone: CONFIG.EST_TIMEZONE,
+                hour: '2-digit', minute: '2-digit', hour12: true
+            });
+            await safeDiscordSend(channel,
+                `🕯️ **Cultist spawn window is OPEN** (${timeStr} EST)\nHead to Shoreline, Woods, or Factory. They spawn for roughly 1 hour — good luck out there.`);
+            logSystemEvent('CULTIST_ALERT', 'INFO', 'discord', `Cultist alert sent at ${timeStr}`);
+        } catch (err) {
+            console.error('[CULTIST MONITOR ERROR]', err);
+            logSystemEvent('CULTIST_MONITOR', 'ERROR', 'discord', `Monitor error: ${err.message}`);
+        }
+    }, CHECK_INTERVAL_MS);
+    logSystemEvent('CULTIST_MONITOR', 'INFO', 'discord', `✅ Cultist monitor started (channel: ${CULTIST_CHANNEL_ID})`);
+}
+
+// ===== DISCORD LOGIN =====
+discordClient.login(process.env.DISCORD_BOT_TOKEN).catch((error) => {
+    console.error('[DISCORD LOGIN ERROR]', error);
+    logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
+});
