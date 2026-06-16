@@ -7,7 +7,7 @@
 
 ## 1. Overview
 
-This Privacy Policy describes how Birds-Server-AI-Bot ("the Bot", "we", "our") handles information when you interact with the Bot on Discord or Twitch. We are committed to being transparent about what data is collected, why, and how it is used.
+This Privacy Policy describes how Birds-Server-AI-Bot ("the Bot", "we", "our", "ThePatrick") handles information when you interact with the Bot on Discord or Twitch. We are committed to being transparent about what data is collected, why, and how it is used.
 
 ## 2. Information We Collect
 
