@@ -47,16 +47,15 @@ const CONFIG = {
 // ===== ROTATING PRESENCE ACTIVITIES =====
 const PRESENCE_ACTIVITIES = [
     // Tarkov
-    { name: 'Escape from Tarkov', type: ActivityType.Playing },
-    { name: 'the flea market', type: ActivityType.Watching },
-    { name: 'Tarkov item prices', type: ActivityType.Watching },
+    { name: 'Escape From Tarkov', type: ActivityType.Playing },
+    { name: 'The Flea Market', type: ActivityType.Watching },
     { name: '!price <item> for Tarkov prices', type: ActivityType.Listening },
     { name: 'for Cultists in the dark...', type: ActivityType.Watching },
     { name: 'stash management', type: ActivityType.Playing },
     // CS2
-    { name: 'Counter-Strike 2', type: ActivityType.Playing },
-    { name: 'CS2 case openings', type: ActivityType.Watching },
-    { name: '!cs2price <skin> for market prices', type: ActivityType.Listening },
+    { name: 'Counter-Strike 2 | Premier Mirage', type: ActivityType.Playing },
+    { name: 'CS2 Case Openings', type: ActivityType.Watching },
+    { name: 'Open cases with !cs2case', type: ActivityType.Listening },
     { name: 'Mirage mid control', type: ActivityType.Watching },
     // Twitch
     { name: 'the stream', type: ActivityType.Streaming, url: 'https://twitch.tv/' + (process.env.TWITCH_CHANNEL || 'twitch') },
@@ -64,6 +63,10 @@ const PRESENCE_ACTIVITIES = [
     // General bot
     { name: 'your commands', type: ActivityType.Listening },
     { name: 'over the server', type: ActivityType.Watching },
+    // Random 
+    { name: 'Barbie Dreamhouse', type: ActivityType.Playing },
+    { name: 'Addict by Pinkii', type: ActivityType.Listening },
+    { name: 'For news about Vantas', type: ActivityType.Watching }
 ];
 
 let presenceIndex = 0;
