@@ -2,7 +2,7 @@
 // Discord + Twitch Multi-Platform Bot with AI, Tarkov & CS2 Integration
 
 // ===== DEPENDENCIES =====
-const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
+const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
 const tmi = require('tmi.js');
 const { generateText } = require('ai');
 const { google } = require('@ai-sdk/google');
@@ -41,7 +41,43 @@ const CONFIG = {
     CS2_CASE_MAX_OPENS: 100,
     MAX_IMAGE_BYTES: 5 * 1024 * 1024,
     CS2_PRICE_CACHE_TTL_MS: 30 * 60 * 1000,
+    PRESENCE_ROTATE_MS: 5 * 60 * 1000, // rotate every 5 minutes
 };
+
+// ===== ROTATING PRESENCE ACTIVITIES =====
+const PRESENCE_ACTIVITIES = [
+    // Tarkov
+    { name: 'Escape from Tarkov', type: ActivityType.Playing },
+    { name: 'the flea market', type: ActivityType.Watching },
+    { name: 'Tarkov item prices', type: ActivityType.Watching },
+    { name: '!price <item> for Tarkov prices', type: ActivityType.Listening },
+    { name: 'for Cultists in the dark...', type: ActivityType.Watching },
+    { name: 'stash management', type: ActivityType.Playing },
+    // CS2
+    { name: 'Counter-Strike 2', type: ActivityType.Playing },
+    { name: 'CS2 case openings', type: ActivityType.Watching },
+    { name: '!cs2price <skin> for market prices', type: ActivityType.Listening },
+    { name: 'Mirage mid control', type: ActivityType.Watching },
+    // Twitch
+    { name: 'the stream', type: ActivityType.Streaming, url: 'https://twitch.tv/' + (process.env.TWITCH_CHANNEL || 'twitch') },
+    { name: 'Twitch chat chaos', type: ActivityType.Watching },
+    // General bot
+    { name: 'your commands', type: ActivityType.Listening },
+    { name: 'over the server', type: ActivityType.Watching },
+];
+
+let presenceIndex = 0;
+
+function rotatePresence(client) {
+    const activity = PRESENCE_ACTIVITIES[presenceIndex % PRESENCE_ACTIVITIES.length];
+    const presenceData = {
+        activities: [activity],
+        status: 'online',
+    };
+    client.user.setPresence(presenceData);
+    logSystemEvent('PRESENCE', 'INFO', 'discord', `Activity set to [${ActivityType[activity.type]}] ${activity.name}`);
+    presenceIndex++;
+}
 
 // ===== AI MODEL FALLBACK WRAPPER =====
 async function generateTextWithFallback(options) {
@@ -994,6 +1030,9 @@ discordClient.once(Events.ClientReady, (client) => {
     if (typeof global.setDiscordClientForExport === 'function') {
         global.setDiscordClientForExport(client);
     }
+    // ===== ROTATING ACTIVITY STATUS =====
+    rotatePresence(client); // set immediately on ready
+    setInterval(() => rotatePresence(client), CONFIG.PRESENCE_ROTATE_MS);
     startCultistMonitor(client);
 });
 
