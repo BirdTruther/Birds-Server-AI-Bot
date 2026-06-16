@@ -2,7 +2,7 @@
 // Discord + Twitch Multi-Platform Bot with AI, Tarkov & CS2 Integration
 
 // ===== DEPENDENCIES =====
-const { Client, Events, GatewayIntentBits, AttachmentBuilder } = require('discord.js');
+const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, SlashCommandBuilder } = require('discord.js');
 const tmi = require('tmi.js');
 const { generateText } = require('ai');
 const { google } = require('@ai-sdk/google');
@@ -1252,6 +1252,184 @@ discordClient.on(Events.MessageCreate, async (message) => {
     const response = await getAIResponse(message.content, 'discord', channelId, username);
     await safeDiscordReply(message, response);
     logCommand('discord', username, 'reply', message.content, response);
+});
+
+// ===== SLASH COMMAND REGISTRATION =====
+const slashCommands = [
+    new SlashCommandBuilder().setName('price').setDescription('Look up a Tarkov item price').addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true)),
+    new SlashCommandBuilder().setName('bestammo').setDescription('Find the best Tarkov ammo for a caliber').addStringOption(o => o.setName('caliber').setDescription('Caliber (e.g. 5.45x39)').setRequired(true)),
+    new SlashCommandBuilder().setName('trader').setDescription('Show Tarkov trader reset times'),
+    new SlashCommandBuilder().setName('map').setDescription('Get Tarkov map info and bosses').addStringOption(o => o.setName('map').setDescription('Map name').setRequired(true)),
+    new SlashCommandBuilder().setName('player').setDescription('Look up a Tarkov player').addStringOption(o => o.setName('name').setDescription('Player name').setRequired(true)),
+    new SlashCommandBuilder().setName('cs2price').setDescription('Get a CS2 skin price from Steam Market').addStringOption(o => o.setName('skin').setDescription('Skin name (e.g. AK-47 | Redline (Field-Tested))').setRequired(true)),
+    new SlashCommandBuilder().setName('cs2float').setDescription('Get the float value of a CS2 skin').addStringOption(o => o.setName('link').setDescription('Steam inspect link').setRequired(true)),
+    new SlashCommandBuilder().setName('cs2stats').setDescription('Get CS2 player stats').addStringOption(o => o.setName('steam').setDescription('Steam ID or username').setRequired(true)),
+    new SlashCommandBuilder().setName('cs2map').setDescription('Get CS2 map callouts and tips').addStringOption(o => o.setName('map').setDescription('Map name (e.g. mirage)').setRequired(true)),
+    new SlashCommandBuilder().setName('cs2case').setDescription('Simulate CS2 case openings').addStringOption(o => o.setName('case').setDescription('Case name').setRequired(true)).addIntegerOption(o => o.setName('count').setDescription('Number of cases to open').setRequired(true)).addNumberOption(o => o.setName('cost').setDescription('Case cost in USD').setRequired(true)),
+    new SlashCommandBuilder().setName('meme').setDescription('Get a random meme'),
+    new SlashCommandBuilder().setName('code').setDescription('Get the GitHub link'),
+    new SlashCommandBuilder().setName('persona').setDescription('Switch the bot persona').addStringOption(o => o.setName('name').setDescription('Persona name').setRequired(true)),
+    new SlashCommandBuilder().setName('personas').setDescription('List all available personas'),
+    new SlashCommandBuilder().setName('clearmemory').setDescription('Clear AI conversation memory for this channel'),
+    new SlashCommandBuilder().setName('ask').setDescription('Ask the AI a question').addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true)),
+    new SlashCommandBuilder().setName('image').setDescription('Generate an image with AI').addStringOption(o => o.setName('prompt').setDescription('Describe the image you want').setRequired(true)),
+].map(cmd => cmd.toJSON());
+
+const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+(async () => {
+    try {
+        console.log('[SLASH] Registering slash commands globally...');
+        await rest.put(
+            Routes.applicationCommands(process.env.DISCORD_CLIENT_ID),
+            { body: slashCommands }
+        );
+        console.log(`[SLASH] ✅ ${slashCommands.length} slash commands registered globally.`);
+    } catch (err) {
+        console.error('[SLASH ERROR] Failed to register slash commands:', err);
+        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `Slash command registration failed: ${err.message}`);
+    }
+})();
+
+// ===== SLASH COMMAND HANDLER =====
+discordClient.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName } = interaction;
+    const channelId = interaction.channelId;
+    const username  = interaction.user.username;
+
+    // Defer reply immediately — API calls can take longer than Discord's 3s window
+    await interaction.deferReply();
+
+    try {
+        if (commandName === 'price') {
+            const item = interaction.options.getString('item');
+            const result = await getTarkovPrice(item);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/price', item, result);
+
+        } else if (commandName === 'bestammo') {
+            const caliber = interaction.options.getString('caliber');
+            const result = await getBestAmmo(caliber);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/bestammo', caliber, result);
+
+        } else if (commandName === 'trader') {
+            const result = await getTraderResets();
+            await interaction.editReply(result);
+            logCommand('discord', username, '/trader', '', result);
+
+        } else if (commandName === 'map') {
+            const map = interaction.options.getString('map');
+            const result = await getMapInfo(map);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/map', map, result);
+
+        } else if (commandName === 'player') {
+            const name = interaction.options.getString('name');
+            const result = await getPlayerStats(name);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/player', name, result);
+
+        } else if (commandName === 'cs2price') {
+            const skin = interaction.options.getString('skin');
+            const result = await getCS2SkinPrice(skin);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2price', skin, result);
+
+        } else if (commandName === 'cs2float') {
+            const link = interaction.options.getString('link');
+            const result = await getCS2Float(link);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2float', link.substring(0, 60), result);
+
+        } else if (commandName === 'cs2stats') {
+            const steam = interaction.options.getString('steam');
+            const result = await getCS2PlayerStats(steam);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2stats', steam, result);
+
+        } else if (commandName === 'cs2map') {
+            const map = interaction.options.getString('map');
+            const result = getCS2MapInfo(map);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2map', map, result);
+
+        } else if (commandName === 'cs2case') {
+            const caseName = interaction.options.getString('case');
+            const count    = interaction.options.getInteger('count');
+            const cost     = interaction.options.getNumber('cost');
+            const result   = simulateCS2Case(caseName, count, cost);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2case', `${caseName} x${count} $${cost}`, result);
+
+        } else if (commandName === 'meme') {
+            const meme = await fetchMeme();
+            const reply = meme ? `**${meme.title}**\n${meme.url}` : "Couldn't fetch a meme right now. Try again!";
+            await interaction.editReply(reply);
+            logCommand('discord', username, '/meme', '', reply);
+
+        } else if (commandName === 'code') {
+            const reply = `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`;
+            await interaction.editReply(reply);
+            logCommand('discord', username, '/code', '', reply);
+
+        } else if (commandName === 'persona') {
+            const name   = interaction.options.getString('name');
+            const result = setPersona(name);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/persona', name, result);
+
+        } else if (commandName === 'personas') {
+            const personas = getAvailablePersonas();
+            const current  = getCurrentPersona();
+            const list = personas.map(p => p.name === current.name ? `**${p.name}** (active)` : p.name).join(', ');
+            const reply = `Available personas: ${list}`;
+            await interaction.editReply(reply);
+            logCommand('discord', username, '/personas', '', reply);
+
+        } else if (commandName === 'clearmemory') {
+            clearChannelMemory('discord', channelId);
+            await interaction.editReply('🧹 Memory cleared for this channel.');
+            logCommand('discord', username, '/clearmemory', '', 'Memory cleared');
+
+        } else if (commandName === 'ask') {
+            const question = interaction.options.getString('question');
+            addToMemory('discord', channelId, username, question);
+            if (isWildRequest(question)) {
+                const roast = await getWildRequestResponse(question, 'discord', channelId, username);
+                await interaction.editReply(roast);
+                logCommand('discord', username, '/ask (wild)', question, roast);
+            } else {
+                const response = await getAIResponse(question, 'discord', channelId, username);
+                await interaction.editReply(response);
+                logCommand('discord', username, '/ask', question, response);
+            }
+
+        } else if (commandName === 'image') {
+            const rateCheck = checkImageRateLimit(interaction.user.id);
+            if (!rateCheck.allowed) {
+                await interaction.editReply(`⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+                return;
+            }
+            const rawPrompt   = interaction.options.getString('prompt');
+            const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+            logCommand('discord', username, '/image', cleanPrompt, '[generating...]');
+            try {
+                const { buffer, mimeType } = await generateImage(cleanPrompt);
+                const ext        = mimeType.split('/')[1] || 'png';
+                const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+                await interaction.editReply({ files: [attachment] });
+            } catch (imgErr) {
+                console.error('[IMAGE GEN ERROR]', imgErr);
+                await interaction.editReply(`❌ Image generation failed: ${imgErr.message}`);
+            }
+        }
+    } catch (err) {
+        console.error('[SLASH HANDLER ERROR]', err);
+        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `Slash handler error for /${commandName}: ${err.message}`);
+        await interaction.editReply('❌ Something went wrong running that command.').catch(() => {});
+    }
 });
 
 // ===== CULTIST MONITOR =====
