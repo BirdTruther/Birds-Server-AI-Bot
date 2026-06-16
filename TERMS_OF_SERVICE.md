@@ -7,7 +7,7 @@
 
 ## 1. Acceptance of Terms
 
-By adding Birds-Server-AI-Bot ("the Bot") to your Discord server or interacting with it on Twitch, you agree to these Terms of Service. If you do not agree, please remove the Bot from your server and discontinue use.
+By adding Birds-Server-AI-Bot ("ThePatrick") to your Discord server or interacting with it on Twitch, you agree to these Terms of Service. If you do not agree, please remove the Bot from your server and discontinue use.
 
 ## 2. Description of Service
 
@@ -85,4 +85,4 @@ For questions, concerns, or to report abuse, please open an issue on the [GitHub
 
 ---
 
-*These terms apply to the publicly hosted instance of Birds-Server-AI-Bot operated by BirdTruther.*
+*These terms apply to the publicly hosted instance of ThePatrick operated by BirdTruther.*
