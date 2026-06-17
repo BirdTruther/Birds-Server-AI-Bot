@@ -82,6 +82,32 @@ function rotatePresence(client) {
     presenceIndex++;
 }
 
+// ===== PERSONA HELPERS =====
+/**
+ * Build the personas list string for display.
+ * getAvailablePersonas() returns string keys (e.g. ['aggressive', 'nice']).
+ */
+function buildPersonaList() {
+    const keys    = getAvailablePersonas(); // string[]
+    const current = getCurrentPersona();    // object with .name
+    return keys
+        .map(key => key === current.name ? `**${key}** (active)` : key)
+        .join(', ');
+}
+
+/**
+ * Set persona and return a human-readable reply string.
+ * setPersona() returns a boolean — wrap it here so callers always get a string.
+ */
+function applyPersona(name) {
+    const success = setPersona(name);
+    if (success) {
+        return `✅ Persona switched to **${name}**.`;
+    }
+    const available = getAvailablePersonas().join(', ');
+    return `❌ Unknown persona "${name}". Available: ${available}`;
+}
+
 // ===== AI MODEL FALLBACK WRAPPER =====
 async function generateTextWithFallback(options) {
     try {
@@ -1152,16 +1178,15 @@ discordClient.on(Events.MessageCreate, async (message) => {
     }
     if (lowerContent.startsWith('!persona ')) {
         const personaName = message.content.substring(9).trim();
-        const result = setPersona(personaName);
+        const result = applyPersona(personaName);
         await safeDiscordReply(message, result);
         logCommand('discord', username, '!persona', personaName, result);
         return;
     }
     if (lowerContent === '!personas') {
-        const personas = getAvailablePersonas();
-        const current  = getCurrentPersona();
-        const list = personas.map(p => p.name === current.name ? `**${p.name}** (active)` : p.name).join(', ');
-        await safeDiscordReply(message, `Available personas: ${list}`);
+        const reply = `Available personas: ${buildPersonaList()}`;
+        await safeDiscordReply(message, reply);
+        logCommand('discord', username, '!personas', '', reply);
         return;
     }
     if (lowerContent === '!clearmemory') {
@@ -1418,15 +1443,12 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
         } else if (commandName === 'persona') {
             const name   = interaction.options.getString('name');
-            const result = setPersona(name);
+            const result = applyPersona(name);
             await interaction.editReply(result);
             logCommand('discord', username, '/persona', name, result);
 
         } else if (commandName === 'personas') {
-            const personas = getAvailablePersonas();
-            const current  = getCurrentPersona();
-            const list = personas.map(p => p.name === current.name ? `**${p.name}** (active)` : p.name).join(', ');
-            const reply = `Available personas: ${list}`;
+            const reply = `Available personas: ${buildPersonaList()}`;
             await interaction.editReply(reply);
             logCommand('discord', username, '/personas', '', reply);
 
