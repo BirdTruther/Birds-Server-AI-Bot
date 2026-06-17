@@ -101,6 +101,7 @@ Available as both prefix (`!`) and slash (`/`) commands:
 
 - **Tangia Auto-Join** - Automatically joins dungeon/boss fights when TangiaBot announces them
 - **Cultist Hunting Tracker** - Real-time Cultist spawn time monitoring with dual-server tracking
+- **Rotating Activity Status** - Bot presence cycles through themed activity statuses on a timer, covering Tarkov, CS2, and Twitch topics. The list and rotation interval are configured via `PRESENCE_ACTIVITIES` and `CONFIG.PRESENCE_ROTATE_MS` in `index.js`.
 
 ### 📊 Web Dashboard
 
@@ -223,6 +224,8 @@ When generating your bot's invite URL in the Discord Developer Portal, make sure
 - **CS2 Case Key Cost** - $2.49 per key (configurable in `CONFIG.CS2_KEY_COST_USD`)
 - **CS2 Case Max Opens** - 100 per command (configurable in `CONFIG.CS2_CASE_MAX_OPENS`)
 - **CS2 Price Cache TTL** - 30 minutes (configurable in `CONFIG.CS2_PRICE_CACHE_TTL_MS`)
+- **Presence Rotation Interval** - 5 minutes (configurable in `CONFIG.PRESENCE_ROTATE_MS` in `index.js`)
+- **Presence Activities List** - Themed rotating statuses (configurable in `PRESENCE_ACTIVITIES` array in `index.js`)
 
 ### Smart Memory System
 
@@ -274,6 +277,7 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - CS2 API integrations (Steam Market, Steam Web API, CSFloat)
 - Auto-join functionality
 - Smart conversation memory system
+- Rotating Discord activity/presence status
 
 ### Memory System (`memory.js`)
 - SQLite-based conversation storage
