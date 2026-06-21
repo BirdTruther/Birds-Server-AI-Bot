@@ -2,7 +2,8 @@
 // Discord + Twitch Multi-Platform Bot with AI, Tarkov & CS2 Integration
 
 // ===== DEPENDENCIES =====
-const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, SlashCommandBuilder, ActivityType } = require('discord.js');
+const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, SlashCommandBuilder, ActivityType, EmbedBuilder } = require('discord.js');
+const { spawn } = require('child_process');
 const tmi = require('tmi.js');
 const { generateText } = require('ai');
 const { google } = require('@ai-sdk/google');
@@ -106,6 +107,22 @@ function applyPersona(name) {
     }
     const available = getAvailablePersonas().join(', ');
     return `❌ Unknown persona "${name}". Available: ${available}`;
+}
+
+// ===== PZ RESTART HELPER =====
+/**
+ * Launches sudo bash /home/pz_restart.sh as a fully detached background process.
+ * Requires a visudo NOPASSWD rule for the bot user — see README for setup.
+ * Returns the ChildProcess so the caller can read .pid.
+ */
+function startPZRestartTask() {
+    const child = spawn('sudo', ['bash', '/home/pz_restart.sh'], {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env,
+    });
+    child.unref(); // let the process run independently of the bot
+    return child;
 }
 
 // ===== AI MODEL FALLBACK WRAPPER =====
@@ -1340,6 +1357,7 @@ const slashCommands = [
     new SlashCommandBuilder().setName('clearmemory').setDescription('Clear AI conversation memory for this channel'),
     new SlashCommandBuilder().setName('ask').setDescription('Ask the AI a question').addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true)),
     new SlashCommandBuilder().setName('image').setDescription('Generate an image with AI').addStringOption(o => o.setName('prompt').setDescription('Describe the image you want').setRequired(true)),
+    new SlashCommandBuilder().setName('pzrestart').setDescription('🔴 Start the Project Zomboid server restart sequence'),
 ].map(cmd => cmd.toJSON());
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
@@ -1487,6 +1505,35 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
             } catch (imgErr) {
                 console.error('[IMAGE GEN ERROR]', imgErr);
                 await interaction.editReply(`❌ Image generation failed: ${imgErr.message}`);
+            }
+
+        } else if (commandName === 'pzrestart') {
+            // ===== /pzrestart — slash-only, no ! prefix =====
+            // Requires visudo NOPASSWD rule:
+            //   birds ALL=(ALL) NOPASSWD: /bin/bash /home/pz_restart.sh
+            try {
+                const child = startPZRestartTask();
+                const embed = new EmbedBuilder()
+                    .setColor(0xf59e0b)
+                    .setTitle('🔴 Project Zomboid — Restart Initiated')
+                    .setDescription('The shutdown sequence has been started. The server will restart shortly.')
+                    .addFields(
+                        { name: 'Triggered by', value: username, inline: true },
+                        { name: 'Task PID',      value: String(child.pid ?? 'unknown'), inline: true }
+                    )
+                    .setTimestamp();
+                await interaction.editReply({ embeds: [embed] });
+                logCommand('discord', username, '/pzrestart', '', `PZ restart launched (pid: ${child.pid ?? 'unknown'})`);
+            } catch (spawnErr) {
+                console.error('[PZ RESTART ERROR]', spawnErr);
+                logSystemEvent('PZ_RESTART', 'ERROR', 'system', `pzrestart failed: ${spawnErr.message}`);
+                const errEmbed = new EmbedBuilder()
+                    .setColor(0xdc2626)
+                    .setTitle('❌ Project Zomboid — Restart Failed')
+                    .setDescription('The restart script could not be launched.')
+                    .addFields({ name: 'Error', value: String(spawnErr.message || spawnErr).substring(0, 1024) })
+                    .setTimestamp();
+                await interaction.editReply({ embeds: [errEmbed] });
             }
         }
     } catch (err) {
