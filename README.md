@@ -27,8 +27,54 @@ All bot commands are now available as native Discord slash commands — just typ
 | `/clearmemory` | Clear AI memory for this channel | — |
 | `/ask` | Ask the AI a question | `question` (required) |
 | `/image` | Generate an AI image | `prompt` (required) |
+| `/pzrestart` | Trigger a Project Zomboid server restart | — |
 
 > **Setup note:** Add `DISCORD_CLIENT_ID=your_application_id` to your `.env` file. Slash commands register globally on bot startup. Global propagation can take up to 1 hour — for instant testing, switch to guild-scoped registration in `index.js`.
+
+---
+
+### 🧟 Project Zomboid Server Restart (`/pzrestart`)
+
+> ⚠️ **This is a highly specific use case built for the Birds Server.** If you forked this repo and don't run a Project Zomboid server on the same machine as the bot, you should remove this command — see [Removing /pzrestart](#removing-pzrestart) below.
+
+The `/pzrestart` slash command triggers a server restart sequence by running a shell script on the host machine via `sudo`. When executed, the bot responds with a Discord embed showing:
+
+- Who triggered the restart
+- The process PID of the launched script
+- Timestamp of the request
+
+#### How It Works
+
+The command calls `sudo bash /home/pz_restart.sh` as a fully detached background process, meaning the bot doesn't wait for it to finish. The script handles the actual stop/start logic for the PZ server independently.
+
+#### Required: `visudo` NOPASSWD Rule
+
+The bot process user must be allowed to run the restart script without a password prompt. Add the following line to your sudoers file using `sudo visudo`:
+
+```
+birds ALL=(ALL) NOPASSWD: /bin/bash /home/pz_restart.sh
+```
+
+Replace `birds` with whatever Linux user your bot runs as. Without this rule, the `sudo` call will hang or fail silently.
+
+#### The Restart Script
+
+The bot expects the script to exist at `/home/pz_restart.sh`. The contents of that script are entirely up to you — stop the server, wait, start it back up, whatever your setup needs. The bot just fires it and reports back.
+
+#### Removing `/pzrestart`
+
+If you don't need this command, removing it is straightforward — three places to clean up in `index.js`:
+
+1. **Remove the `startPZRestartTask` helper function** (look for `// ===== PZ RESTART HELPER =====`)
+
+2. **Remove the slash command registration entry** — in the `slashCommands` array, delete this line:
+   ```js
+   new SlashCommandBuilder().setName('pzrestart').setDescription('🔴 Start the Project Zomboid server restart sequence'),
+   ```
+
+3. **Remove the slash command handler** — in the `InteractionCreate` handler, delete the `else if (commandName === 'pzrestart')` block.
+
+That's it. No other files reference this feature.
 
 ---
 
@@ -278,6 +324,7 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - Auto-join functionality
 - Smart conversation memory system
 - Rotating Discord activity/presence status
+- Project Zomboid server restart via `/pzrestart` (Birds Server specific — see [Removing /pzrestart](#removing-pzrestart))
 
 ### Memory System (`memory.js`)
 - SQLite-based conversation storage
