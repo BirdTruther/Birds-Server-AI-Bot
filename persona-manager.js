@@ -65,18 +65,18 @@ function getPersonaErrorMessage(guildId, type) {
         case 'image_gen':
             if (isAggressive) return `image gen failed. skill issue tbh 🤡`;
             if (isSleepy) return `tried to make that image but... i lost it. try again later 🌿`;
-            return `Something went wrong generating that image. Try again in a moment. 🎨`;[cite: 2]
+            return `Something went wrong generating that image. Try again in a moment. 🎨`;
 
         case 'image_read':
             if (isAggressive) return `i can't read that format. send a normal JPG or PNG next time 🙄`;
             if (isSleepy) return `what even is this file... i can only read jpgs and pngs man 🤷‍♂️`;
-            return `I couldn't read that image. Make sure it's a supported format (JPG, PNG, GIF, WebP). 🔍`;[cite: 2]
+            return `I couldn't read that image. Make sure it's a supported format (JPG, PNG, GIF, WebP). 🔍`;
 
         case 'general':
         default:
             if (isAggressive) return `it broke. don't look at me, you probably typed it wrong 😤`;
             if (isSleepy) return `something crashed... give me a second to reboot my brain ✌️`;
-            return `Oops, I ran into an error. Try again in a second! ⚡`;[cite: 2]
+            return `Oops, I ran into an error. Try again in a second! ⚡`;
     }
 }
 
@@ -85,4 +85,4 @@ module.exports = {
     setPersona,
     getAvailablePersonas,
     getPersonaErrorMessage
-};[cite: 2]
+};
