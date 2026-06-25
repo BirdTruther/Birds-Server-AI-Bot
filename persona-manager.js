@@ -1,7 +1,7 @@
 // persona-manager.js
 // Runtime state manager for AI personas.
 
-const PERSONAS = require('./personas.js');[cite: 2]
+const PERSONAS = require('./personas.js');
 
 // Use a Map to track the active persona per Discord Guild (Server)
 const guildPersonas = new Map();
