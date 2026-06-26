@@ -1,36 +1,47 @@
 // persona-manager.js
 // Runtime state manager for AI personas.
 // Wraps personas.js and exposes the getters/setters used in index.js.
+//
+// NOTE: activePersonaName is persisted to the shared SQLite database via
+// getSetting/setSetting so that index.js (Discord/Twitch process) and
+// dashboard-server.js (Express process) always share the same persona state.
+// Without this, each process holds its own in-memory copy and they diverge.
 
-// personas.js exports the PERSONAS object directly (not { personas })
 const PERSONAS = require('./personas.js');
+const { getSetting, setSetting } = require('./database.js');
 
-// Default to the first available persona at startup
-let activePersonaName = Object.keys(PERSONAS)[0];
+const defaultPersonaName = Object.keys(PERSONAS)[0];
 
 /**
- * Get the currently active persona object.
- * Falls back to the first persona if the stored name is no longer valid.
- * @returns {object} persona object with at minimum { name, systemPrompt }
+ * Get the currently active persona key from the shared database.
+ * @returns {string} persona key (e.g. 'aggressive')
  */
-function getCurrentPersona() {
-    if (PERSONAS[activePersonaName]) {
-        return PERSONAS[activePersonaName];
-    }
-    // Fallback to first available
-    const firstName = Object.keys(PERSONAS)[0];
-    activePersonaName = firstName;
-    return PERSONAS[firstName];
+function getActivePersonaName() {
+    const stored = getSetting('activePersona', defaultPersonaName);
+    // Validate it's still a real key (in case personas.js changed)
+    return PERSONAS[stored] ? stored : defaultPersonaName;
 }
 
 /**
- * Switch the active persona by name.
+ * Get the currently active persona object.
+ * Returns the persona object extended with a `key` property so callers
+ * don't need to do fragile name-matching to figure out the active key.
+ * @returns {object} persona object with .key plus all fields from personas.js
+ */
+function getCurrentPersona() {
+    const key = getActivePersonaName();
+    return { key, ...PERSONAS[key] };
+}
+
+/**
+ * Switch the active persona by key name.
+ * Persists the change to the database so both processes see it immediately.
  * @param {string} name - persona key as defined in personas.js (e.g. 'aggressive', 'nice')
  * @returns {boolean} true if the switch succeeded, false if the name was not found
  */
 function setPersona(name) {
     if (PERSONAS[name]) {
-        activePersonaName = name;
+        setSetting('activePersona', name);
         console.log(`[PERSONA] Switched to: ${name}`);
         return true;
     }

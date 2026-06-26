@@ -80,7 +80,6 @@ setInterval(() => {
   cultistState.server2Active = isCultistTime((hours + 12) % 24);
 }, 30000);
 
-// ===== FIX 1: Real uptime formatter — handles days correctly past 24 hours =====
 function formatUptime(seconds) {
   const totalSecs = Math.floor(seconds);
   const d = Math.floor(totalSecs / 86400);
@@ -123,15 +122,11 @@ app.get('/api/bot/status', (req, res) => {
   res.json({ status: 'ONLINE', uptime: uptimeStr, lastCheck: new Date().toLocaleTimeString(), memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB' });
 });
 
-// ===== FIX: Persona endpoints now read/write through persona-manager.js directly =====
-// This eliminates the de-sync between the dashboard's local botPersona state and
-// the actual runtime state in persona-manager.js
+// Persona endpoints — persona state is shared via the database so both
+// index.js (bot process) and dashboard-server.js (Express process) stay in sync.
 app.get('/api/persona/current', (req, res) => {
-  const available = getAvailablePersonas();
-  const persona = getCurrentPersona();
-  // Find the key for the current persona by matching the name
-  const currentKey = available.find(k => k === persona.name?.toLowerCase()) || available[0];
-  res.json({ success: true, persona: currentKey });
+  const persona = getCurrentPersona(); // now includes .key
+  res.json({ success: true, persona: persona.key });
 });
 
 app.post('/api/persona/set', (req, res) => {
@@ -178,8 +173,7 @@ app.get('/api/bot/system-logs', (req, res) => {
     res.json({ success: true, count: formattedLogs.length, total: totalCount, logs: formattedLogs });
   } catch (error) {
     console.error('[API] Error fetching system logs:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch system logs' });
-  }
+    res.status(500).json({ success: false, error: 'Failed to fetch system logs' }); }
 });
 
 app.post('/api/bot/logs/clear', (req, res) => {
@@ -213,7 +207,6 @@ global.setDiscordClientForExport = (client) => {
 
 const exportJobs = {};
 
-// Wraps a promise with a timeout — rejects with a clear message if it takes too long
 function withTimeout(promise, ms, label) {
   return Promise.race([
     promise,
@@ -263,7 +256,6 @@ async function runMessageExport(userId, jobId) {
         metadata: { jobId, guildId: guild.id, guildName: guild.name }
       });
 
-      // Use cached channels first (instant) — fall back to fetch() with a 10s timeout
       let channels;
       if (guild.channels.cache.size > 0) {
         channels = guild.channels.cache;
