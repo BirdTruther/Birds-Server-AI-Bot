@@ -1,35 +1,40 @@
 // persona-manager.js
 // Runtime state manager for AI personas.
+// Wraps personas.js and exposes the getters/setters used in index.js.
 
+// personas.js exports the PERSONAS object directly (not { personas })
 const PERSONAS = require('./personas.js');
 
-// Use a Map to track the active persona per Discord Guild (Server)
-const guildPersonas = new Map();
-const defaultPersonaName = Object.keys(PERSONAS)[0];
+// Default to the first available persona at startup
+let activePersonaName = Object.keys(PERSONAS)[0];
 
 /**
- * Get the currently active persona object for a specific guild.
- * @param {string} guildId - The Discord Server ID
- * @returns {object} persona object
+ * Get the currently active persona object.
+ * Falls back to the first persona if the stored name is no longer valid.
+ * @returns {object} persona object with at minimum { name, systemPrompt }
  */
-function getCurrentPersona(guildId) {
-    const activeName = guildPersonas.get(guildId) || defaultPersonaName;
-    return PERSONAS[activeName] || PERSONAS[defaultPersonaName];
+function getCurrentPersona() {
+    if (PERSONAS[activePersonaName]) {
+        return PERSONAS[activePersonaName];
+    }
+    // Fallback to first available
+    const firstName = Object.keys(PERSONAS)[0];
+    activePersonaName = firstName;
+    return PERSONAS[firstName];
 }
 
 /**
- * Switch the active persona for a specific guild.
- * @param {string} guildId - The Discord Server ID
- * @param {string} name - persona key as defined in personas.js
- * @returns {boolean} true if successful
+ * Switch the active persona by name.
+ * @param {string} name - persona key as defined in personas.js (e.g. 'aggressive', 'nice')
+ * @returns {boolean} true if the switch succeeded, false if the name was not found
  */
-function setPersona(guildId, name) {
+function setPersona(name) {
     if (PERSONAS[name]) {
-        guildPersonas.set(guildId, name);
-        console.log(`[PERSONA] Guild ${guildId} switched to: ${name}`);
+        activePersonaName = name;
+        console.log(`[PERSONA] Switched to: ${name}`);
         return true;
     }
-    console.warn(`[PERSONA] Unknown persona: "${name}".`);
+    console.warn(`[PERSONA] Unknown persona: "${name}". Available: ${Object.keys(PERSONAS).join(', ')}`);
     return false;
 }
 
@@ -42,41 +47,33 @@ function getAvailablePersonas() {
 }
 
 /**
- * Generates an error message that matches the current persona's vibe.
- * @param {string} guildId - The Discord Server ID
- * @param {string} type - 'rate_limit', 'image_gen', 'image_read', 'general'
+ * Return a ready-to-send error message string for the given error context.
+ *
+ * Call sites in index.js:
+ *   getPersonaErrorMessage('general')          -> string
+ *   getPersonaErrorMessage('rate_limit')(mins)  -> string  (curried)
+ *   getPersonaErrorMessage('image_gen')         -> string
+ *   getPersonaErrorMessage('image_read')        -> string
+ *
+ * @param {string} type
  * @returns {string|function}
  */
-function getPersonaErrorMessage(guildId, type) {
-    const currentName = guildPersonas.get(guildId) || defaultPersonaName;
-    
-    // You can expand this to include custom errors for every persona
-    const isAggressive = currentName === 'aggressive';
-    const isSleepy = currentName === 'sleepy';
-
+function getPersonaErrorMessage(type) {
     switch (type) {
         case 'rate_limit':
-            return (minutesLeft) => {
-                if (isAggressive) return `rate limited. try again in ${minutesLeft} mins and stop spamming 💀`;
-                if (isSleepy) return `too many images... wait like ${minutesLeft} minutes or something 😴`;
-                return `Whoa, slow down! Try again in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}. 🖼️`;
-            };
+            return (minutesLeft) =>
+                `Whoa, slow down! You've hit the image generation limit. ` +
+                `Try again in ${minutesLeft} minute${minutesLeft === 1 ? '' : 's'}. \uD83D\uDDBC\uFE0F`;
 
         case 'image_gen':
-            if (isAggressive) return `image gen failed. skill issue tbh 🤡`;
-            if (isSleepy) return `tried to make that image but... i lost it. try again later 🌿`;
-            return `Something went wrong generating that image. Try again in a moment. 🎨`;
+            return `Something went wrong generating that image. Try again in a moment. \uD83C\uDFA8`;
 
         case 'image_read':
-            if (isAggressive) return `i can't read that format. send a normal JPG or PNG next time 🙄`;
-            if (isSleepy) return `what even is this file... i can only read jpgs and pngs man 🤷‍♂️`;
-            return `I couldn't read that image. Make sure it's a supported format (JPG, PNG, GIF, WebP). 🔍`;
+            return `I couldn't read that image. Make sure it's a supported format (JPG, PNG, GIF, WebP) and try again. \uD83D\uDD0D`;
 
         case 'general':
         default:
-            if (isAggressive) return `it broke. don't look at me, you probably typed it wrong 😤`;
-            if (isSleepy) return `something crashed... give me a second to reboot my brain ✌️`;
-            return `Oops, I ran into an error. Try again in a second! ⚡`;
+            return `Oops, I ran into an error. Try again in a second! \u26A1`;
     }
 }
 
