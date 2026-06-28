@@ -1113,8 +1113,9 @@ discordClient.once(Events.ClientReady, async (client) => {
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
         console.log('[SLASH] Registering slash commands...');
+        // FIX: Use DISCORD_CLIENT_ID from .env (your existing env var) instead of client.user.id
         await rest.put(
-            Routes.applicationGuildCommands(client.user.id, process.env.DISCORD_GUILD_ID),
+            Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
             { body: allCommands }
         );
         console.log(`[SLASH] ✅ ${allCommands.length} slash commands registered.`);
