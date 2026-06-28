@@ -12,6 +12,8 @@
   },
   "dependencies": {
     "@ai-sdk/google": "^2.0.0",
+    "@discordjs/opus": "^0.9.0",
+    "@discordjs/voice": "^0.18.0",
     "ai": "^5.0.60",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.3",
@@ -19,6 +21,9 @@
     "cors": "^2.8.5",
     "tmi.js": "^1.8.5",
     "better-sqlite3": "^11.0.0"
+  },
+  "overrides": {
+    "undici": "^7.0.0"
   },
   "keywords": [
     "discord",
