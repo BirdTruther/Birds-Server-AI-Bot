@@ -65,7 +65,7 @@ const PRESENCE_ACTIVITIES = [
     // General bot
     { name: 'your commands', type: ActivityType.Listening },
     { name: 'over the server', type: ActivityType.Watching },
-    // Random 
+    // Random
     { name: 'Barbie Dreamhouse', type: ActivityType.Playing },
     { name: 'Addict by Pinkii', type: ActivityType.Listening },
     { name: 'For news about Vantas', type: ActivityType.Watching }
@@ -497,13 +497,13 @@ IMPORTANT — vary your response structure. Do NOT:
 // ===== TARKOV API SERVICE =====
 
 async function getTarkovPrice(itemName) {
-    const query = gql`query { 
-        itemsByName(name: "${itemName}") { 
-            name shortName avg24hPrice 
-            sellFor { price source } 
-            properties { ... on ItemPropertiesAmmo { penetrationPower damage } } 
-            link 
-        } 
+    const query = gql`query {
+        itemsByName(name: "${itemName}") {
+            name shortName avg24hPrice
+            sellFor { price source }
+            properties { ... on ItemPropertiesAmmo { penetrationPower damage } }
+            link
+        }
     }`;
     try {
         const data = await request('https://api.tarkov.dev/graphql', query);
@@ -525,13 +525,13 @@ async function getTarkovPrice(itemName) {
 }
 
 async function getBestAmmo(searchCaliber) {
-    const query = gql`query { 
-        itemsByType(type: ammo) { 
-            name 
-            properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } } 
-            avg24hPrice 
-            sellFor { price source } 
-        } 
+    const query = gql`query {
+        itemsByType(type: ammo) {
+            name
+            properties { ... on ItemPropertiesAmmo { penetrationPower damage caliber } }
+            avg24hPrice
+            sellFor { price source }
+        }
     }`;
     try {
         const data = await request('https://api.tarkov.dev/graphql', query);
@@ -597,10 +597,10 @@ async function getMapInfo(mapName) {
 }
 
 async function getPlayerStats(playerName) {
-    const query = gql`query { 
-        players(name: "${playerName}") { 
-            name level experience 
-        } 
+    const query = gql`query {
+        players(name: "${playerName}") {
+            name level experience
+        }
     }`;
     try {
         const data = await request('https://api.tarkov.dev/graphql', query);
@@ -792,13 +792,13 @@ async function getCS2PlayerStats(steamInput) {
 }
 
 const CS2_MAP_DATA = {
-    mirage:  { name: 'Mirage',   setting: 'Moroccan city',         side: 'CT-sided',  callouts: 'A Site: Palace, Ramp, CT, Jungle, Stairs, Ticket Booth | B Site: Short, Van, Bench, Default, B Apps | Mid: Window, Catwalk, Top Mid, Connector, Underpass', tip: 'Window control mid is everything — whoever owns it controls the map.' },
-    inferno: { name: 'Inferno',  setting: 'Italian village',       side: 'CT-sided',  callouts: 'A Site: Pit, Library, Short, CT, Arch, Balcony | B Site: Banana, Car, Spools, Coffins, Dark | Mid: Top Mid, Mid Apartments', tip: 'Banana control determines most B executes — smoke it or lose it.' },
-    nuke:    { name: 'Nuke',     setting: 'Nuclear facility',      side: 'CT-sided',  callouts: 'Upper: Ramp, Secret, Lobby, Silo, Outside | Lower: Lower A, Vents, Heaven, Hell | B Site: Squeaky, B Hut', tip: 'Nuke rewards map knowledge above all else — learn the vents.' },
-    ancient: { name: 'Ancient',  setting: 'Mayan ruins',           side: 'Balanced',  callouts: 'A Site: Donut, Temple, CT, Ramp, Ruins | B Site: River, Cave, Elbow, Pillar | Mid: Mid, Speed', tip: 'Mid speed round to Cave can catch CT rotations completely off guard.' },
-    anubis:  { name: 'Anubis',   setting: 'Egyptian ruins',        side: 'Balanced',  callouts: 'A Site: Speed, Palace, Fountain, Connector | B Site: Bridge, Water, Hovel, Canal | Mid: Mid, Alley', tip: 'Bridge control on B is crucial — it cuts off CT rotation.' },
-    dust2:   { name: 'Dust 2',   setting: 'Middle Eastern town',   side: 'T-sided',   callouts: 'A Site: Long, Short, CT, Pit, Ramp | B Site: Tunnels, B Doors, B Platform, Window | Mid: Catwalk, Xbox, Top Mid', tip: 'Long A control early game is a huge advantage — commit to it or leave it.' },
-    vertigo: { name: 'Vertigo',  setting: 'Skyscraper construction', side: 'CT-sided', callouts: 'A Site: Ramp, Stairs, Scaffolding, A Default | B Site: Elevator, B Corner, B Default | Mid: Mid, Boost', tip: 'Elevator mid control gives Ts an info advantage on both sites.' },
+    mirage:  { name: 'Mirage',   setting: 'Moroccan city',           side: 'CT-sided',  callouts: 'A Site: Palace, Ramp, CT, Jungle, Stairs, Ticket Booth | B Site: Short, Van, Bench, Default, B Apps | Mid: Window, Catwalk, Top Mid, Connector, Underpass', tip: 'Window control mid is everything — whoever owns it controls the map.' },
+    inferno: { name: 'Inferno',  setting: 'Italian village',         side: 'CT-sided',  callouts: 'A Site: Pit, Library, Short, CT, Arch, Balcony | B Site: Banana, Car, Spools, Coffins, Dark | Mid: Top Mid, Mid Apartments', tip: 'Banana control determines most B executes — smoke it or lose it.' },
+    nuke:    { name: 'Nuke',     setting: 'Nuclear facility',        side: 'CT-sided',  callouts: 'Upper: Ramp, Secret, Lobby, Silo, Outside | Lower: Lower A, Vents, Heaven, Hell | B Site: Squeaky, B Hut', tip: 'Nuke rewards map knowledge above all else — learn the vents.' },
+    ancient: { name: 'Ancient',  setting: 'Mayan ruins',             side: 'Balanced',  callouts: 'A Site: Donut, Temple, CT, Ramp, Ruins | B Site: River, Cave, Elbow, Pillar | Mid: Mid, Speed', tip: 'Mid speed round to Cave can catch CT rotations completely off guard.' },
+    anubis:  { name: 'Anubis',   setting: 'Egyptian ruins',          side: 'Balanced',  callouts: 'A Site: Speed, Palace, Fountain, Connector | B Site: Bridge, Water, Hovel, Canal | Mid: Mid, Alley', tip: 'Bridge control on B is crucial — it cuts off CT rotation.' },
+    dust2:   { name: 'Dust 2',   setting: 'Middle Eastern town',     side: 'T-sided',   callouts: 'A Site: Long, Short, CT, Pit, Ramp | B Site: Tunnels, B Doors, B Platform, Window | Mid: Catwalk, Xbox, Top Mid', tip: 'Long A control early game is a huge advantage — commit to it or leave it.' },
+    vertigo: { name: 'Vertigo',  setting: 'Skyscraper construction', side: 'CT-sided',  callouts: 'A Site: Ramp, Stairs, Scaffolding, A Default | B Site: Elevator, B Corner, B Default | Mid: Mid, Boost', tip: 'Elevator mid control gives Ts an info advantage on both sites.' },
 };
 
 function getCS2MapInfo(mapInput) {
@@ -1072,14 +1072,60 @@ const discordClient = new Client({
     ]
 });
 
-discordClient.once(Events.ClientReady, (client) => {
+// ===== CULTIST MONITOR =====
+function startCultistMonitor(client) {
+    // Placeholder — add cultist spawn alert logic here if desired
+    logSystemEvent('CULTIST', 'INFO', 'discord', 'Cultist monitor started');
+}
+
+discordClient.once(Events.ClientReady, async (client) => {
     console.log(`✅ Discord bot ready as ${client.user.tag}`);
     logSystemEvent('CONNECTION', 'INFO', 'discord', `✅ Discord bot ready as ${client.user.tag}`);
     if (typeof global.setDiscordClientForExport === 'function') {
         global.setDiscordClientForExport(client);
     }
+
+    // ===== SLASH COMMAND REGISTRATION =====
+    const builtInCommands = [
+        new SlashCommandBuilder().setName('price').setDescription('Look up a Tarkov item price').addStringOption(o => o.setName('item').setDescription('Item name').setRequired(true)),
+        new SlashCommandBuilder().setName('bestammo').setDescription('Find the best Tarkov ammo for a caliber').addStringOption(o => o.setName('caliber').setDescription('Caliber (e.g. 5.45x39)').setRequired(true)),
+        new SlashCommandBuilder().setName('trader').setDescription('Show Tarkov trader reset times'),
+        new SlashCommandBuilder().setName('map').setDescription('Get Tarkov map info and bosses').addStringOption(o => o.setName('map').setDescription('Map name').setRequired(true)),
+        new SlashCommandBuilder().setName('player').setDescription('Look up a Tarkov player').addStringOption(o => o.setName('name').setDescription('Player name').setRequired(true)),
+        new SlashCommandBuilder().setName('cs2price').setDescription('Get a CS2 skin price from Steam Market').addStringOption(o => o.setName('skin').setDescription('Skin name (e.g. AK-47 | Redline (Field-Tested))').setRequired(true)),
+        new SlashCommandBuilder().setName('cs2float').setDescription('Get the float value of a CS2 skin').addStringOption(o => o.setName('link').setDescription('Steam inspect link').setRequired(true)),
+        new SlashCommandBuilder().setName('cs2stats').setDescription('Get CS2 player stats').addStringOption(o => o.setName('steam').setDescription('Steam ID or username').setRequired(true)),
+        new SlashCommandBuilder().setName('cs2map').setDescription('Get CS2 map callouts and tips').addStringOption(o => o.setName('map').setDescription('Map name (e.g. mirage)').setRequired(true)),
+        new SlashCommandBuilder().setName('cs2case').setDescription('Simulate CS2 case openings').addStringOption(o => o.setName('case').setDescription('Case name').setRequired(true)).addIntegerOption(o => o.setName('count').setDescription('Number of cases to open').setRequired(true)).addNumberOption(o => o.setName('cost').setDescription('Case cost in USD').setRequired(true)),
+        new SlashCommandBuilder().setName('meme').setDescription('Get a random meme'),
+        new SlashCommandBuilder().setName('code').setDescription('Get the GitHub link'),
+        new SlashCommandBuilder().setName('persona').setDescription('Switch the bot persona').addStringOption(o => o.setName('name').setDescription('Persona name').setRequired(true)),
+        new SlashCommandBuilder().setName('personas').setDescription('List all available personas'),
+        new SlashCommandBuilder().setName('clearmemory').setDescription('Clear AI conversation memory for this channel'),
+        new SlashCommandBuilder().setName('ask').setDescription('Ask the AI a question').addStringOption(o => o.setName('question').setDescription('Your question').setRequired(true)),
+        new SlashCommandBuilder().setName('imagine').setDescription('Generate an image with AI').addStringOption(o => o.setName('prompt').setDescription('Image description').setRequired(true)),
+        new SlashCommandBuilder().setName('pzrestart').setDescription('Restart the Project Zomboid server'),
+    ];
+
+    // Merge built-in commands with music slash command defs
+    const allCommands = [...builtInCommands, ...musicSlashCommandDefs].map(cmd => cmd.toJSON());
+
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+    try {
+        console.log('[SLASH] Registering slash commands...');
+        await rest.put(
+            Routes.applicationGuildCommands(client.user.id, process.env.DISCORD_GUILD_ID),
+            { body: allCommands }
+        );
+        console.log(`[SLASH] ✅ ${allCommands.length} slash commands registered.`);
+        logSystemEvent('SLASH', 'INFO', 'discord', `${allCommands.length} slash commands registered`);
+    } catch (err) {
+        console.error('[SLASH] Registration failed:', err);
+        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `Slash command registration failed: ${err.message}`);
+    }
+
     // ===== ROTATING ACTIVITY STATUS =====
-    rotatePresence(client); // set immediately on ready
+    rotatePresence(client);
     setInterval(() => rotatePresence(client), CONFIG.PRESENCE_ROTATE_MS);
     startCultistMonitor(client);
 });
@@ -1098,7 +1144,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     addToMemory('discord', channelId, username, message.content);
     console.log(`[DISCORD] ${username}: ${message.content}`);
 
-    // --- Music commands ---
+    // --- Music prefix commands ---
     const MUSIC_CMDS = ['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying'];
     if (lowerContent.startsWith('!')) {
         const withoutBang = lowerContent.slice(1);
@@ -1106,4 +1152,423 @@ discordClient.on(Events.MessageCreate, async (message) => {
         if (MUSIC_CMDS.includes(cmdWord)) {
             const args = message.content.slice(cmdWord.length + 2).trim(); // strip "!cmd "
             await handleMusicPrefix(message, cmdWord, args);
-            logCommand('discord', username, `!${cmdWord}`,
+            logCommand('discord', username, `!${cmdWord}`, args, '[music]');
+            return;
+        }
+    }
+
+    // --- Tarkov commands ---
+    if (lowerContent.startsWith('!price ')) {
+        const itemName = message.content.substring(7).trim();
+        const result = await getTarkovPrice(itemName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!price', itemName, result);
+        return;
+    }
+    if (lowerContent.startsWith('!bestammo ')) {
+        const searchCaliber = message.content.substring(10).trim();
+        const result = await getBestAmmo(searchCaliber);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!bestammo', searchCaliber, result);
+        return;
+    }
+    if (lowerContent === '!trader') {
+        const result = await getTraderResets();
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!trader', message.content, result);
+        return;
+    }
+    if (lowerContent.startsWith('!map ')) {
+        const mapName = message.content.substring(5).trim();
+        const result = await getMapInfo(mapName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!map', mapName, result);
+        return;
+    }
+    if (lowerContent.startsWith('!player ')) {
+        const playerName = message.content.substring(8).trim();
+        const result = await getPlayerStats(playerName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!player', playerName, result);
+        return;
+    }
+
+    // --- CS2 commands ---
+    if (lowerContent.startsWith('!cs2price ')) {
+        const skinName = message.content.substring(10).trim();
+        const result = await getCS2SkinPrice(skinName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!cs2price', skinName, result);
+        return;
+    }
+    if (lowerContent.startsWith('!cs2float ')) {
+        const inspectLink = message.content.substring(10).trim();
+        const result = await getCS2Float(inspectLink);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!cs2float', inspectLink.substring(0, 60), result);
+        return;
+    }
+    if (lowerContent.startsWith('!cs2stats ')) {
+        const steamInput = message.content.substring(10).trim();
+        const result = await getCS2PlayerStats(steamInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!cs2stats', steamInput, result);
+        return;
+    }
+    if (lowerContent.startsWith('!cs2map ')) {
+        const mapInput = message.content.substring(8).trim();
+        const result = getCS2MapInfo(mapInput);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!cs2map', mapInput, result);
+        return;
+    }
+    if (lowerContent.startsWith('!cs2case ')) {
+        const args = message.content.substring(9).trim();
+        const parsed = parseCS2CaseCommand(args);
+        if (!parsed) {
+            const usage = '⚠️ Usage: `!cs2case <case name> <count> <case cost>`\nExample: `!cs2case Kilowatt 10 1.50`';
+            await safeDiscordReply(message, usage);
+            logCommand('discord', username, '!cs2case', args, usage, true);
+        } else {
+            const result = simulateCS2Case(parsed.caseName, parsed.count, parsed.cost);
+            await safeDiscordReply(message, result);
+            logCommand('discord', username, '!cs2case', args, result);
+        }
+        return;
+    }
+
+    // --- Misc commands ---
+    if (lowerContent.includes('meme')) {
+        const meme = await fetchMeme();
+        if (meme) {
+            await safeDiscordReply(message, `**${meme.title}**\n${meme.url}`);
+            logCommand('discord', username, 'meme', message.content, meme.url);
+        } else {
+            await safeDiscordReply(message, "Couldn't fetch a meme right now. Try again!");
+        }
+        return;
+    }
+    if (lowerContent.includes('!code') || lowerContent.includes('!github')) {
+        const response = `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`;
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, '!code', message.content, response);
+        return;
+    }
+    if (lowerContent.startsWith('!persona ')) {
+        const personaName = message.content.substring(9).trim();
+        const result = applyPersona(personaName);
+        await safeDiscordReply(message, result);
+        logCommand('discord', username, '!persona', personaName, result);
+        return;
+    }
+    if (lowerContent === '!personas') {
+        const reply = `Available personas: ${buildPersonaList()}`;
+        await safeDiscordReply(message, reply);
+        logCommand('discord', username, '!personas', '', reply);
+        return;
+    }
+    if (lowerContent === '!clearmemory') {
+        clearChannelMemory('discord', channelId);
+        await safeDiscordReply(message, '🧹 Memory cleared for this channel.');
+        logCommand('discord', username, '!clearmemory', '', 'Memory cleared');
+        return;
+    }
+
+    // --- @mention AI handler ---
+    if (message.mentions.has(discordClient.user)) {
+        const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
+        if (!userMessage && !hasImageAttachment(message)) return;
+
+        if (isWildRequest(userMessage)) {
+            const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
+            await safeDiscordReply(message, roast);
+            logCommand('discord', username, '@mention (wild)', userMessage, roast);
+            return;
+        }
+
+        if (detectImageRequest(userMessage)) {
+            const rateCheck = checkImageRateLimit(message.author.id);
+            if (!rateCheck.allowed) {
+                await safeDiscordReply(message, `⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+                return;
+            }
+            const rawPrompt   = extractImagePrompt(userMessage);
+            const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+            logCommand('discord', username, '@mention (image)', cleanPrompt, '[generating...]');
+            try {
+                await message.channel.sendTyping();
+                const { buffer, mimeType } = await generateImage(cleanPrompt);
+                const ext        = mimeType.split('/')[1] || 'png';
+                const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+                await message.reply({ files: [attachment] });
+            } catch (imgErr) {
+                console.error('[IMAGE GEN ERROR]', imgErr);
+                await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
+            }
+            return;
+        }
+
+        if (hasImageAttachment(message)) {
+            const images   = await getImageAttachments(message);
+            const response = await getAIResponse(userMessage || 'What do you see in this image?', 'discord', channelId, username, images);
+            await safeDiscordReply(message, response);
+            logCommand('discord', username, '@mention (image analysis)', userMessage, response);
+            return;
+        }
+
+        const response = await getAIResponse(userMessage, 'discord', channelId, username);
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, '@mention', userMessage, response);
+        return;
+    }
+});
+
+// ===== DISCORD MESSAGE HANDLER (REPLY TO BOT) =====
+// This is the single handler for ALL replies directed at the bot.
+// The main handler above skips all messages with message.reference,
+// so there is no overlap and no double processing.
+discordClient.on(Events.MessageCreate, async (message) => {
+    if (message.author.bot) return;
+    if (!message.reference) return;
+
+    const channelId = message.channelId;
+    const username  = message.author.username;
+
+    let referencedMessage;
+    try {
+        referencedMessage = await message.channel.messages.fetch(message.reference.messageId);
+    } catch {
+        return;
+    }
+
+    if (referencedMessage.author.id !== discordClient.user.id) return;
+
+    const lowerContent = message.content.toLowerCase();
+
+    addToMemory('discord', channelId, username, message.content);
+    console.log(`[DISCORD REPLY] ${username}: ${message.content}`);
+
+    if (hasImageAttachment(message)) {
+        const images   = await getImageAttachments(message);
+        const response = await getAIResponse(message.content || 'What do you see in this image?', 'discord', channelId, username, images);
+        await safeDiscordReply(message, response);
+        logCommand('discord', username, 'reply (image)', message.content, response);
+        return;
+    }
+
+    if (isWildRequest(message.content)) {
+        const roast = await getWildRequestResponse(message.content, 'discord', channelId, username);
+        await safeDiscordReply(message, roast);
+        logCommand('discord', username, 'reply (wild)', message.content, roast);
+        return;
+    }
+
+    if (detectImageRequest(lowerContent)) {
+        const rateCheck = checkImageRateLimit(message.author.id);
+        if (!rateCheck.allowed) {
+            await safeDiscordReply(message, `⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+            return;
+        }
+        const rawPrompt   = extractImagePrompt(message.content);
+        const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+        logCommand('discord', username, 'reply (image gen)', cleanPrompt, '[generating...]');
+        try {
+            await message.channel.sendTyping();
+            const { buffer, mimeType } = await generateImage(cleanPrompt);
+            const ext        = mimeType.split('/')[1] || 'png';
+            const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+            await message.reply({ files: [attachment] });
+        } catch (imgErr) {
+            console.error('[IMAGE GEN ERROR]', imgErr);
+            await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
+        }
+        return;
+    }
+
+    const response = await getAIResponse(message.content, 'discord', channelId, username);
+    await safeDiscordReply(message, response);
+    logCommand('discord', username, 'reply', message.content, response);
+});
+
+// ===== DISCORD SLASH COMMAND & MUSIC INTERACTION HANDLER =====
+discordClient.on(Events.InteractionCreate, async (interaction) => {
+    if (!interaction.isChatInputCommand()) return;
+
+    const { commandName } = interaction;
+    const username = interaction.user.username;
+    const channelId = interaction.channelId;
+
+    // --- Music slash commands (delegated to music.js) ---
+    const musicCommandNames = musicSlashCommandDefs.map(cmd => cmd.name);
+    if (musicCommandNames.includes(commandName)) {
+        await handleMusicInteraction(interaction);
+        logCommand('discord', username, `/${commandName}`, '', '[music]');
+        return;
+    }
+
+    // --- Built-in slash commands ---
+    try {
+        if (commandName === 'price') {
+            await interaction.deferReply();
+            const itemName = interaction.options.getString('item');
+            const result = await getTarkovPrice(itemName);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/price', itemName, result);
+
+        } else if (commandName === 'bestammo') {
+            await interaction.deferReply();
+            const caliber = interaction.options.getString('caliber');
+            const result = await getBestAmmo(caliber);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/bestammo', caliber, result);
+
+        } else if (commandName === 'trader') {
+            await interaction.deferReply();
+            const result = await getTraderResets();
+            await interaction.editReply(result);
+            logCommand('discord', username, '/trader', '', result);
+
+        } else if (commandName === 'map') {
+            await interaction.deferReply();
+            const mapName = interaction.options.getString('map');
+            const result = await getMapInfo(mapName);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/map', mapName, result);
+
+        } else if (commandName === 'player') {
+            await interaction.deferReply();
+            const playerName = interaction.options.getString('name');
+            const result = await getPlayerStats(playerName);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/player', playerName, result);
+
+        } else if (commandName === 'cs2price') {
+            await interaction.deferReply();
+            const skinName = interaction.options.getString('skin');
+            const result = await getCS2SkinPrice(skinName);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2price', skinName, result);
+
+        } else if (commandName === 'cs2float') {
+            await interaction.deferReply();
+            const link = interaction.options.getString('link');
+            const result = await getCS2Float(link);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2float', link.substring(0, 60), result);
+
+        } else if (commandName === 'cs2stats') {
+            await interaction.deferReply();
+            const steam = interaction.options.getString('steam');
+            const result = await getCS2PlayerStats(steam);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2stats', steam, result);
+
+        } else if (commandName === 'cs2map') {
+            await interaction.deferReply();
+            const mapInput = interaction.options.getString('map');
+            const result = getCS2MapInfo(mapInput);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2map', mapInput, result);
+
+        } else if (commandName === 'cs2case') {
+            await interaction.deferReply();
+            const caseName = interaction.options.getString('case');
+            const count    = interaction.options.getInteger('count');
+            const cost     = interaction.options.getNumber('cost');
+            const result = simulateCS2Case(caseName, count, cost);
+            await interaction.editReply(result);
+            logCommand('discord', username, '/cs2case', `${caseName} x${count} $${cost}`, result);
+
+        } else if (commandName === 'meme') {
+            await interaction.deferReply();
+            const meme = await fetchMeme();
+            if (meme) {
+                await interaction.editReply(`**${meme.title}**\n${meme.url}`);
+                logCommand('discord', username, '/meme', '', meme.url);
+            } else {
+                await interaction.editReply("Couldn't fetch a meme right now. Try again!");
+            }
+
+        } else if (commandName === 'code') {
+            await interaction.reply(`Check out my code! 🤖 ${CONFIG.GITHUB_URL}`);
+            logCommand('discord', username, '/code', '', CONFIG.GITHUB_URL);
+
+        } else if (commandName === 'persona') {
+            const personaName = interaction.options.getString('name');
+            const result = applyPersona(personaName);
+            await interaction.reply(result);
+            logCommand('discord', username, '/persona', personaName, result);
+
+        } else if (commandName === 'personas') {
+            const reply = `Available personas: ${buildPersonaList()}`;
+            await interaction.reply(reply);
+            logCommand('discord', username, '/personas', '', reply);
+
+        } else if (commandName === 'clearmemory') {
+            clearChannelMemory('discord', channelId);
+            await interaction.reply('🧹 Memory cleared for this channel.');
+            logCommand('discord', username, '/clearmemory', '', 'Memory cleared');
+
+        } else if (commandName === 'ask') {
+            await interaction.deferReply();
+            const question = interaction.options.getString('question');
+            addToMemory('discord', channelId, username, question);
+            if (isWildRequest(question)) {
+                const roast = await getWildRequestResponse(question, 'discord', channelId, username);
+                await interaction.editReply(roast);
+                logCommand('discord', username, '/ask (wild)', question, roast);
+            } else {
+                const response = await getAIResponse(question, 'discord', channelId, username);
+                await interaction.editReply(response);
+                logCommand('discord', username, '/ask', question, response);
+            }
+
+        } else if (commandName === 'imagine') {
+            await interaction.deferReply();
+            const rateCheck = checkImageRateLimit(interaction.user.id);
+            if (!rateCheck.allowed) {
+                await interaction.editReply(`⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+                return;
+            }
+            const rawPrompt   = interaction.options.getString('prompt');
+            const cleanPrompt = sanitizeImagePrompt(rawPrompt);
+            logCommand('discord', username, '/imagine', cleanPrompt, '[generating...]');
+            try {
+                const { buffer, mimeType } = await generateImage(cleanPrompt);
+                const ext        = mimeType.split('/')[1] || 'png';
+                const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+                await interaction.editReply({ files: [attachment] });
+            } catch (imgErr) {
+                console.error('[IMAGE GEN ERROR]', imgErr);
+                await interaction.editReply(`❌ Image generation failed: ${imgErr.message}`);
+            }
+
+        } else if (commandName === 'pzrestart') {
+            await interaction.reply('🔄 Project Zomboid server restart initiated...');
+            const child = startPZRestartTask();
+            logCommand('discord', username, '/pzrestart', '', `PID: ${child.pid}`);
+            logSystemEvent('PZ_RESTART', 'INFO', 'discord', `PZ restart triggered by ${username}, PID: ${child.pid}`);
+
+        } else {
+            await interaction.reply({ content: '❓ Unknown command.', ephemeral: true });
+        }
+
+    } catch (error) {
+        console.error(`[SLASH ERROR] /${commandName}:`, error);
+        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `/${commandName} failed: ${error.message}`);
+        try {
+            const errMsg = `❌ Command failed: ${error.message}`;
+            if (interaction.deferred) {
+                await interaction.editReply(errMsg);
+            } else if (!interaction.replied) {
+                await interaction.reply({ content: errMsg, ephemeral: true });
+            }
+        } catch (_) {}
+    }
+});
+
+// ===== START DISCORD =====
+discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
+    console.error('[DISCORD LOGIN ERROR]', error);
+    logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
+});
