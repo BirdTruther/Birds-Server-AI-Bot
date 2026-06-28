@@ -1112,14 +1112,13 @@ discordClient.once(Events.ClientReady, async (client) => {
 
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        console.log('[SLASH] Registering slash commands...');
-        // FIX: Use DISCORD_CLIENT_ID from .env (your existing env var) instead of client.user.id
+        console.log('[SLASH] Registering global slash commands...');
         await rest.put(
-            Routes.applicationGuildCommands(process.env.DISCORD_CLIENT_ID, process.env.DISCORD_GUILD_ID),
+            Routes.applicationCommands(client.user.id),
             { body: allCommands }
         );
-        console.log(`[SLASH] ✅ ${allCommands.length} slash commands registered.`);
-        logSystemEvent('SLASH', 'INFO', 'discord', `${allCommands.length} slash commands registered`);
+        console.log(`[SLASH] ✅ ${allCommands.length} global slash commands registered.`);
+        logSystemEvent('SLASH', 'INFO', 'discord', `${allCommands.length} global slash commands registered`);
     } catch (err) {
         console.error('[SLASH] Registration failed:', err);
         logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `Slash command registration failed: ${err.message}`);
@@ -1391,7 +1390,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     logCommand('discord', username, 'reply', message.content, response);
 });
 
-// ===== DISCORD SLASH COMMAND & MUSIC INTERACTION HANDLER =====
+// ===== DISCORD SLASH COMMAND HANDLER =====
 discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
@@ -1399,171 +1398,168 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     const username = interaction.user.username;
     const channelId = interaction.channelId;
 
-    // --- Music slash commands (delegated to music.js) ---
-    const musicCommandNames = musicSlashCommandDefs.map(cmd => cmd.name);
-    if (musicCommandNames.includes(commandName)) {
+    // Route music slash commands first
+    if (['play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying'].includes(commandName)) {
         await handleMusicInteraction(interaction);
-        logCommand('discord', username, `/${commandName}`, '', '[music]');
         return;
     }
 
-    // --- Built-in slash commands ---
+    await interaction.deferReply();
+
     try {
-        if (commandName === 'price') {
-            await interaction.deferReply();
-            const itemName = interaction.options.getString('item');
-            const result = await getTarkovPrice(itemName);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/price', itemName, result);
-
-        } else if (commandName === 'bestammo') {
-            await interaction.deferReply();
-            const caliber = interaction.options.getString('caliber');
-            const result = await getBestAmmo(caliber);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/bestammo', caliber, result);
-
-        } else if (commandName === 'trader') {
-            await interaction.deferReply();
-            const result = await getTraderResets();
-            await interaction.editReply(result);
-            logCommand('discord', username, '/trader', '', result);
-
-        } else if (commandName === 'map') {
-            await interaction.deferReply();
-            const mapName = interaction.options.getString('map');
-            const result = await getMapInfo(mapName);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/map', mapName, result);
-
-        } else if (commandName === 'player') {
-            await interaction.deferReply();
-            const playerName = interaction.options.getString('name');
-            const result = await getPlayerStats(playerName);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/player', playerName, result);
-
-        } else if (commandName === 'cs2price') {
-            await interaction.deferReply();
-            const skinName = interaction.options.getString('skin');
-            const result = await getCS2SkinPrice(skinName);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/cs2price', skinName, result);
-
-        } else if (commandName === 'cs2float') {
-            await interaction.deferReply();
-            const link = interaction.options.getString('link');
-            const result = await getCS2Float(link);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/cs2float', link.substring(0, 60), result);
-
-        } else if (commandName === 'cs2stats') {
-            await interaction.deferReply();
-            const steam = interaction.options.getString('steam');
-            const result = await getCS2PlayerStats(steam);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/cs2stats', steam, result);
-
-        } else if (commandName === 'cs2map') {
-            await interaction.deferReply();
-            const mapInput = interaction.options.getString('map');
-            const result = getCS2MapInfo(mapInput);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/cs2map', mapInput, result);
-
-        } else if (commandName === 'cs2case') {
-            await interaction.deferReply();
-            const caseName = interaction.options.getString('case');
-            const count    = interaction.options.getInteger('count');
-            const cost     = interaction.options.getNumber('cost');
-            const result = simulateCS2Case(caseName, count, cost);
-            await interaction.editReply(result);
-            logCommand('discord', username, '/cs2case', `${caseName} x${count} $${cost}`, result);
-
-        } else if (commandName === 'meme') {
-            await interaction.deferReply();
-            const meme = await fetchMeme();
-            if (meme) {
-                await interaction.editReply(`**${meme.title}**\n${meme.url}`);
-                logCommand('discord', username, '/meme', '', meme.url);
-            } else {
-                await interaction.editReply("Couldn't fetch a meme right now. Try again!");
+        switch (commandName) {
+            case 'price': {
+                const item = interaction.options.getString('item');
+                const result = await getTarkovPrice(item);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/price', item, result);
+                break;
             }
-
-        } else if (commandName === 'code') {
-            await interaction.reply(`Check out my code! 🤖 ${CONFIG.GITHUB_URL}`);
-            logCommand('discord', username, '/code', '', CONFIG.GITHUB_URL);
-
-        } else if (commandName === 'persona') {
-            const personaName = interaction.options.getString('name');
-            const result = applyPersona(personaName);
-            await interaction.reply(result);
-            logCommand('discord', username, '/persona', personaName, result);
-
-        } else if (commandName === 'personas') {
-            const reply = `Available personas: ${buildPersonaList()}`;
-            await interaction.reply(reply);
-            logCommand('discord', username, '/personas', '', reply);
-
-        } else if (commandName === 'clearmemory') {
-            clearChannelMemory('discord', channelId);
-            await interaction.reply('🧹 Memory cleared for this channel.');
-            logCommand('discord', username, '/clearmemory', '', 'Memory cleared');
-
-        } else if (commandName === 'ask') {
-            await interaction.deferReply();
-            const question = interaction.options.getString('question');
-            addToMemory('discord', channelId, username, question);
-            if (isWildRequest(question)) {
-                const roast = await getWildRequestResponse(question, 'discord', channelId, username);
-                await interaction.editReply(roast);
-                logCommand('discord', username, '/ask (wild)', question, roast);
-            } else {
-                const response = await getAIResponse(question, 'discord', channelId, username);
-                await interaction.editReply(response);
-                logCommand('discord', username, '/ask', question, response);
+            case 'bestammo': {
+                const caliber = interaction.options.getString('caliber');
+                const result = await getBestAmmo(caliber);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/bestammo', caliber, result);
+                break;
             }
-
-        } else if (commandName === 'imagine') {
-            await interaction.deferReply();
-            const rateCheck = checkImageRateLimit(interaction.user.id);
-            if (!rateCheck.allowed) {
-                await interaction.editReply(`⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
-                return;
+            case 'trader': {
+                const result = await getTraderResets();
+                await interaction.editReply(result);
+                logCommand('discord', username, '/trader', '', result);
+                break;
             }
-            const rawPrompt   = interaction.options.getString('prompt');
-            const cleanPrompt = sanitizeImagePrompt(rawPrompt);
-            logCommand('discord', username, '/imagine', cleanPrompt, '[generating...]');
-            try {
-                const { buffer, mimeType } = await generateImage(cleanPrompt);
-                const ext        = mimeType.split('/')[1] || 'png';
-                const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
-                await interaction.editReply({ files: [attachment] });
-            } catch (imgErr) {
-                console.error('[IMAGE GEN ERROR]', imgErr);
-                await interaction.editReply(`❌ Image generation failed: ${imgErr.message}`);
+            case 'map': {
+                const mapName = interaction.options.getString('map');
+                const result = await getMapInfo(mapName);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/map', mapName, result);
+                break;
             }
-
-        } else if (commandName === 'pzrestart') {
-            await interaction.reply('🔄 Project Zomboid server restart initiated...');
-            const child = startPZRestartTask();
-            logCommand('discord', username, '/pzrestart', '', `PID: ${child.pid}`);
-            logSystemEvent('PZ_RESTART', 'INFO', 'discord', `PZ restart triggered by ${username}, PID: ${child.pid}`);
-
-        } else {
-            await interaction.reply({ content: '❓ Unknown command.', ephemeral: true });
+            case 'player': {
+                const playerName = interaction.options.getString('name');
+                const result = await getPlayerStats(playerName);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/player', playerName, result);
+                break;
+            }
+            case 'cs2price': {
+                const skin = interaction.options.getString('skin');
+                const result = await getCS2SkinPrice(skin);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/cs2price', skin, result);
+                break;
+            }
+            case 'cs2float': {
+                const link = interaction.options.getString('link');
+                const result = await getCS2Float(link);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/cs2float', link.substring(0, 60), result);
+                break;
+            }
+            case 'cs2stats': {
+                const steam = interaction.options.getString('steam');
+                const result = await getCS2PlayerStats(steam);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/cs2stats', steam, result);
+                break;
+            }
+            case 'cs2map': {
+                const mapInput = interaction.options.getString('map');
+                const result = getCS2MapInfo(mapInput);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/cs2map', mapInput, result);
+                break;
+            }
+            case 'cs2case': {
+                const caseName = interaction.options.getString('case');
+                const count    = interaction.options.getInteger('count');
+                const cost     = interaction.options.getNumber('cost');
+                const result   = simulateCS2Case(caseName, count, cost);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/cs2case', `${caseName} ${count} ${cost}`, result);
+                break;
+            }
+            case 'meme': {
+                const meme = await fetchMeme();
+                const result = meme ? `**${meme.title}**\n${meme.url}` : "Couldn't fetch a meme right now.";
+                await interaction.editReply(result);
+                logCommand('discord', username, '/meme', '', result);
+                break;
+            }
+            case 'code': {
+                const result = `Check out my code! 🤖 ${CONFIG.GITHUB_URL}`;
+                await interaction.editReply(result);
+                logCommand('discord', username, '/code', '', result);
+                break;
+            }
+            case 'persona': {
+                const personaName = interaction.options.getString('name');
+                const result = applyPersona(personaName);
+                await interaction.editReply(result);
+                logCommand('discord', username, '/persona', personaName, result);
+                break;
+            }
+            case 'personas': {
+                const result = `Available personas: ${buildPersonaList()}`;
+                await interaction.editReply(result);
+                logCommand('discord', username, '/personas', '', result);
+                break;
+            }
+            case 'clearmemory': {
+                clearChannelMemory('discord', channelId);
+                await interaction.editReply('🧹 Memory cleared for this channel.');
+                logCommand('discord', username, '/clearmemory', '', 'Memory cleared');
+                break;
+            }
+            case 'ask': {
+                const question = interaction.options.getString('question');
+                addToMemory('discord', channelId, username, question);
+                if (isWildRequest(question)) {
+                    const roast = await getWildRequestResponse(question, 'discord', channelId, username);
+                    await interaction.editReply(roast);
+                    logCommand('discord', username, '/ask (wild)', question, roast);
+                } else {
+                    const response = await getAIResponse(question, 'discord', channelId, username);
+                    await interaction.editReply(response);
+                    logCommand('discord', username, '/ask', question, response);
+                }
+                break;
+            }
+            case 'imagine': {
+                const prompt = interaction.options.getString('prompt');
+                const rateCheck = checkImageRateLimit(interaction.user.id);
+                if (!rateCheck.allowed) {
+                    await interaction.editReply(`⏳ Image rate limit hit. Try again in ${rateCheck.timeLeft} minute(s).`);
+                    break;
+                }
+                const cleanPrompt = sanitizeImagePrompt(prompt);
+                logCommand('discord', username, '/imagine', cleanPrompt, '[generating...]');
+                try {
+                    const { buffer, mimeType } = await generateImage(cleanPrompt);
+                    const ext        = mimeType.split('/')[1] || 'png';
+                    const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+                    await interaction.editReply({ files: [attachment] });
+                } catch (imgErr) {
+                    console.error('[IMAGE GEN ERROR]', imgErr);
+                    await interaction.editReply(`❌ Image generation failed: ${imgErr.message}`);
+                }
+                break;
+            }
+            case 'pzrestart': {
+                await interaction.editReply('🔄 Project Zomboid server restart initiated...');
+                const child = startPZRestartTask();
+                logSystemEvent('PZ_RESTART', 'INFO', 'discord', `PZ restart triggered by ${username} (PID: ${child.pid})`);
+                logCommand('discord', username, '/pzrestart', '', 'PZ restart initiated');
+                break;
+            }
+            default:
+                await interaction.editReply('❓ Unknown command.');
         }
-
     } catch (error) {
         console.error(`[SLASH ERROR] /${commandName}:`, error);
-        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `/${commandName} failed: ${error.message}`);
+        logSystemEvent('SLASH_ERROR', 'ERROR', 'discord', `Slash command /${commandName} failed: ${error.message}`, error);
         try {
-            const errMsg = `❌ Command failed: ${error.message}`;
-            if (interaction.deferred) {
-                await interaction.editReply(errMsg);
-            } else if (!interaction.replied) {
-                await interaction.reply({ content: errMsg, ephemeral: true });
-            }
+            await interaction.editReply('❌ Something went wrong. Try again.');
         } catch (_) {}
     }
 });
@@ -1572,4 +1568,5 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 discordClient.login(process.env.DISCORD_TOKEN).catch((error) => {
     console.error('[DISCORD LOGIN ERROR]', error);
     logSystemEvent('CONNECTION', 'ERROR', 'discord', 'Failed to login to Discord', error);
+    process.exit(1);
 });
