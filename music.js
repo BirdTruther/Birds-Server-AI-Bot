@@ -141,7 +141,6 @@ async function cmdPlay(guildId, voiceChannel, query, requestedBy) {
 
     let trackInfo;
     try {
-        // Check if it's a URL or a search term
         const isUrl = /^https?:\/\//i.test(query.trim());
         if (isUrl) {
             const info = await playdl.video_info(query);
@@ -248,8 +247,6 @@ function cmdNowPlaying(guildId) {
 }
 
 // ===== SLASH COMMAND DEFINITIONS =====
-// NOTE: Export as SlashCommandBuilder instances (NOT pre-serialized).
-// index.js calls .toJSON() on the merged array during registration.
 
 const musicSlashCommandDefs = [
     new SlashCommandBuilder()
@@ -277,13 +274,16 @@ const musicSlashCommandDefs = [
 ];
 
 // ===== SLASH HANDLER =====
-// Called from index.js InteractionCreate for music command names.
+// FIX: deferReply here so editReply always works, regardless of how long the command takes.
 async function handleMusicInteraction(interaction) {
     const { commandName } = interaction;
     const guildId      = interaction.guildId;
     const member       = interaction.member;
     const voiceChannel = member?.voice?.channel ?? null;
     const username     = interaction.user.username;
+
+    // Always defer first — music commands (especially /play) can take >3s
+    await interaction.deferReply();
 
     let reply;
     try {
@@ -310,7 +310,6 @@ async function handleMusicInteraction(interaction) {
 }
 
 // ===== PREFIX HANDLER =====
-// Called from index.js MessageCreate for !play, !skip, etc.
 async function handleMusicPrefix(message, cmd, args) {
     const guildId      = message.guildId;
     const voiceChannel = message.member?.voice?.channel ?? null;
