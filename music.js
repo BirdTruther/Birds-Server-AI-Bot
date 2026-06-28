@@ -248,6 +248,8 @@ function cmdNowPlaying(guildId) {
 }
 
 // ===== SLASH COMMAND DEFINITIONS =====
+// NOTE: Export as SlashCommandBuilder instances (NOT pre-serialized).
+// index.js calls .toJSON() on the merged array during registration.
 
 const musicSlashCommandDefs = [
     new SlashCommandBuilder()
@@ -272,17 +274,16 @@ const musicSlashCommandDefs = [
     new SlashCommandBuilder()
         .setName('nowplaying')
         .setDescription('Show what is currently playing'),
-].map(c => c.toJSON());
+];
 
 // ===== SLASH HANDLER =====
 // Called from index.js InteractionCreate for music command names.
-// interaction is already deferred (deferReply called before this).
 async function handleMusicInteraction(interaction) {
     const { commandName } = interaction;
-    const guildId     = interaction.guildId;
-    const member      = interaction.member;
+    const guildId      = interaction.guildId;
+    const member       = interaction.member;
     const voiceChannel = member?.voice?.channel ?? null;
-    const username    = interaction.user.username;
+    const username     = interaction.user.username;
 
     let reply;
     try {
@@ -310,11 +311,10 @@ async function handleMusicInteraction(interaction) {
 
 // ===== PREFIX HANDLER =====
 // Called from index.js MessageCreate for !play, !skip, etc.
-// message is a Discord.js Message object.
 async function handleMusicPrefix(message, cmd, args) {
-    const guildId     = message.guildId;
+    const guildId      = message.guildId;
     const voiceChannel = message.member?.voice?.channel ?? null;
-    const username    = message.author.username;
+    const username     = message.author.username;
 
     if (!guildId) {
         await message.reply('❌ Music commands only work in a server.');
