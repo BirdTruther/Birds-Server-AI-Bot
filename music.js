@@ -26,6 +26,39 @@ try {
     console.error('[MUSIC] Run: npm rebuild @discordjs/opus');
 }
 
+// ===== WS CLOSE CODE INTERCEPTOR =====
+// Monkey-patch the WebSocket class used by @discordjs/voice so we can log
+// the exact close code Discord sends when it terminates the voice WS.
+// This runs once at module load time.
+(function patchVoiceWs() {
+    try {
+        const WS = require('ws');
+        const OriginalWS = WS;
+        // We intercept by wrapping the 'close' event on every new WS instance
+        const origEmit = WS.prototype.emit;
+        WS.prototype.emit = function(event, ...args) {
+            if (event === 'close') {
+                const [code, reason] = args;
+                // Only log voice-related WS closes (Discord voice endpoints contain 'discord.media')
+                if (this.url && this.url.includes('discord.media')) {
+                    console.log(`[VOICE WS CLOSE] code=${code} reason=${reason?.toString() || '(none)'}`);
+                    // Common Discord voice close codes:
+                    // 4006 = Session no longer valid
+                    // 4009 = Session timeout
+                    // 4014 = Channel deleted / kicked
+                    // 4015 = Voice server crashed (safe to resume)
+                    // 1000 = Normal closure
+                    // 1001 = Going away
+                }
+            }
+            return origEmit.call(this, event, ...args);
+        };
+        console.log('[MUSIC] ✅ WS close code interceptor installed');
+    } catch (e) {
+        console.error('[MUSIC] WS patch failed:', e.message);
+    }
+}());
+
 // ===== YT-DLP HELPERS =====
 
 const YTDLP = (() => {
@@ -136,7 +169,6 @@ function destroyQueue(guildId) {
         try { state.connection?.destroy(); } catch (_) {}
         queues.delete(guildId);
     }
-    // Also destroy any @discordjs/voice tracked connection that may have outlived our queue
     try {
         const stale = getVoiceConnection(guildId);
         if (stale) {
@@ -195,7 +227,6 @@ async function playNext(guildId) {
 }
 
 async function ensureConnected(guildId, voiceChannel) {
-    // ── Step 1: check our own queue map for a live connection ──────────────────
     const existing = queues.get(guildId);
     if (
         existing?.connection &&
@@ -205,11 +236,6 @@ async function ensureConnected(guildId, voiceChannel) {
         return existing;
     }
 
-    // ── Step 2: nuke ANY stale @discordjs/voice connection Discord-side ─────────
-    // This is the critical fix: if a previous crashed session left a connection
-    // registered in @discordjs/voice's internal map, Discord will close our new
-    // WS with code 6 (Closed) immediately after op:8 because it sees a duplicate
-    // session. We must destroy it first and wait for it to fully clear.
     const stale = getVoiceConnection(guildId);
     if (stale) {
         console.log(`[MUSIC] Found stale @discordjs/voice connection — destroying before fresh join`);
@@ -217,7 +243,6 @@ async function ensureConnected(guildId, voiceChannel) {
         await new Promise(r => setTimeout(r, 1000));
         console.log(`[MUSIC] Stale connection cleared`);
     }
-    // Also clean up our own queue entry so we start fresh
     queues.delete(guildId);
 
     console.log(`[MUSIC] Joining voice channel: ${voiceChannel.name} (${voiceChannel.id})`);
