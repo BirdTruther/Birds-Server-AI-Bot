@@ -1,5 +1,5 @@
 // ===== MUSIC MODULE =====
-// Self-contained music playback using @discordjs/voice + play-dl
+// Self-contained music playback using @discordjs/voice + yt-dlp
 // Exports: musicSlashCommandDefs, handleMusicInteraction, handleMusicPrefix
 
 const {
@@ -11,49 +11,85 @@ const {
     entersState,
     StreamType,
 } = require('@discordjs/voice');
-const playdl = require('play-dl');
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder } = require('discord.js');
+const { execFile, spawn } = require('child_process');
+const { promisify } = require('util');
+const execFileAsync = promisify(execFile);
+
+// ===== YT-DLP HELPERS =====
+
+// Resolve yt-dlp binary path
+const YTDLP = (() => {
+    const candidates = ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp', 'yt-dlp'];
+    const fs = require('fs');
+    for (const p of candidates) {
+        try { if (p.startsWith('/') && fs.existsSync(p)) return p; } catch (_) {}
+    }
+    return 'yt-dlp'; // fallback to PATH
+})();
+
+async function ytdlpSearch(query) {
+    // Returns { title, url, duration } for the top result
+    const args = [
+        `ytsearch1:${query}`,
+        '--dump-json',
+        '--no-playlist',
+        '--quiet',
+        '--no-warnings',
+    ];
+    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 15000 });
+    const data = JSON.parse(stdout.trim().split('\n')[0]);
+    return {
+        title:    data.title || 'Unknown Title',
+        url:      `https://www.youtube.com/watch?v=${data.id}`,
+        duration: data.duration || 0,
+    };
+}
+
+async function ytdlpInfo(url) {
+    const args = [
+        url,
+        '--dump-json',
+        '--no-playlist',
+        '--quiet',
+        '--no-warnings',
+    ];
+    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 15000 });
+    const data = JSON.parse(stdout.trim().split('\n')[0]);
+    return {
+        title:    data.title || 'Unknown Title',
+        url:      `https://www.youtube.com/watch?v=${data.id}`,
+        duration: data.duration || 0,
+    };
+}
+
+function ytdlpStream(url) {
+    // Spawns yt-dlp piping best audio to stdout, returns the child process
+    const args = [
+        url,
+        '-f', 'bestaudio',
+        '--no-playlist',
+        '--quiet',
+        '--no-warnings',
+        '-o', '-',  // pipe to stdout
+    ];
+    return spawn(YTDLP, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+}
 
 // ===== QUEUE STORE =====
-// Map<guildId, GuildMusicState>
 const queues = new Map();
-
-// ===== URL NORMALIZER =====
-// play-dl's stream() is strict about URL format — extract the video ID
-// and reconstruct a clean canonical URL to avoid "Invalid URL" errors.
-function normalizeYouTubeUrl(url) {
-    try {
-        const parsed = new URL(url);
-        let videoId = null;
-
-        if (parsed.hostname === 'youtu.be') {
-            videoId = parsed.pathname.slice(1).split('?')[0];
-        } else if (
-            parsed.hostname === 'www.youtube.com' ||
-            parsed.hostname === 'youtube.com' ||
-            parsed.hostname === 'm.youtube.com'
-        ) {
-            videoId = parsed.searchParams.get('v');
-        }
-
-        if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
-            return `https://www.youtube.com/watch?v=${videoId}`;
-        }
-    } catch (_) {}
-    // Return original if we can't parse it — let play-dl throw its own error
-    return url;
-}
 
 // ===== INTERNAL HELPERS =====
 
 function getOrCreateQueue(guildId) {
     if (!queues.has(guildId)) {
         queues.set(guildId, {
-            tracks: [],          // [{ title, url, duration, requestedBy }]
+            tracks: [],
             connection: null,
             player: null,
             current: null,
             paused: false,
+            ytdlpProcess: null,
         });
     }
     return queues.get(guildId);
@@ -62,6 +98,7 @@ function getOrCreateQueue(guildId) {
 function destroyQueue(guildId) {
     const state = queues.get(guildId);
     if (!state) return;
+    try { state.ytdlpProcess?.kill(); } catch (_) {}
     try { state.player?.stop(true); } catch (_) {}
     try { state.connection?.destroy(); } catch (_) {}
     queues.delete(guildId);
@@ -80,7 +117,6 @@ async function playNext(guildId) {
 
     if (state.tracks.length === 0) {
         state.current = null;
-        // Leave after 30 s of silence so users can still queue more
         setTimeout(() => {
             const s2 = queues.get(guildId);
             if (s2 && s2.tracks.length === 0 && s2.current === null) {
@@ -94,11 +130,14 @@ async function playNext(guildId) {
     state.paused  = false;
 
     try {
-        const cleanUrl = normalizeYouTubeUrl(state.current.url);
-        console.log(`[MUSIC] Streaming URL: ${cleanUrl}`);
-        const stream = await playdl.stream(cleanUrl, { discordPlayerCompatibility: true });
-        const resource = createAudioResource(stream.stream, {
-            inputType: stream.type,
+        // Kill any previous yt-dlp process
+        try { state.ytdlpProcess?.kill(); } catch (_) {}
+
+        const proc = ytdlpStream(state.current.url);
+        state.ytdlpProcess = proc;
+
+        const resource = createAudioResource(proc.stdout, {
+            inputType: StreamType.Arbitrary,
         });
         state.player.play(resource);
     } catch (err) {
@@ -111,7 +150,6 @@ async function playNext(guildId) {
 async function ensureConnected(guildId, voiceChannel) {
     let state = getOrCreateQueue(guildId);
 
-    // Reuse existing live connection
     if (
         state.connection &&
         state.connection.state.status !== VoiceConnectionStatus.Destroyed
@@ -126,7 +164,6 @@ async function ensureConnected(guildId, voiceChannel) {
         selfDeaf: true,
     });
 
-    // Wait for Ready (or timeout after 15 s)
     try {
         await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
     } catch (err) {
@@ -171,25 +208,11 @@ async function cmdPlay(guildId, voiceChannel, query, requestedBy) {
     try {
         const isUrl = /^https?:\/\//i.test(query.trim());
         if (isUrl) {
-            const cleanUrl = normalizeYouTubeUrl(query.trim());
-            const info = await playdl.video_info(cleanUrl);
-            const d    = info.video_details;
-            trackInfo  = {
-                title:       d.title || 'Unknown Title',
-                url:         normalizeYouTubeUrl(d.url),
-                duration:    d.durationInSec,
-                requestedBy,
-            };
+            trackInfo = await ytdlpInfo(query.trim());
+            trackInfo.requestedBy = requestedBy;
         } else {
-            const results = await playdl.search(query, { source: { youtube: 'video' }, limit: 1 });
-            if (!results || results.length === 0) return `❌ No results found for **"${query}"**.`;
-            const d = results[0];
-            trackInfo = {
-                title:       d.title || 'Unknown Title',
-                url:         normalizeYouTubeUrl(d.url),
-                duration:    d.durationInSec,
-                requestedBy,
-            };
+            const result = await ytdlpSearch(query);
+            trackInfo = { ...result, requestedBy };
         }
     } catch (err) {
         console.error('[MUSIC] search/info error:', err.message);
@@ -243,9 +266,7 @@ function cmdQueue(guildId) {
         state.tracks.slice(0, 10).forEach((t, i) => {
             lines.push(`${i + 1}. ${t.title} (${fmtDuration(t.duration)}) — req. by ${t.requestedBy}`);
         });
-        if (state.tracks.length > 10) {
-            lines.push(`…and ${state.tracks.length - 10} more.`);
-        }
+        if (state.tracks.length > 10) lines.push(`…and ${state.tracks.length - 10} more.`);
     }
     return lines.join('\n');
 }
@@ -310,7 +331,6 @@ async function handleMusicInteraction(interaction) {
     const voiceChannel = member?.voice?.channel ?? null;
     const username     = interaction.user.username;
 
-    // Always defer first — music commands (especially /play) can take >3s
     await interaction.deferReply();
 
     let reply;
@@ -352,10 +372,7 @@ async function handleMusicPrefix(message, cmd, args) {
     try {
         switch (cmd) {
             case 'play': {
-                if (!args) {
-                    reply = '❌ Usage: `!play <song name or URL>`';
-                    break;
-                }
+                if (!args) { reply = '❌ Usage: `!play <song name or URL>`'; break; }
                 reply = await cmdPlay(guildId, voiceChannel, args, username);
                 break;
             }
