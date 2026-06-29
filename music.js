@@ -4,6 +4,7 @@
 
 const {
     joinVoiceChannel,
+    getVoiceConnection,
     createAudioPlayer,
     createAudioResource,
     AudioPlayerStatus,
@@ -27,14 +28,13 @@ try {
 
 // ===== YT-DLP HELPERS =====
 
-// Resolve yt-dlp binary path
 const YTDLP = (() => {
     const candidates = ['/usr/local/bin/yt-dlp', '/usr/bin/yt-dlp', 'yt-dlp'];
     const fs = require('fs');
     for (const p of candidates) {
         try { if (p.startsWith('/') && fs.existsSync(p)) return p; } catch (_) {}
     }
-    return 'yt-dlp'; // fallback to PATH
+    return 'yt-dlp';
 })();
 
 console.log(`[MUSIC] yt-dlp binary: ${YTDLP}`);
@@ -128,13 +128,22 @@ function getOrCreateQueue(guildId) {
 
 function destroyQueue(guildId) {
     const state = queues.get(guildId);
-    if (!state) return;
-    console.log(`[MUSIC] Destroying queue for guild ${guildId}`);
-    try { state.ytdlpProcess?.kill(); } catch (_) {}
-    try { state.ffmpegProcess?.kill(); } catch (_) {}
-    try { state.player?.stop(true); } catch (_) {}
-    try { state.connection?.destroy(); } catch (_) {}
-    queues.delete(guildId);
+    if (state) {
+        console.log(`[MUSIC] Destroying queue for guild ${guildId}`);
+        try { state.ytdlpProcess?.kill(); } catch (_) {}
+        try { state.ffmpegProcess?.kill(); } catch (_) {}
+        try { state.player?.stop(true); } catch (_) {}
+        try { state.connection?.destroy(); } catch (_) {}
+        queues.delete(guildId);
+    }
+    // Also destroy any @discordjs/voice tracked connection that may have outlived our queue
+    try {
+        const stale = getVoiceConnection(guildId);
+        if (stale) {
+            console.log(`[MUSIC] Also destroying dangling @discordjs/voice connection for guild ${guildId}`);
+            stale.destroy();
+        }
+    } catch (_) {}
 }
 
 function fmtDuration(seconds) {
@@ -186,41 +195,50 @@ async function playNext(guildId) {
 }
 
 async function ensureConnected(guildId, voiceChannel) {
-    let state = getOrCreateQueue(guildId);
-
+    // ── Step 1: check our own queue map for a live connection ──────────────────
+    const existing = queues.get(guildId);
     if (
-        state.connection &&
-        state.connection.state.status !== VoiceConnectionStatus.Destroyed
+        existing?.connection &&
+        existing.connection.state.status !== VoiceConnectionStatus.Destroyed
     ) {
         console.log(`[MUSIC] Reusing existing connection for guild ${guildId}`);
-        return state;
+        return existing;
     }
+
+    // ── Step 2: nuke ANY stale @discordjs/voice connection Discord-side ─────────
+    // This is the critical fix: if a previous crashed session left a connection
+    // registered in @discordjs/voice's internal map, Discord will close our new
+    // WS with code 6 (Closed) immediately after op:8 because it sees a duplicate
+    // session. We must destroy it first and wait for it to fully clear.
+    const stale = getVoiceConnection(guildId);
+    if (stale) {
+        console.log(`[MUSIC] Found stale @discordjs/voice connection — destroying before fresh join`);
+        stale.destroy();
+        await new Promise(r => setTimeout(r, 1000));
+        console.log(`[MUSIC] Stale connection cleared`);
+    }
+    // Also clean up our own queue entry so we start fresh
+    queues.delete(guildId);
 
     console.log(`[MUSIC] Joining voice channel: ${voiceChannel.name} (${voiceChannel.id})`);
 
-    // selfMute:false, selfDeaf:true — standard bot config
-    // NOTE: @discordjs/voice does NOT support a built-in "force WebSocket" flag,
-    // but setting debug env helps trace the UDP IP discovery exchange.
     const connection = joinVoiceChannel({
-        channelId:       voiceChannel.id,
+        channelId:      voiceChannel.id,
         guildId,
-        adapterCreator:  voiceChannel.guild.voiceAdapterCreator,
-        selfDeaf:        true,
-        debug:           true,   // enables internal voice debug logging
+        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
+        selfDeaf:       true,
+        debug:          true,
     });
 
     connection.on('stateChange', (oldState, newState) => {
         console.log(`[VOICE] ${oldState.status} → ${newState.status}`);
-        // Log networking details if available
         if (newState.networking) {
-            const net = newState.networking;
-            console.log(`[VOICE] networking state: ${net.state?.code ?? 'unknown'}`);
+            console.log(`[VOICE] networking state: ${newState.networking.state?.code ?? 'unknown'}`);
         }
     });
     connection.on('error', (err) => {
         console.error('[VOICE] Connection error:', err.message);
     });
-    // Capture raw debug output from @discordjs/voice internals
     connection.on('debug', (msg) => {
         console.log(`[VOICE DEBUG] ${msg}`);
     });
@@ -268,7 +286,7 @@ async function ensureConnected(guildId, voiceChannel) {
         }
     });
 
-    state = getOrCreateQueue(guildId);
+    const state = getOrCreateQueue(guildId);
     state.connection = connection;
     state.player     = player;
     return state;
