@@ -18,6 +18,32 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 // Map<guildId, GuildMusicState>
 const queues = new Map();
 
+// ===== URL NORMALIZER =====
+// play-dl's stream() is strict about URL format — extract the video ID
+// and reconstruct a clean canonical URL to avoid "Invalid URL" errors.
+function normalizeYouTubeUrl(url) {
+    try {
+        const parsed = new URL(url);
+        let videoId = null;
+
+        if (parsed.hostname === 'youtu.be') {
+            videoId = parsed.pathname.slice(1).split('?')[0];
+        } else if (
+            parsed.hostname === 'www.youtube.com' ||
+            parsed.hostname === 'youtube.com' ||
+            parsed.hostname === 'm.youtube.com'
+        ) {
+            videoId = parsed.searchParams.get('v');
+        }
+
+        if (videoId && /^[a-zA-Z0-9_-]{11}$/.test(videoId)) {
+            return `https://www.youtube.com/watch?v=${videoId}`;
+        }
+    } catch (_) {}
+    // Return original if we can't parse it — let play-dl throw its own error
+    return url;
+}
+
 // ===== INTERNAL HELPERS =====
 
 function getOrCreateQueue(guildId) {
@@ -68,7 +94,9 @@ async function playNext(guildId) {
     state.paused  = false;
 
     try {
-        const stream = await playdl.stream(state.current.url, { discordPlayerCompatibility: true });
+        const cleanUrl = normalizeYouTubeUrl(state.current.url);
+        console.log(`[MUSIC] Streaming URL: ${cleanUrl}`);
+        const stream = await playdl.stream(cleanUrl, { discordPlayerCompatibility: true });
         const resource = createAudioResource(stream.stream, {
             inputType: stream.type,
         });
@@ -143,11 +171,12 @@ async function cmdPlay(guildId, voiceChannel, query, requestedBy) {
     try {
         const isUrl = /^https?:\/\//i.test(query.trim());
         if (isUrl) {
-            const info = await playdl.video_info(query);
+            const cleanUrl = normalizeYouTubeUrl(query.trim());
+            const info = await playdl.video_info(cleanUrl);
             const d    = info.video_details;
             trackInfo  = {
                 title:       d.title || 'Unknown Title',
-                url:         d.url,
+                url:         normalizeYouTubeUrl(d.url),
                 duration:    d.durationInSec,
                 requestedBy,
             };
@@ -157,7 +186,7 @@ async function cmdPlay(guildId, voiceChannel, query, requestedBy) {
             const d = results[0];
             trackInfo = {
                 title:       d.title || 'Unknown Title',
-                url:         d.url,
+                url:         normalizeYouTubeUrl(d.url),
                 duration:    d.durationInSec,
                 requestedBy,
             };
@@ -274,7 +303,6 @@ const musicSlashCommandDefs = [
 ];
 
 // ===== SLASH HANDLER =====
-// FIX: deferReply here so editReply always works, regardless of how long the command takes.
 async function handleMusicInteraction(interaction) {
     const { commandName } = interaction;
     const guildId      = interaction.guildId;
