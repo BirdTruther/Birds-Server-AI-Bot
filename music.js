@@ -16,6 +16,15 @@ const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
 
+// ===== OPUS BOOT CHECK =====
+try {
+    require('@discordjs/opus');
+    console.log('[MUSIC] ✅ @discordjs/opus loaded OK');
+} catch (err) {
+    console.error('[MUSIC] ❌ FATAL: @discordjs/opus failed to load:', err.message);
+    console.error('[MUSIC] Run: npm rebuild @discordjs/opus');
+}
+
 // ===== YT-DLP HELPERS =====
 
 // Resolve yt-dlp binary path
@@ -28,8 +37,10 @@ const YTDLP = (() => {
     return 'yt-dlp'; // fallback to PATH
 })();
 
+console.log(`[MUSIC] yt-dlp binary: ${YTDLP}`);
+
 async function ytdlpSearch(query) {
-    // Returns { title, url, duration } for the top result
+    console.log(`[MUSIC] Searching yt-dlp for: ${query}`);
     const args = [
         `ytsearch1:${query}`,
         '--dump-json',
@@ -37,8 +48,9 @@ async function ytdlpSearch(query) {
         '--quiet',
         '--no-warnings',
     ];
-    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 15000 });
+    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
     const data = JSON.parse(stdout.trim().split('\n')[0]);
+    console.log(`[MUSIC] Found: ${data.title}`);
     return {
         title:    data.title || 'Unknown Title',
         url:      `https://www.youtube.com/watch?v=${data.id}`,
@@ -47,6 +59,7 @@ async function ytdlpSearch(query) {
 }
 
 async function ytdlpInfo(url) {
+    console.log(`[MUSIC] Fetching info for URL: ${url}`);
     const args = [
         url,
         '--dump-json',
@@ -54,7 +67,7 @@ async function ytdlpInfo(url) {
         '--quiet',
         '--no-warnings',
     ];
-    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 15000 });
+    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
     const data = JSON.parse(stdout.trim().split('\n')[0]);
     return {
         title:    data.title || 'Unknown Title',
@@ -64,16 +77,36 @@ async function ytdlpInfo(url) {
 }
 
 function ytdlpStream(url) {
-    // Spawns yt-dlp piping best audio to stdout, returns the child process
-    const args = [
+    // yt-dlp pipes raw audio into ffmpeg, ffmpeg outputs opus-compatible s16le PCM
+    // This is more reliable than passing raw webm/opus directly to createAudioResource
+    console.log(`[MUSIC] Spawning yt-dlp stream for: ${url}`);
+
+    const ytdlp = spawn(YTDLP, [
         url,
         '-f', 'bestaudio',
         '--no-playlist',
         '--quiet',
         '--no-warnings',
-        '-o', '-',  // pipe to stdout
-    ];
-    return spawn(YTDLP, args, { stdio: ['ignore', 'pipe', 'ignore'] });
+        '-o', '-',
+    ], { stdio: ['ignore', 'pipe', 'ignore'] });
+
+    const ffmpeg = spawn('ffmpeg', [
+        '-i', 'pipe:0',
+        '-f', 's16le',
+        '-ar', '48000',
+        '-ac', '2',
+        'pipe:1',
+    ], { stdio: ['pipe', 'pipe', 'ignore'] });
+
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    ytdlp.on('error', (err) => console.error('[MUSIC] yt-dlp spawn error:', err.message));
+    ffmpeg.on('error', (err) => console.error('[MUSIC] ffmpeg spawn error:', err.message));
+    ytdlp.on('exit', (code) => console.log(`[MUSIC] yt-dlp exited with code ${code}`));
+    ffmpeg.on('exit', (code) => console.log(`[MUSIC] ffmpeg exited with code ${code}`));
+
+    // Return both processes and ffmpeg's stdout as the stream
+    return { ytdlp, ffmpeg, stream: ffmpeg.stdout };
 }
 
 // ===== QUEUE STORE =====
@@ -90,6 +123,7 @@ function getOrCreateQueue(guildId) {
             current: null,
             paused: false,
             ytdlpProcess: null,
+            ffmpegProcess: null,
         });
     }
     return queues.get(guildId);
@@ -98,7 +132,9 @@ function getOrCreateQueue(guildId) {
 function destroyQueue(guildId) {
     const state = queues.get(guildId);
     if (!state) return;
+    console.log(`[MUSIC] Destroying queue for guild ${guildId}`);
     try { state.ytdlpProcess?.kill(); } catch (_) {}
+    try { state.ffmpegProcess?.kill(); } catch (_) {}
     try { state.player?.stop(true); } catch (_) {}
     try { state.connection?.destroy(); } catch (_) {}
     queues.delete(guildId);
@@ -117,6 +153,7 @@ async function playNext(guildId) {
 
     if (state.tracks.length === 0) {
         state.current = null;
+        console.log(`[MUSIC] Queue empty for guild ${guildId}, will auto-leave in 30s`);
         setTimeout(() => {
             const s2 = queues.get(guildId);
             if (s2 && s2.tracks.length === 0 && s2.current === null) {
@@ -128,18 +165,23 @@ async function playNext(guildId) {
 
     state.current = state.tracks.shift();
     state.paused  = false;
+    console.log(`[MUSIC] Playing next: ${state.current.title}`);
 
     try {
-        // Kill any previous yt-dlp process
+        // Kill previous processes
         try { state.ytdlpProcess?.kill(); } catch (_) {}
+        try { state.ffmpegProcess?.kill(); } catch (_) {}
 
-        const proc = ytdlpStream(state.current.url);
-        state.ytdlpProcess = proc;
+        const { ytdlp, ffmpeg, stream } = ytdlpStream(state.current.url);
+        state.ytdlpProcess  = ytdlp;
+        state.ffmpegProcess = ffmpeg;
 
-        const resource = createAudioResource(proc.stdout, {
-            inputType: StreamType.Arbitrary,
+        const resource = createAudioResource(stream, {
+            inputType: StreamType.Raw,  // s16le PCM from ffmpeg
         });
+
         state.player.play(resource);
+        console.log(`[MUSIC] Audio resource created and handed to player`);
     } catch (err) {
         console.error('[MUSIC] stream error:', err.message);
         state.current = null;
@@ -154,8 +196,11 @@ async function ensureConnected(guildId, voiceChannel) {
         state.connection &&
         state.connection.state.status !== VoiceConnectionStatus.Destroyed
     ) {
+        console.log(`[MUSIC] Reusing existing connection for guild ${guildId}`);
         return state;
     }
+
+    console.log(`[MUSIC] Joining voice channel: ${voiceChannel.name} (${voiceChannel.id})`);
 
     const connection = joinVoiceChannel({
         channelId: voiceChannel.id,
@@ -164,9 +209,19 @@ async function ensureConnected(guildId, voiceChannel) {
         selfDeaf: true,
     });
 
+    // Verbose connection state logging
+    connection.on('stateChange', (oldState, newState) => {
+        console.log(`[VOICE] ${oldState.status} → ${newState.status}`);
+    });
+    connection.on('error', (err) => {
+        console.error('[VOICE] Connection error:', err.message);
+    });
+
     try {
-        await entersState(connection, VoiceConnectionStatus.Ready, 15_000);
+        await entersState(connection, VoiceConnectionStatus.Ready, 30_000);
+        console.log(`[MUSIC] ✅ Voice connection Ready`);
     } catch (err) {
+        console.error('[MUSIC] ❌ Voice connection timed out:', err.message);
         connection.destroy();
         queues.delete(guildId);
         throw new Error('Could not connect to your voice channel in time.');
@@ -174,8 +229,17 @@ async function ensureConnected(guildId, voiceChannel) {
 
     const player = createAudioPlayer();
     connection.subscribe(player);
+    console.log(`[MUSIC] Audio player created and subscribed`);
 
-    player.on(AudioPlayerStatus.Idle, () => playNext(guildId));
+    player.on('stateChange', (oldState, newState) => {
+        console.log(`[PLAYER] ${oldState.status} → ${newState.status}`);
+    });
+
+    player.on(AudioPlayerStatus.Idle, () => {
+        console.log(`[MUSIC] Player idle — playing next track`);
+        playNext(guildId);
+    });
+
     player.on('error', (err) => {
         console.error('[MUSIC] player error:', err.message);
         const s = queues.get(guildId);
@@ -183,12 +247,15 @@ async function ensureConnected(guildId, voiceChannel) {
     });
 
     connection.on(VoiceConnectionStatus.Disconnected, async () => {
+        console.log('[VOICE] Disconnected — attempting to reconnect...');
         try {
             await Promise.race([
                 entersState(connection, VoiceConnectionStatus.Signalling, 5_000),
                 entersState(connection, VoiceConnectionStatus.Connecting, 5_000),
             ]);
+            console.log('[VOICE] Reconnected successfully');
         } catch {
+            console.log('[VOICE] Reconnect failed — destroying queue');
             destroyQueue(guildId);
         }
     });
