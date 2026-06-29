@@ -77,9 +77,7 @@ async function ytdlpInfo(url) {
 }
 
 function ytdlpStream(url) {
-    // yt-dlp pipes raw audio into ffmpeg, ffmpeg outputs opus-compatible s16le PCM
-    // This is more reliable than passing raw webm/opus directly to createAudioResource
-    console.log(`[MUSIC] Spawning yt-dlp stream for: ${url}`);
+    console.log(`[MUSIC] Spawning yt-dlp + ffmpeg stream for: ${url}`);
 
     const ytdlp = spawn(YTDLP, [
         url,
@@ -100,12 +98,11 @@ function ytdlpStream(url) {
 
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
-    ytdlp.on('error', (err) => console.error('[MUSIC] yt-dlp spawn error:', err.message));
-    ffmpeg.on('error', (err) => console.error('[MUSIC] ffmpeg spawn error:', err.message));
-    ytdlp.on('exit', (code) => console.log(`[MUSIC] yt-dlp exited with code ${code}`));
-    ffmpeg.on('exit', (code) => console.log(`[MUSIC] ffmpeg exited with code ${code}`));
+    ytdlp.on('error',  (err)  => console.error('[MUSIC] yt-dlp spawn error:', err.message));
+    ffmpeg.on('error', (err)  => console.error('[MUSIC] ffmpeg spawn error:', err.message));
+    ytdlp.on('exit',   (code) => console.log(`[MUSIC] yt-dlp exited with code ${code}`));
+    ffmpeg.on('exit',  (code) => console.log(`[MUSIC] ffmpeg exited with code ${code}`));
 
-    // Return both processes and ffmpeg's stdout as the stream
     return { ytdlp, ffmpeg, stream: ffmpeg.stdout };
 }
 
@@ -168,7 +165,6 @@ async function playNext(guildId) {
     console.log(`[MUSIC] Playing next: ${state.current.title}`);
 
     try {
-        // Kill previous processes
         try { state.ytdlpProcess?.kill(); } catch (_) {}
         try { state.ffmpegProcess?.kill(); } catch (_) {}
 
@@ -177,7 +173,7 @@ async function playNext(guildId) {
         state.ffmpegProcess = ffmpeg;
 
         const resource = createAudioResource(stream, {
-            inputType: StreamType.Raw,  // s16le PCM from ffmpeg
+            inputType: StreamType.Raw,
         });
 
         state.player.play(resource);
@@ -202,19 +198,31 @@ async function ensureConnected(guildId, voiceChannel) {
 
     console.log(`[MUSIC] Joining voice channel: ${voiceChannel.name} (${voiceChannel.id})`);
 
+    // selfMute:false, selfDeaf:true — standard bot config
+    // NOTE: @discordjs/voice does NOT support a built-in "force WebSocket" flag,
+    // but setting debug env helps trace the UDP IP discovery exchange.
     const connection = joinVoiceChannel({
-        channelId: voiceChannel.id,
+        channelId:       voiceChannel.id,
         guildId,
-        adapterCreator: voiceChannel.guild.voiceAdapterCreator,
-        selfDeaf: true,
+        adapterCreator:  voiceChannel.guild.voiceAdapterCreator,
+        selfDeaf:        true,
+        debug:           true,   // enables internal voice debug logging
     });
 
-    // Verbose connection state logging
     connection.on('stateChange', (oldState, newState) => {
         console.log(`[VOICE] ${oldState.status} → ${newState.status}`);
+        // Log networking details if available
+        if (newState.networking) {
+            const net = newState.networking;
+            console.log(`[VOICE] networking state: ${net.state?.code ?? 'unknown'}`);
+        }
     });
     connection.on('error', (err) => {
         console.error('[VOICE] Connection error:', err.message);
+    });
+    // Capture raw debug output from @discordjs/voice internals
+    connection.on('debug', (msg) => {
+        console.log(`[VOICE DEBUG] ${msg}`);
     });
 
     try {
