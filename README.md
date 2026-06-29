@@ -33,6 +33,45 @@ All bot commands are now available as native Discord slash commands — just typ
 
 ---
 
+### 🎵 Music Playback
+
+Full voice channel music playback powered by `yt-dlp` + `ffmpeg` — no API keys required.
+
+| Command | Description |
+|---|---|
+| `!play <song or URL>` | Search YouTube and play in your voice channel |
+| `!skip` | Skip the current track |
+| `!stop` | Stop playback and leave the voice channel |
+| `!queue` | Show the current queue |
+| `!pause` | Pause playback |
+| `!resume` | Resume playback |
+| `!nowplaying` | Show the current track |
+
+All music commands are also available as slash commands (`/play`, `/skip`, etc.).
+
+#### Music Prerequisites
+
+- **yt-dlp** must be installed as a system binary:
+  ```bash
+  sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+  sudo chmod a+rx /usr/local/bin/yt-dlp
+  ```
+- **ffmpeg** must be installed: `sudo apt install ffmpeg`
+- `@discordjs/voice` **0.18.0+** is required — versions below 0.18.0 do not support Discord's DAVE E2EE voice protocol (close code `4017`) and will silently fail to connect.
+
+#### Troubleshooting Voice Connection
+
+If the bot says "Could not connect to your voice channel in time" and you see this in logs:
+```
+[VOICE WS CLOSE] code=4017 reason=E2EE/DAVE protocol required
+```
+Upgrade `@discordjs/voice`:
+```bash
+npm install @discordjs/voice@latest
+```
+
+---
+
 ### 🧟 Project Zomboid Server Restart (`/pzrestart`)
 
 > ⚠️ **This is a highly specific use case built for the Birds Server.** If you forked this repo and don't run a Project Zomboid server on the same machine as the bot, you should remove this command — see [Removing /pzrestart](#removing-pzrestart) below.
@@ -169,6 +208,9 @@ A real-time web dashboard running on `http://localhost:3001` with:
 - **Google Gemini AI** - Powered by `@ai-sdk/google`
   - **Gemini 2.5 Flash** - Text chat responses with smart conversation memory and multimodal image understanding
   - **Gemini 2.5 Flash Image** - AI image generation
+- **@discordjs/voice 0.18.0+** - Voice channel audio with Discord DAVE E2EE protocol support
+- **yt-dlp** - YouTube audio extraction (system binary)
+- **ffmpeg** - Audio transcoding for voice playback
 
 ### APIs
 - **tarkov.dev** - GraphQL queries for item prices, ammo stats, maps
@@ -182,29 +224,31 @@ A real-time web dashboard running on `http://localhost:3001` with:
 ### Dependencies
 ```json
 {
-  "@ai-sdk/google": "latest",
+  "@ai-sdk/google": "^2.0.0",
+  "@discordjs/opus": "^0.9.0",
+  "@discordjs/voice": "^0.18.0",
   "ai": "^5.0.60",
   "discord.js": "^14.22.1",
   "dotenv": "^17.2.3",
   "express": "^4.18.2",
   "cors": "^2.8.5",
-  "better-sqlite3": "latest",
   "tmi.js": "^1.8.5",
-  "graphql-request": "latest",
-  "node-fetch": "latest"
+  "better-sqlite3": "^11.0.0"
 }
 ```
 
 ## Installation
 
 ### Prerequisites
-- Node.js (v16 or higher)
+- Node.js v20 or higher
 - Discord Bot Token
 - Discord Application/Client ID
 - Twitch OAuth Token
 - Google AI API Key (for Gemini)
 - EFT API Key (optional, for player stats)
 - Steam Web API Key (optional, for `cs2stats`)
+- **yt-dlp** system binary (for music)
+- **ffmpeg** (for music)
 
 ### Setup
 
@@ -219,7 +263,17 @@ A real-time web dashboard running on `http://localhost:3001` with:
    npm install
    ```
 
-3. **Configure environment variables**
+3. **Install system dependencies for music**
+   ```bash
+   # yt-dlp
+   sudo curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp
+   sudo chmod a+rx /usr/local/bin/yt-dlp
+
+   # ffmpeg
+   sudo apt install ffmpeg
+   ```
+
+4. **Configure environment variables**
 
    Create a `.env` file in the root directory:
    ```env
@@ -235,17 +289,17 @@ A real-time web dashboard running on `http://localhost:3001` with:
 
    > `DISCORD_CLIENT_ID` is your bot's **Application ID** found in the [Discord Developer Portal](https://discord.com/developers/applications). It is required for slash command registration.
 
-4. **Run the bot**
+5. **Run the bot**
    ```bash
    node index.js
    ```
 
-5. **Run the dashboard** (in a separate terminal)
+6. **Run the dashboard** (in a separate terminal)
    ```bash
    node dashboard-server.js
    ```
 
-6. **Access the dashboard**
+7. **Access the dashboard**
 
    Open your browser to `http://localhost:3001`
 
@@ -325,6 +379,14 @@ Prapor, Therapist, Fence, Skier, Peacekeeper, Mechanic, Ragman, Jaeger, Ref
 - Smart conversation memory system
 - Rotating Discord activity/presence status
 - Project Zomboid server restart via `/pzrestart` (Birds Server specific — see [Removing /pzrestart](#removing-pzrestart))
+
+### Music Module (`music.js`)
+- Voice channel connection management with DAVE E2EE support
+- yt-dlp YouTube search and audio extraction
+- ffmpeg audio transcoding pipeline
+- Per-guild queue management with auto-leave on empty
+- Prefix and slash command handlers
+- WS close code interceptor for rapid voice diagnostics
 
 ### Memory System (`memory.js`)
 - SQLite-based conversation storage
@@ -432,3 +494,5 @@ Developed by BirdTruther for the Birds Server community.
 - Steam Web API
 - CSFloat API
 - Discord.js
+- yt-dlp
+- ffmpeg
