@@ -14,6 +14,7 @@
     "@ai-sdk/google": "^2.0.0",
     "@discordjs/opus": "^0.9.0",
     "@discordjs/voice": "^0.18.0",
+    "@snazzah/davey": "^0.1.4",
     "ai": "^5.0.60",
     "discord.js": "^14.22.1",
     "dotenv": "^17.2.3",
