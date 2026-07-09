@@ -798,7 +798,7 @@ const CS2_MAP_DATA = {
     ancient: { name: 'Ancient',  setting: 'Mayan ruins',             side: 'Balanced',  callouts: 'A Site: Donut, Temple, CT, Ramp, Ruins | B Site: River, Cave, Elbow, Pillar | Mid: Mid, Speed', tip: 'Mid speed round to Cave can catch CT rotations completely off guard.' },
     anubis:  { name: 'Anubis',   setting: 'Egyptian ruins',          side: 'Balanced',  callouts: 'A Site: Speed, Palace, Fountain, Connector | B Site: Bridge, Water, Hovel, Canal | Mid: Mid, Alley', tip: 'Bridge control on B is crucial — it cuts off CT rotation.' },
     dust2:   { name: 'Dust 2',   setting: 'Middle Eastern town',     side: 'T-sided',   callouts: 'A Site: Long, Short, CT, Pit, Ramp | B Site: Tunnels, B Doors, B Platform, Window | Mid: Catwalk, Xbox, Top Mid', tip: 'Long A control early game is a huge advantage — commit to it or leave it.' },
-    vertigo: { name: 'Vertigo',  setting: 'Skyscraper construction', side: 'CT-sided',  callouts: 'A Site: Ramp, Stairs, Scaffolding, A Default | B Site: Elevator, B Corner, B Default | Mid: Mid, Boost', tip: 'Elevator mid control gives Ts an info advantage on both sites.' },
+    cache:   { name: 'Cache',  setting: 'Chernobyl industrial facility',   side: 'Balanced',  callouts: 'A Site: A Main, Squeaky, Forklift, Quad, Balcony | B Site: B Main, Checkers, Headshot, Heaven, Tree | Mid: Vents, Z (Connector), White Box, Boost, Garage', tip: 'Controlling Mid is essential for both sides; use smokes to block Z and Vents to dictate the pace of the round.' }
 };
 
 function getCS2MapInfo(mapInput) {
