@@ -35,10 +35,28 @@ const {
 logSystemEvent('STARTUP', 'INFO', 'system', '🚀 Bot starting up...');
 
 // ===== TOP-LEVEL UNHANDLED REJECTION GUARD =====
-// Prevents a single bad interaction from crashing the entire process.
+// Prevents a single bad async rejection from crashing the entire process.
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[UNHANDLED REJECTION]', reason);
     logSystemEvent('UNHANDLED_REJECTION', 'ERROR', 'system', String(reason?.message ?? reason));
+});
+
+// ===== TOP-LEVEL UNCAUGHT EXCEPTION GUARD =====
+// Catches synchronous throws from EventEmitters (e.g. EPIPE from ffmpeg/yt-dlp
+// pipe teardown on /skip) that bypass unhandledRejection entirely.
+// Logs and keeps the process alive instead of crashing.
+process.on('uncaughtException', (err) => {
+    // EPIPE / ERR_STREAM_DESTROYED are expected during voice stream teardown — log only.
+    if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') {
+        console.warn('[STREAM TEARDOWN]', err.code, err.message);
+        logSystemEvent('STREAM_TEARDOWN', 'WARN', 'music', `Stream teardown: ${err.code} — ${err.message}`);
+        return; // safe to continue
+    }
+    // All other uncaught exceptions: log them but do NOT exit.
+    // systemd will restart if it truly needs to; we don't want a single bad event
+    // to kill the whole bot for all users.
+    console.error('[UNCAUGHT EXCEPTION]', err);
+    logSystemEvent('UNCAUGHT_EXCEPTION', 'ERROR', 'system', `${err.code ?? 'NO_CODE'}: ${err.message}`);
 });
 
 // ===== CONFIG =====
