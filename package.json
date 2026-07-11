@@ -20,6 +20,7 @@
     "discord.js": "14.22.1",
     "dotenv": "17.2.3",
     "express": "4.22.2",
+    "replicate": "1.0.1",
     "tmi.js": "1.8.5"
   },
   "overrides": {
