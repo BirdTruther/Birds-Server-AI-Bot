@@ -439,15 +439,30 @@ const musicSlashCommandDefs = [
         .setDescription('Show what is currently playing'),
 ];
 
+// ===== MUSIC COMMAND SET =====
+// Used by handleMusicInteraction to gate-check before deferReply.
+// Any command name NOT in this set gets an immediate `return false`
+// so index.js can handle it (or defer it) without a double-defer crash.
+const MUSIC_COMMANDS = new Set([
+    'play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying',
+]);
+
 // ===== SLASH HANDLER =====
+// Returns true  → command was handled (index.js must bail out immediately).
+// Returns false → not a music command (index.js proceeds normally).
 async function handleMusicInteraction(interaction) {
     const { commandName } = interaction;
+
+    // Not a music command — return false WITHOUT calling deferReply.
+    if (!MUSIC_COMMANDS.has(commandName)) return false;
+
+    // Music command confirmed — we own the defer from here.
+    await interaction.deferReply();
+
     const guildId      = interaction.guildId;
     const member       = interaction.member;
     const voiceChannel = member?.voice?.channel ?? null;
     const username     = interaction.user.username;
-
-    await interaction.deferReply();
 
     let reply;
     try {
@@ -471,6 +486,7 @@ async function handleMusicInteraction(interaction) {
     }
 
     await interaction.editReply(reply);
+    return true;
 }
 
 module.exports = { musicSlashCommandDefs, handleMusicInteraction };
