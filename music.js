@@ -16,6 +16,7 @@ const { SlashCommandBuilder } = require('discord.js');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
+const { logCommand, logSystemEvent } = require('./logger.js');
 
 // ===== OPUS BOOT CHECK =====
 try {
@@ -465,6 +466,7 @@ async function handleMusicInteraction(interaction) {
     const username     = interaction.user.username;
 
     let reply;
+    let isError = false;
     try {
         switch (commandName) {
             case 'play': {
@@ -482,10 +484,19 @@ async function handleMusicInteraction(interaction) {
         }
     } catch (err) {
         console.error('[MUSIC SLASH ERROR]', err);
+        logSystemEvent('MUSIC_ERROR', 'ERROR', 'music', `/${commandName} failed: ${err.message}`, err);
         reply = `❌ Music error: ${err.message}`;
+        isError = true;
     }
 
     await interaction.editReply(reply);
+
+    // Log every music command to the dashboard
+    const input = commandName === 'play'
+        ? (interaction.options.getString('query') ?? '')
+        : '';
+    logCommand('discord', username, `/${commandName}`, input, reply.substring(0, 200), isError);
+
     return true;
 }
 
