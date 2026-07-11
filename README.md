@@ -6,7 +6,7 @@ A multi-platform Discord and Twitch bot with Escape from Tarkov integration, CS2
 
 ## Commands
 
-All commands are available as both slash commands (`/`) and prefix commands (`!`). Slash commands support Discord autocomplete — just type `/` in any channel.
+All commands are available as slash commands (`/`). Slash commands support Discord autocomplete — just type `/` in any channel.
 
 ### 🎮 Tarkov
 
@@ -78,7 +78,7 @@ Full voice channel music powered by `yt-dlp` + `ffmpeg` — no API keys required
   sudo chmod a+rx /usr/local/bin/yt-dlp
   ```
 - **ffmpeg**: `sudo apt install ffmpeg`
-- **`@discordjs/voice` 0.18.0+** — required for Discord's DAVE E2EE voice protocol. Older versions silently fail with close code `4017`.
+- **`@discordjs/voice` 0.19.2+** — required for Discord's DAVE E2EE voice protocol. Older versions fail with close code `4017`.
 
 #### Troubleshooting: Bot Won't Join Voice
 
@@ -88,7 +88,7 @@ If you see this in logs:
 ```
 Run:
 ```bash
-npm install @discordjs/voice@latest
+npm install @discordjs/voice@0.19.2
 sudo systemctl restart discordbot
 ```
 
@@ -152,10 +152,9 @@ Replace `birds` with your bot's Linux user.
 
 #### Removing `/pzrestart`
 
-Three places in `index.js`:
-1. Delete the `// ===== PZ RESTART HELPER =====` function block
-2. Remove the `SlashCommandBuilder` entry for `pzrestart` from the slash command array
-3. Remove the `else if (commandName === 'pzrestart')` handler block
+Two places now that commands are modular:
+1. Delete `commands/admin.js` entirely, or remove the `pzrestart` builder and handler from it
+2. Remove the `admin` import and its command defs from `index.js`
 
 ---
 
@@ -169,13 +168,14 @@ Three places in `index.js`:
 | Package | Version | Purpose |
 |---|---|---|
 | `discord.js` | `14.22.1` | Discord bot framework, gateway intents, slash commands |
-| `@discordjs/voice` | `0.19.2` | Voice channel audio with DAVE E2EE support |
+| `@discordjs/voice` | `0.19.2` | Voice channel audio with native DAVE E2EE support |
 | `@discordjs/opus` | `0.9.0` | Opus audio encoding for voice |
-| `@ai-sdk/google` | `^2.0.0` | Google Gemini AI (text + image generation) |
+| `@ai-sdk/google` | `2.0.0` | Google Gemini AI (text + image generation) |
 | `ai` | `5.0.60` | AI SDK core |
+| `replicate` | `1.0.1` | Replicate image generation |
 | `tmi.js` | `1.8.5` | Twitch chat integration |
 | `express` | `4.22.2` | Web dashboard server |
-| `cors` | `^2.8.5` | CORS middleware for dashboard API |
+| `cors` | `2.8.5` | CORS middleware for dashboard API |
 | `better-sqlite3` | `11.10.0` | SQLite database for logs and memory |
 | `dotenv` | `17.2.3` | Environment variable loading |
 
@@ -221,7 +221,7 @@ Three places in `index.js`:
 
 2. **Install npm dependencies**
    ```bash
-   npm install
+   npm ci
    ```
 
 3. **Install system dependencies**
@@ -258,6 +258,31 @@ Three places in `index.js`:
    # Then open http://localhost:3001
    ```
 
+### Deploying as a systemd Service (Linux)
+
+```bash
+# Place service file at /etc/systemd/system/discordbot.service
+# then:
+sudo systemctl daemon-reload
+sudo systemctl enable discordbot
+sudo systemctl start discordbot
+
+# View live logs
+sudo journalctl -u discordbot -f
+```
+
+### Updating the Bot
+
+Use the included `update_bot.sh` script to pull and redeploy cleanly:
+
+```bash
+bash /home/birds/birds-server-ai-bot/update_bot.sh
+```
+
+The script: resets any local server changes → pulls from GitHub → runs `npm ci` (or regenerates the lockfile on mismatch) → rebuilds native modules → restarts the service → tails logs.
+
+> ⚠️ **Never edit files directly on the server.** All changes must go through GitHub. The update script enforces this with `git reset --hard`.
+
 ### Discord Invite Scopes
 
 Include both when generating your bot invite URL:
@@ -271,18 +296,18 @@ Include both when generating your bot invite URL:
 | Setting | Default | Location |
 |---|---|---|
 | Dashboard port | `3001` | `dashboard-server.js` |
-| Twitch message limit | 490 chars | `index.js` |
-| Twitch message delay | 1.5s | `index.js` |
+| Twitch message limit | 490 chars | `services/twitch.js` |
+| Twitch message delay | 1.5s | `services/twitch.js` |
 | Cultist status interval | 30s | `index.js` |
-| Image generation rate limit | 3 per user / 5 min | `index.js` |
-| CS2 case key cost | $2.49 | `CONFIG.CS2_KEY_COST_USD` |
-| CS2 case max opens | 100 | `CONFIG.CS2_CASE_MAX_OPENS` |
-| CS2 price cache TTL | 30 min | `CONFIG.CS2_PRICE_CACHE_TTL_MS` |
-| Presence rotation interval | 5 min | `CONFIG.PRESENCE_ROTATE_MS` |
+| Image generation rate limit | 3 per user / 5 min | `services/image.js` |
+| CS2 case key cost | $2.49 | `commands/cs2.js` — `CONFIG.CS2_KEY_COST_USD` |
+| CS2 case max opens | 100 | `commands/cs2.js` — `CONFIG.CS2_CASE_MAX_OPENS` |
+| CS2 price cache TTL | 30 min | `commands/cs2.js` — `CONFIG.CS2_PRICE_CACHE_TTL_MS` |
+| Presence rotation interval | 5 min | `index.js` — `CONFIG.PRESENCE_ROTATE_MS` |
 
 ### AI Personas
 
-Switchable via `/persona`, `!persona`, or the web dashboard:
+Switchable via `/persona` or the web dashboard. Persona definitions live in `personas.js`, switching logic in `persona-manager.js`:
 
 | Persona | Style |
 |---|---|
@@ -300,15 +325,52 @@ Switchable via `/persona`, `!persona`, or the web dashboard:
 
 ## Architecture
 
+The bot uses a **modular architecture**. `index.js` is a thin event router — all logic lives in dedicated modules.
+
+```
+Birds-Server-AI-Bot/
+├── index.js               # Discord client, slash command registration, event routing
+├── dashboard-server.js    # Express API + dashboard frontend server
+├── music.js               # Music slash command handler (deferReply, routing)
+├── music-player.js        # Voice connection (DAVE E2EE), yt-dlp, ffmpeg queue engine
+├── memory.js              # SQLite conversation storage, context selection, auto-cleanup
+├── database.js            # SQLite init, log tables, CDN URL tracking
+├── logger.js              # Structured console + dashboard log emitter
+├── personas.js            # AI personality definitions
+├── persona-manager.js     # Persona state, switching logic
+├── commands/
+│   ├── utility.js         # /ask, /image, /meme, /code, /clearmemory, /persona, /personas
+│   ├── admin.js           # /pzrestart (Birds Server specific)
+│   ├── cs2.js             # All CS2 commands
+│   └── tarkov.js          # All Tarkov commands
+├── services/
+│   ├── ai.js              # Gemini AI text + image generation
+│   ├── image.js           # Image generation rate limiting + Replicate integration
+│   └── twitch.js          # Twitch IRC via tmi.js
+└── public/
+    └── dashboard.html     # Dashboard frontend
+```
+
+### Module Responsibilities
+
 | File | Responsibility |
 |---|---|
-| `index.js` | Discord/Twitch event handling, slash command registration, AI responses, Tarkov/CS2 commands, auto-features |
-| `music.js` | Voice connection (DAVE E2EE), yt-dlp search/stream, ffmpeg pipeline, per-guild queue |
+| `index.js` | Discord/Twitch client setup, slash command registration, event routing to modules |
+| `music.js` | Owns all music slash command interaction handling; only place that calls `deferReply` for music |
+| `music-player.js` | Voice connection lifecycle (DAVE E2EE), yt-dlp search/stream, ffmpeg pipeline, per-guild queue |
+| `commands/utility.js` | AI, image gen, meme, persona, memory utility commands |
+| `commands/admin.js` | Server-specific admin commands (PZ restart) |
+| `commands/cs2.js` | All CS2 slash commands and Steam API calls |
+| `commands/tarkov.js` | All Tarkov slash commands and tarkov.dev GraphQL calls |
+| `services/ai.js` | Gemini AI client, text generation, vision (image understanding) |
+| `services/image.js` | Image generation with per-user rate limiting |
+| `services/twitch.js` | Twitch IRC connection, message handling, relay to Discord |
 | `memory.js` | SQLite conversation storage, smart context selection, auto-cleanup |
-| `dashboard-server.js` | Express API, command logging, persona switching, Cultist tracker |
-| `database.js` | SQLite init, log tables, CDN URL tracking |
-| `personas.js` | AI personality definitions |
-| `public/dashboard.html` | Dashboard frontend |
+| `persona-manager.js` | Current persona state, `/persona` switching, dashboard sync |
+| `personas.js` | All AI personality prompt definitions |
+| `dashboard-server.js` | Express API, command logging, persona switcher, Cultist tracker |
+| `database.js` | SQLite schema init, log tables, CDN URL tracking |
+| `logger.js` | Structured logging to console and dashboard event stream |
 
 ---
 
