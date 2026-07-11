@@ -93,6 +93,10 @@ function resolveTrack(query) {
 /**
  * Create a readable stream for the audio of a YouTube URL using yt-dlp piped to ffmpeg.
  * Returns an AudioResource.
+ *
+ * Fix: added error handlers on ffmpeg.stdin, ytdlp.stdout, and both child processes
+ * to prevent unhandled 'error' events (EPIPE) from crashing the bot when /skip tears
+ * down the audio pipeline mid-stream.
  */
 function createAudioResourceFromUrl(url) {
     const ytdlp = spawn(YTDLP_PATH, [
@@ -111,12 +115,48 @@ function createAudioResourceFromUrl(url) {
         'pipe:1'
     ]);
 
-    ytdlp.stdout.pipe(ffmpeg.stdin);
-    ytdlp.stderr.on('data', () => {}); // suppress
-    ffmpeg.stderr.on('data', () => {}); // suppress
+    // Suppress stderr — MUST have listeners or Node will throw on 'error'
+    ytdlp.stderr.on('data', () => {});
+    ffmpeg.stderr.on('data', () => {});
 
-    // If yt-dlp dies, close ffmpeg stdin cleanly
-    ytdlp.on('close', () => { try { ffmpeg.stdin.end(); } catch (_) {} });
+    // Guard ffmpeg.stdin against EPIPE: when skip/stop closes the resource,
+    // ffmpeg exits and its stdin becomes unwritable. Kill yt-dlp so it stops
+    // trying to write into a closed pipe.
+    ffmpeg.stdin.on('error', (err) => {
+        if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_DESTROYED') {
+            console.error('[MUSIC] ffmpeg stdin error:', err.message);
+        }
+        try { ytdlp.kill('SIGKILL'); } catch (_) {}
+    });
+
+    // Guard yt-dlp stdout against errors caused by early ffmpeg exit
+    ytdlp.stdout.on('error', (err) => {
+        if (err.code !== 'EPIPE' && err.code !== 'ERR_STREAM_DESTROYED') {
+            console.error('[MUSIC] yt-dlp stdout error:', err.message);
+        }
+    });
+
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    // When yt-dlp finishes, end ffmpeg stdin — but only if it's still writable
+    ytdlp.on('close', () => {
+        if (ffmpeg.stdin.writable) {
+            try { ffmpeg.stdin.end(); } catch (_) {}
+        }
+    });
+
+    // When ffmpeg exits (including being killed by skip), clean up yt-dlp
+    ffmpeg.on('close', () => {
+        try { ytdlp.kill('SIGKILL'); } catch (_) {}
+    });
+
+    ytdlp.on('error', (err) => {
+        console.error('[MUSIC] yt-dlp process error:', err.message);
+    });
+
+    ffmpeg.on('error', (err) => {
+        console.error('[MUSIC] ffmpeg process error:', err.message);
+    });
 
     return createAudioResource(ffmpeg.stdout, {
         inlineVolume: false
@@ -310,12 +350,14 @@ async function addTrack(interaction, query) {
 
 /**
  * Skip the current track.
+ * Uses stop(true) to force-stop immediately and fire the Idle event once,
+ * preventing a race condition with playNext.
  */
 function skip(guildId) {
     const queue = queues.get(guildId);
     if (!queue || !queue.current) return { error: '❌ Nothing is playing right now.' };
     const skipped = queue.current.title;
-    queue.player.stop();
+    queue.player.stop(true); // force: true — immediately transitions to Idle
     return { message: `⏭ Skipped **${skipped}**` };
 }
 
