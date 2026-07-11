@@ -60,7 +60,7 @@ All commands are available as slash commands (`/`). Slash commands support Disco
 |---|---|---|
 | `/pzrestart` | Trigger Project Zomboid server restart | Birds Server specific — see [Removing /pzrestart](#removing-pzrestart) |
 
-> **Slash command setup:** Add `DISCORD_CLIENT_ID=your_application_id` to your `.env`. Commands register globally on startup — global propagation can take up to 1 hour.
+> **Slash command setup:** Commands are registered **guild-scoped** on startup using `DISCORD_GUILD_ID`. They appear instantly in your server (no propagation delay). To use in multiple servers, switch `Routes.applicationGuildCommands` to `Routes.applicationCommands` in `index.js`.
 
 ---
 
@@ -205,7 +205,7 @@ Two places now that commands are modular:
 ### Prerequisites
 
 - Node.js v20+
-- Discord Bot Token + Application ID
+- Discord Bot Token + Application ID + Guild ID
 - Twitch OAuth Token
 - Google AI API Key
 - EFT API Key *(optional)*
@@ -238,6 +238,7 @@ Two places now that commands are modular:
    ```env
    DISCORD_TOKEN=your_discord_bot_token
    DISCORD_CLIENT_ID=your_discord_application_id
+   DISCORD_GUILD_ID=your_discord_server_id
    TWITCH_BOT_USERNAME=your_twitch_bot_username
    TWITCH_OAUTH_TOKEN=oauth:your_twitch_token
    TWITCH_CHANNEL=your_channel_name
@@ -245,7 +246,15 @@ Two places now that commands are modular:
    EFT_API_KEY=your_eft_api_key
    STEAM_API_KEY=your_steam_api_key
    ```
-   > `DISCORD_CLIENT_ID` is your **Application ID** from the [Discord Developer Portal](https://discord.com/developers/applications).
+
+   | Variable | Where to get it |
+   |---|---|
+   | `DISCORD_TOKEN` | [Discord Developer Portal](https://discord.com/developers/applications) → Bot → Token |
+   | `DISCORD_CLIENT_ID` | Developer Portal → General Information → Application ID |
+   | `DISCORD_GUILD_ID` | Discord → Server Settings → Widget, or right-click your server icon → Copy Server ID (enable Developer Mode first) |
+   | `TWITCH_OAUTH_TOKEN` | [twitchapps.com/tmi](https://twitchapps.com/tmi) |
+   | `GOOGLE_GENERATIVE_AI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) |
+   | `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) |
 
 5. **Start the bot**
    ```bash
