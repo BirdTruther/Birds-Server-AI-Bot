@@ -4,19 +4,19 @@
   "description": "Discord and Twitch bot with Tarkov integration and web dashboard",
   "main": "index.js",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "20.18.1"
   },
   "scripts": {
     "start": "node index.js",
     "dashboard": "node dashboard-server.js"
   },
   "dependencies": {
-    "@ai-sdk/google": "^2.0.0",
+    "@ai-sdk/google": "2.0.0",
     "@discordjs/opus": "0.9.0",
-    "@discordjs/voice": "0.19.2",
+    "@discordjs/voice": "0.17.0",
     "ai": "5.0.60",
     "better-sqlite3": "11.10.0",
-    "cors": "^2.8.5",
+    "cors": "2.8.5",
     "discord.js": "14.22.1",
     "dotenv": "17.2.3",
     "express": "4.22.2",
