@@ -42,8 +42,6 @@ async function fetchMeme() {
 }
 
 // ===== IMAGE PROMPT EXTRACTOR =====
-// Only needed here — Discord message/reply handlers use this
-// to pull the actual subject out of phrases like "draw me a..."
 
 const IMAGE_PROMPT_TRIGGERS = [
     'generate image of', 'create image of', 'make image of',
@@ -60,7 +58,6 @@ const IMAGE_PROMPT_TRIGGERS = [
 function extractImagePrompt(messageContent) {
     let prompt = messageContent.replace(/<@[!&]?\d+>/g, '').trim();
 
-    // Strip prefix commands
     const prefixes = ['!image', '!img', '!generate', '!draw', '!art'];
     for (const prefix of prefixes) {
         if (prompt.toLowerCase().startsWith(prefix)) {
@@ -69,7 +66,6 @@ function extractImagePrompt(messageContent) {
         }
     }
 
-    // Strip natural language triggers
     const lower = prompt.toLowerCase();
     for (const trigger of IMAGE_PROMPT_TRIGGERS) {
         if (lower.startsWith(trigger)) {
@@ -82,8 +78,6 @@ function extractImagePrompt(messageContent) {
 }
 
 // ===== IMAGE ATTACHMENT UTILITIES =====
-// These live here because only Discord needs them —
-// Twitch doesn't support attachments
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 
@@ -127,7 +121,6 @@ async function getImageAttachments(message) {
 }
 
 // ===== DISCORD SAFE SEND UTILITIES =====
-// Also live here — only Discord message/reply handlers need them
 
 async function safeDiscordReply(message, content) {
     try {
@@ -267,4 +260,39 @@ const commands = {
             const prompt   = interaction.options.getString('prompt');
             const username = interaction.user.username;
 
-            const cleanPrompt = 
+            const cleanPrompt = sanitizeImagePrompt(extractImagePrompt(prompt));
+
+            logCommand('discord', username, '/imagine', cleanPrompt, '[generating...]');
+
+            const result = await generateImage(cleanPrompt, interaction.user.id, {
+                enhance:  true,
+                platform: 'discord',
+            });
+
+            if (!result.success) {
+                await interaction.editReply(result.error);
+                return;
+            }
+
+            const ext        = 'webp';
+            const attachment = new AttachmentBuilder(result.buffer, { name: `generated.${ext}` });
+            await interaction.editReply({
+                content: `🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`,
+                files:   [attachment],
+            });
+
+            logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes]`);
+        }
+    },
+};
+
+// ===== EXPORTS =====
+module.exports = {
+    commands,
+    // Discord message handler helpers
+    hasImageAttachment,
+    getImageAttachments,
+    extractImagePrompt,
+    safeDiscordReply,
+    safeDiscordSend,
+};
