@@ -1,6 +1,6 @@
 // ===== MUSIC MODULE =====
 // Self-contained music playback using @discordjs/voice + yt-dlp
-// Exports: musicSlashCommandDefs, handleMusicInteraction, handleMusicPrefix
+// Exports: musicSlashCommandDefs, handleMusicInteraction
 
 const {
     joinVoiceChannel,
@@ -33,8 +33,6 @@ try {
 (function patchVoiceWs() {
     try {
         const WS = require('ws');
-        const OriginalWS = WS;
-        // We intercept by wrapping the 'close' event on every new WS instance
         const origEmit = WS.prototype.emit;
         WS.prototype.emit = function(event, ...args) {
             if (event === 'close') {
@@ -475,39 +473,4 @@ async function handleMusicInteraction(interaction) {
     await interaction.editReply(reply);
 }
 
-// ===== PREFIX HANDLER =====
-async function handleMusicPrefix(message, cmd, args) {
-    const guildId      = message.guildId;
-    const voiceChannel = message.member?.voice?.channel ?? null;
-    const username     = message.author.username;
-
-    if (!guildId) {
-        await message.reply('❌ Music commands only work in a server.');
-        return;
-    }
-
-    let reply;
-    try {
-        switch (cmd) {
-            case 'play': {
-                if (!args) { reply = '❌ Usage: `!play <song name or URL>`'; break; }
-                reply = await cmdPlay(guildId, voiceChannel, args, username);
-                break;
-            }
-            case 'skip':       reply = cmdSkip(guildId);       break;
-            case 'stop':       reply = cmdStop(guildId);       break;
-            case 'queue':      reply = cmdQueue(guildId);      break;
-            case 'pause':      reply = cmdPause(guildId);      break;
-            case 'resume':     reply = cmdResume(guildId);     break;
-            case 'nowplaying': reply = cmdNowPlaying(guildId); break;
-            default:           reply = '❌ Unknown music command.'; break;
-        }
-    } catch (err) {
-        console.error('[MUSIC PREFIX ERROR]', err);
-        reply = `❌ Music error: ${err.message}`;
-    }
-
-    await message.reply(reply);
-}
-
-module.exports = { musicSlashCommandDefs, handleMusicInteraction, handleMusicPrefix };
+module.exports = { musicSlashCommandDefs, handleMusicInteraction };
