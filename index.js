@@ -34,6 +34,13 @@ const {
 // ===== GLOBAL STARTUP LOG =====
 logSystemEvent('STARTUP', 'INFO', 'system', '🚀 Bot starting up...');
 
+// ===== TOP-LEVEL UNHANDLED REJECTION GUARD =====
+// Prevents a single bad interaction from crashing the entire process.
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('[UNHANDLED REJECTION]', reason);
+    logSystemEvent('UNHANDLED_REJECTION', 'ERROR', 'system', String(reason?.message ?? reason));
+});
+
 // ===== CONFIG =====
 const CONFIG = {
     PRESENCE_ROTATE_MS: 5 * 60 * 1000,
@@ -120,12 +127,35 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
-    await interaction.deferReply();
 
-    // Music commands
-    if (await handleMusicInteraction(interaction)) return;
+    // ── Music commands go FIRST, before any deferReply ──
+    // handleMusicInteraction manages its own deferReply internally.
+    // If it returns true, the command was handled — bail out immediately.
+    try {
+        if (await handleMusicInteraction(interaction)) return;
+    } catch (err) {
+        console.error('[MUSIC ERROR]', err);
+        logSystemEvent('MUSIC_ERROR', 'ERROR', 'discord', `Music command failed: ${err.message}`);
+        // Attempt a reply if the interaction hasn't been replied to yet
+        try {
+            if (!interaction.replied && !interaction.deferred) {
+                await interaction.reply({ content: '❌ Music command failed.', ephemeral: true });
+            } else {
+                await interaction.editReply('❌ Music command failed.');
+            }
+        } catch (_) {}
+        return;
+    }
 
-    // All other commands
+    // ── All other (non-music) commands go through deferReply ──
+    try {
+        await interaction.deferReply();
+    } catch (err) {
+        // If deferReply itself fails (e.g. interaction already expired), bail silently
+        console.error(`[DEFER ERROR] /${commandName}:`, err);
+        return;
+    }
+
     const cmd = allCommands[commandName];
     if (cmd) {
         try {
