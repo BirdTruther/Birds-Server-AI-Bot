@@ -1,6 +1,8 @@
 // commands/utility.js
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
-const { Readable } = require('stream');
+const fs   = require('fs');
+const path = require('path');
+const os   = require('os');
 const { addToMemory, clearChannelMemory } = require('../memory.js');
 const { logCommand, logSystemEvent } = require('../logger.js');
 const { getCurrentPersona, getPersonaErrorMessage, setPersona, getAvailablePersonas } = require('../persona-manager.js');
@@ -285,24 +287,38 @@ const commands = {
                 return;
             }
 
-            // Derive the correct extension from the MIME type Gemini returned.
-            const ext = mimeToExt(result.mimeType);
+            const ext     = mimeToExt(result.mimeType);
+            const tmpFile = path.join(os.tmpdir(), `imagine_${Date.now()}_${interaction.user.id}.${ext}`);
 
-            // FIX: Wrap the buffer in a Readable stream so undici streams the
-            // upload instead of needing to know Content-Length up-front. This
-            // prevents UND_ERR_SOCKET on large (~750 KB) payloads.
-            const stream     = Readable.from(result.buffer);
-            const attachment = new AttachmentBuilder(stream, { name: `generated.${ext}` });
+            // Write the buffer to a temp file so we can pass fs.createReadStream
+            // to AttachmentBuilder. A file-backed ReadStream forces undici to open
+            // a brand-new TLS socket for the multipart POST instead of reusing the
+            // stale keep-alive connection that Discord's CDN closed server-side
+            // between deferReply and the upload. Readable.from(buffer) does NOT
+            // escape the connection pool — only a file descriptor does.
+            await fs.promises.writeFile(tmpFile, result.buffer);
 
-            // FIX: Use followUp (a fresh webhook POST) for the file upload instead
-            // of editReply, which reuses the stale undici connection that Discord
-            // closes server-side between deferReply and the upload arriving. This
-            // eliminates the AbortError / SocketError at the editReply call site.
-            // The editReply below immediately acknowledges the interaction so
-            // Discord does not show "interaction failed" while the file uploads.
-            await interaction.editReply(`🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`);
+            try {
+                const attachment = new AttachmentBuilder(
+                    fs.createReadStream(tmpFile),
+                    { name: `generated.${ext}` }
+                );
 
-            await interaction.followUp({ files: [attachment] });
+                // editReply first (text only) so Discord marks the interaction
+                // as responded and doesn't show "interaction failed".
+                await interaction.editReply(`🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`);
+
+                // followUp carries the file on a completely independent webhook
+                // POST, further decoupling the file upload from the interaction
+                // reply lifecycle.
+                await interaction.followUp({ files: [attachment] });
+
+            } finally {
+                // Clean up temp file regardless of success or failure.
+                fs.unlink(tmpFile, err => {
+                    if (err) console.warn(`[Image] Failed to delete temp file ${tmpFile}:`, err.message);
+                });
+            }
 
             logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes, ${result.mimeType}]`);
         }
