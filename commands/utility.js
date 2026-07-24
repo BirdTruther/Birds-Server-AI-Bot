@@ -81,6 +81,15 @@ function extractImagePrompt(messageContent) {
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 
+// Derive a safe file extension from a MIME type string.
+// Gemini returns types like 'image/png', 'image/jpeg', 'image/webp'.
+function mimeToExt(mimeType) {
+    if (!mimeType) return 'png';
+    const sub = mimeType.split('/')[1] || 'png';
+    // Normalise 'jpeg' → 'jpg' for friendlier filenames
+    return sub === 'jpeg' ? 'jpg' : sub;
+}
+
 function hasImageAttachment(message) {
     if (message.attachments.size === 0) return false;
     return message.attachments.some(att =>
@@ -271,17 +280,22 @@ const commands = {
 
             if (!result.success) {
                 await interaction.editReply(result.error);
+                logCommand('discord', username, '/imagine', cleanPrompt, `[failed: ${result.error}]`);
                 return;
             }
 
-            const ext        = 'webp';
+            // Derive the correct extension from the MIME type Gemini returned.
+            // Gemini returns inline base64 with a mimeType (e.g. 'image/png');
+            // hardcoding 'webp' caused Discord to abort the upload.
+            const ext        = mimeToExt(result.mimeType);
             const attachment = new AttachmentBuilder(result.buffer, { name: `generated.${ext}` });
+
             await interaction.editReply({
                 content: `🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`,
                 files:   [attachment],
             });
 
-            logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes]`);
+            logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes, ${result.mimeType}]`);
         }
     },
 };
