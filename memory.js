@@ -116,23 +116,25 @@ function getConversationStats(platform, channelId) {
   }
 }
 
+// Prepared statement for cleanupOldMemory — parameterized to prevent SQL injection
+const cleanupOldMessages = db.prepare(`
+  DELETE FROM conversation_memory
+  WHERE id IN (
+    SELECT id FROM conversation_memory
+    WHERE platform = ? AND channel_id = ?
+    ORDER BY id DESC
+    LIMIT -1 OFFSET ?
+  )
+`);
+
 // Clean up old messages (keep last N per channel)
 function cleanupOldMemory(platform, channelId) {
   try {
     const count = getConversationStats(platform, channelId);
 
     if (count > CONFIG.CLEANUP_AFTER_MESSAGES) {
-      db.exec(`
-        DELETE FROM conversation_memory
-        WHERE id IN (
-          SELECT id FROM conversation_memory
-          WHERE platform = '${platform}' AND channel_id = '${channelId}'
-          ORDER BY id DESC
-          LIMIT -1 OFFSET ${CONFIG.CLEANUP_AFTER_MESSAGES}
-        )
-      `);
-
-      console.log(`[MEMORY] Cleaned up old messages for ${platform}:${channelId}`);
+      const result = cleanupOldMessages.run(platform, channelId, CONFIG.CLEANUP_AFTER_MESSAGES);
+      console.log(`[MEMORY] Cleaned up ${result.changes} old messages for ${platform}:${channelId}`);
     }
   } catch (err) {
     console.error('[MEMORY] Cleanup error:', err);
@@ -155,16 +157,17 @@ function clearChannelMemory(platform, channelId) {
   }
 }
 
+// Prepared statement for periodic cleanup
+const purgeAgedMessages = db.prepare(`
+  DELETE FROM conversation_memory
+  WHERE datetime(timestamp) < datetime('now', '-7 days')
+`);
+
 // Periodic cleanup - run every hour
 setInterval(() => {
   try {
-    // Clean up very old messages (older than 7 days)
-    const result = db.exec(`
-      DELETE FROM conversation_memory
-      WHERE datetime(timestamp) < datetime('now', '-7 days')
-    `);
-
-    console.log('[MEMORY] Periodic cleanup completed');
+    const result = purgeAgedMessages.run();
+    console.log(`[MEMORY] Periodic cleanup completed — removed ${result.changes} aged messages`);
   } catch (err) {
     console.error('[MEMORY] Periodic cleanup error:', err);
   }
