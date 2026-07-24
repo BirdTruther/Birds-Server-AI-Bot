@@ -35,26 +35,18 @@ const {
 logSystemEvent('STARTUP', 'INFO', 'system', '🚀 Bot starting up...');
 
 // ===== TOP-LEVEL UNHANDLED REJECTION GUARD =====
-// Prevents a single bad async rejection from crashing the entire process.
 process.on('unhandledRejection', (reason, promise) => {
     console.error('[UNHANDLED REJECTION]', reason);
     logSystemEvent('UNHANDLED_REJECTION', 'ERROR', 'system', String(reason?.message ?? reason));
 });
 
 // ===== TOP-LEVEL UNCAUGHT EXCEPTION GUARD =====
-// Catches synchronous throws from EventEmitters (e.g. EPIPE from ffmpeg/yt-dlp
-// pipe teardown on /skip) that bypass unhandledRejection entirely.
-// Logs and keeps the process alive instead of crashing.
 process.on('uncaughtException', (err) => {
-    // EPIPE / ERR_STREAM_DESTROYED are expected during voice stream teardown — log only.
     if (err.code === 'EPIPE' || err.code === 'ERR_STREAM_DESTROYED') {
         console.warn('[STREAM TEARDOWN]', err.code, err.message);
         logSystemEvent('STREAM_TEARDOWN', 'WARN', 'music', `Stream teardown: ${err.code} — ${err.message}`);
-        return; // safe to continue
+        return;
     }
-    // All other uncaught exceptions: log them but do NOT exit.
-    // systemd will restart if it truly needs to; we don't want a single bad event
-    // to kill the whole bot for all users.
     console.error('[UNCAUGHT EXCEPTION]', err);
     logSystemEvent('UNCAUGHT_EXCEPTION', 'ERROR', 'system', `${err.code ?? 'NO_CODE'}: ${err.message}`);
 });
@@ -62,6 +54,9 @@ process.on('uncaughtException', (err) => {
 // ===== CONFIG =====
 const CONFIG = {
     PRESENCE_ROTATE_MS: 5 * 60 * 1000,
+    // Gemini image generation can take 10-15s; give the REST client
+    // 60s total so the subsequent file upload doesn't get aborted.
+    REST_TIMEOUT_MS: 60_000,
 };
 
 // ===== ROTATING PRESENCE =====
@@ -92,7 +87,6 @@ function rotatePresence(client) {
 }
 
 // ===== BUILD COMMAND MAP =====
-// Merge all command modules into one flat map: name -> { data, execute }
 const allCommands = {
     ...utilityCommands.commands,
     ...adminCommands.commands,
@@ -101,6 +95,8 @@ const allCommands = {
 };
 
 // ===== DISCORD CLIENT =====
+// restRequestTimeout raises the AbortController deadline for every REST
+// call this client makes, including file uploads after /imagine.
 const discordClient = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -110,6 +106,9 @@ const discordClient = new Client({
         GatewayIntentBits.GuildVoiceStates,
         GatewayIntentBits.DirectMessages,
     ],
+    rest: {
+        timeout: CONFIG.REST_TIMEOUT_MS,
+    },
 });
 
 // ===== CLIENT READY =====
@@ -119,7 +118,8 @@ discordClient.once(Events.ClientReady, async (client) => {
 
     // Register slash commands
     try {
-        const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
+        const rest = new REST({ version: '10', timeout: CONFIG.REST_TIMEOUT_MS })
+            .setToken(process.env.DISCORD_TOKEN);
         const slashDefs = [
             ...Object.values(allCommands).map(cmd => cmd.data.toJSON()),
             ...musicSlashCommandDefs.map(def => def.toJSON()),
@@ -135,7 +135,6 @@ discordClient.once(Events.ClientReady, async (client) => {
         logSystemEvent('SLASH_REGISTER_ERROR', 'ERROR', 'discord', `Slash registration failed: ${err.message}`);
     }
 
-    // Start presence rotation
     rotatePresence(client);
     setInterval(() => rotatePresence(client), CONFIG.PRESENCE_ROTATE_MS);
 });
@@ -146,15 +145,12 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 
     const { commandName } = interaction;
 
-    // ── Music commands go FIRST, before any deferReply ──
-    // handleMusicInteraction manages its own deferReply internally.
-    // If it returns true, the command was handled — bail out immediately.
+    // Music commands manage their own deferReply internally
     try {
         if (await handleMusicInteraction(interaction)) return;
     } catch (err) {
         console.error('[MUSIC ERROR]', err);
         logSystemEvent('MUSIC_ERROR', 'ERROR', 'discord', `Music command failed: ${err.message}`);
-        // Attempt a reply if the interaction hasn't been replied to yet
         try {
             if (!interaction.replied && !interaction.deferred) {
                 await interaction.reply({ content: '❌ Music command failed.', ephemeral: true });
@@ -165,11 +161,10 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
         return;
     }
 
-    // ── All other (non-music) commands go through deferReply ──
+    // All other commands defer first so the token stays alive during slow ops
     try {
         await interaction.deferReply();
     } catch (err) {
-        // If deferReply itself fails (e.g. interaction already expired), bail silently
         console.error(`[DEFER ERROR] /${commandName}:`, err);
         return;
     }
@@ -189,17 +184,14 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     await interaction.editReply(`❌ Unknown command: \`/${commandName}\``);
 });
 
-// ===== DISCORD MESSAGE HANDLER (non-reply messages) =====
-// Prefix commands removed — all commands are slash commands only.
-// This handler only processes @mentions and image attachments.
+// ===== DISCORD MESSAGE HANDLER =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
-    if (message.reference)  return; // replies handled below
+    if (message.reference)  return;
 
     const channelId = message.channelId;
     const username  = message.author.username;
 
-    // Only care if the bot is @mentioned
     if (!message.mentions.has(discordClient.user)) return;
 
     addToMemory('discord', channelId, username, message.content);
@@ -208,7 +200,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
     const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!userMessage && !hasImageAttachment(message)) return;
 
-    // Wild request filter
     if (isWildRequest(userMessage)) {
         const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
         await safeDiscordReply(message, roast);
@@ -216,7 +207,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Image generation request
     if (detectImageRequest(userMessage)) {
         const rateCheck = checkImageRateLimit(message.author.id);
         if (!rateCheck.allowed) {
@@ -227,9 +217,13 @@ discordClient.on(Events.MessageCreate, async (message) => {
         logCommand('discord', username, '@mention (image)', cleanPrompt, '[generating...]');
         try {
             await message.channel.sendTyping();
-            const { buffer, mimeType } = await generateImage(cleanPrompt);
-            const ext        = mimeType.split('/')[1] || 'png';
-            const attachment = new AttachmentBuilder(buffer, { name: `generated.${ext}` });
+            const result = await generateImage(cleanPrompt, message.author.id);
+            if (!result.success) {
+                await safeDiscordReply(message, result.error);
+                return;
+            }
+            const ext        = result.mimeType ? result.mimeType.split('/')[1] || 'png' : 'png';
+            const attachment = new AttachmentBuilder(result.buffer, { name: `generated.${ext}` });
             await message.reply({ files: [attachment] });
         } catch (imgErr) {
             await safeDiscordReply(message, `❌ Image generation failed: ${imgErr.message}`);
@@ -237,7 +231,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Image attachment analysis
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
         const response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
@@ -246,7 +239,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Standard AI response
     const response = await getAIResponse(userMessage, 'discord', channelId, username);
     await safeDiscordReply(message, response);
     logCommand('discord', username, '@mention', userMessage, response);
@@ -260,7 +252,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
     const channelId = message.channelId;
     const username  = message.author.username;
 
-    // Only respond if the replied-to message is from the bot
     let repliedTo;
     try { repliedTo = await message.fetchReference(); } catch { return; }
     if (repliedTo.author.id !== discordClient.user.id) return;
@@ -271,7 +262,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
     const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!userMessage && !hasImageAttachment(message)) return;
 
-    // Wild request filter
     if (isWildRequest(userMessage)) {
         const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
         await safeDiscordReply(message, roast);
@@ -279,7 +269,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Image attachment in reply
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
         const response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
@@ -288,7 +277,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
         return;
     }
 
-    // Standard reply AI response
     const response = await getAIResponse(userMessage, 'discord', channelId, username);
     await safeDiscordReply(message, response);
     logCommand('discord', username, 'reply', userMessage, response);
