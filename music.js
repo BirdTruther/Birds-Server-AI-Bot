@@ -1,6 +1,7 @@
 // ===== MUSIC MODULE =====
 // Self-contained music playback using @discordjs/voice + yt-dlp
 // Exports: musicSlashCommandDefs, handleMusicInteraction
+// This is the ACTIVE production music module wired into index.js.
 
 const {
     joinVoiceChannel,
@@ -12,7 +13,7 @@ const {
     entersState,
     StreamType,
 } = require('@discordjs/voice');
-const { SlashCommandBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { execFile, spawn } = require('child_process');
 const { promisify } = require('util');
 const execFileAsync = promisify(execFile);
@@ -84,9 +85,11 @@ async function ytdlpSearch(query) {
     const data = JSON.parse(stdout.trim().split('\n')[0]);
     console.log(`[MUSIC] Found: ${data.title}`);
     return {
-        title:    data.title || 'Unknown Title',
-        url:      `https://www.youtube.com/watch?v=${data.id}`,
-        duration: data.duration || 0,
+        title:     data.title    || 'Unknown Title',
+        url:       `https://www.youtube.com/watch?v=${data.id}`,
+        duration:  data.duration || 0,
+        thumbnail: data.thumbnail || null,
+        uploader:  data.uploader  || data.channel || null,
     };
 }
 
@@ -102,9 +105,11 @@ async function ytdlpInfo(url) {
     const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
     const data = JSON.parse(stdout.trim().split('\n')[0]);
     return {
-        title:    data.title || 'Unknown Title',
-        url:      `https://www.youtube.com/watch?v=${data.id}`,
-        duration: data.duration || 0,
+        title:     data.title    || 'Unknown Title',
+        url:       `https://www.youtube.com/watch?v=${data.id}`,
+        duration:  data.duration || 0,
+        thumbnail: data.thumbnail || null,
+        uploader:  data.uploader  || data.channel || null,
     };
 }
 
@@ -141,6 +146,124 @@ function ytdlpStream(url) {
 // ===== QUEUE STORE =====
 const queues = new Map();
 
+// ===== EMBED BUILDERS =====
+// All user-facing responses use EmbedBuilder.
+// Colours: blurple (0x5865F2) for info, green (0x57F287) for now-playing,
+// red (0xED4245) for errors. Keep embeds readable and not cluttered.
+
+const COLOR_NOW_PLAYING = 0x57F287; // green
+const COLOR_QUEUE_INFO  = 0x5865F2; // Discord blurple
+const COLOR_ACTION      = 0x5865F2; // blurple for pause/resume/skip/stop
+const COLOR_ERROR       = 0xED4245; // red
+
+function fmtDuration(seconds) {
+    if (!seconds || isNaN(seconds)) return '?:??';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = String(Math.floor(seconds % 60)).padStart(2, '0');
+    if (h > 0) return `${h}:${String(m).padStart(2, '0')}:${s}`;
+    return `${m}:${s}`;
+}
+
+/** Shared footer for all music embeds */
+function musicFooter() {
+    return { text: 'Birds Server Music' };
+}
+
+/**
+ * Now Playing embed — used for /play (immediate) and /nowplaying.
+ * Shows title (linked), duration, requested by, queue depth.
+ * Thumbnail is set if available from yt-dlp metadata.
+ */
+function buildNowPlayingEmbed(track, queueLength = 0) {
+    const embed = new EmbedBuilder()
+        .setColor(COLOR_NOW_PLAYING)
+        .setAuthor({ name: '▶️  Now Playing' })
+        .setTitle(track.title)
+        .setURL(track.url)
+        .addFields(
+            { name: '⏱ Duration',      value: fmtDuration(track.duration),                                inline: true },
+            { name: '👤 Requested by', value: track.requestedBy || 'Unknown',                             inline: true },
+            { name: '📋 Queue',        value: queueLength > 0 ? `${queueLength} track(s) up next` : 'Nothing queued', inline: true },
+        )
+        .setFooter(musicFooter());
+
+    if (track.uploader) embed.addFields({ name: '🎤 Artist', value: track.uploader, inline: true });
+    if (track.thumbnail) embed.setThumbnail(track.thumbnail);
+    return embed;
+}
+
+/**
+ * Added to Queue embed — used for /play when a track queues behind an active one.
+ */
+function buildAddedEmbed(track, position) {
+    const embed = new EmbedBuilder()
+        .setColor(COLOR_QUEUE_INFO)
+        .setAuthor({ name: '📥  Added to Queue' })
+        .setTitle(track.title)
+        .setURL(track.url)
+        .addFields(
+            { name: '⏱ Duration', value: fmtDuration(track.duration), inline: true },
+            { name: '📋 Position', value: `#${position} in queue`,     inline: true },
+        )
+        .setFooter(musicFooter());
+
+    if (track.uploader) embed.addFields({ name: '🎤 Artist', value: track.uploader, inline: true });
+    if (track.thumbnail) embed.setThumbnail(track.thumbnail);
+    return embed;
+}
+
+/**
+ * Queue list embed — used for /queue.
+ * Now-playing track shown at the top, up-next tracks as numbered list.
+ */
+function buildQueueEmbed(state) {
+    const lines = [];
+
+    if (state.current) {
+        const status = state.paused ? '⏸' : '▶️';
+        lines.push(`${status} **[${state.current.title}](${state.current.url})** \`${fmtDuration(state.current.duration)}\``);
+        lines.push(`↳ Requested by **${state.current.requestedBy || 'Unknown'}**`);
+    }
+
+    if (state.tracks.length > 0) {
+        lines.push('');
+        state.tracks.slice(0, 10).forEach((t, i) => {
+            lines.push(`**${i + 1}.** [${t.title}](${t.url}) \`${fmtDuration(t.duration)}\` — ${t.requestedBy || 'Unknown'}`);
+        });
+        if (state.tracks.length > 10) {
+            lines.push(`*…and ${state.tracks.length - 10} more.*`);
+        }
+    }
+
+    return new EmbedBuilder()
+        .setColor(COLOR_QUEUE_INFO)
+        .setTitle('📋  Queue')
+        .setDescription(lines.join('\n') || '*(empty)*')
+        .setFooter({ text: `${state.tracks.length} track(s) in queue  •  Birds Server Music` });
+}
+
+/**
+ * Simple action embed — pause, resume, skip, stop.
+ * Just a short description line; no fields needed.
+ */
+function buildActionEmbed(description) {
+    return new EmbedBuilder()
+        .setColor(COLOR_ACTION)
+        .setDescription(description)
+        .setFooter(musicFooter());
+}
+
+/**
+ * Error embed — replaces all plain ❌ text replies.
+ */
+function buildErrorEmbed(description) {
+    return new EmbedBuilder()
+        .setColor(COLOR_ERROR)
+        .setDescription(`❌  ${description}`)
+        .setFooter(musicFooter());
+}
+
 // ===== INTERNAL HELPERS =====
 
 function getOrCreateQueue(guildId) {
@@ -175,13 +298,6 @@ function destroyQueue(guildId) {
             stale.destroy();
         }
     } catch (_) {}
-}
-
-function fmtDuration(seconds) {
-    if (!seconds || isNaN(seconds)) return '?:??';
-    const m = Math.floor(seconds / 60);
-    const s = String(Math.floor(seconds % 60)).padStart(2, '0');
-    return `${m}:${s}`;
 }
 
 async function playNext(guildId) {
@@ -317,100 +433,102 @@ async function ensureConnected(guildId, voiceChannel) {
 }
 
 // ===== COMMAND LOGIC =====
+// Each command returns { embeds: [...] } or { embeds: [...], isError: true }
+// so handleMusicInteraction can pass it straight to editReply.
 
 async function cmdPlay(guildId, voiceChannel, query, requestedBy) {
-    if (!voiceChannel) return '❌ You must be in a voice channel to play music.';
+    if (!voiceChannel) {
+        return { embeds: [buildErrorEmbed('You must be in a voice channel to play music.')], isError: true };
+    }
 
     let trackInfo;
     try {
         const isUrl = /^https?:\/\//i.test(query.trim());
-        if (isUrl) {
-            trackInfo = await ytdlpInfo(query.trim());
-            trackInfo.requestedBy = requestedBy;
-        } else {
-            const result = await ytdlpSearch(query);
-            trackInfo = { ...result, requestedBy };
-        }
+        trackInfo = isUrl ? await ytdlpInfo(query.trim()) : await ytdlpSearch(query);
+        trackInfo.requestedBy = requestedBy;
     } catch (err) {
         console.error('[MUSIC] search/info error:', err.message);
-        return `❌ Could not find or load that track: ${err.message}`;
+        return { embeds: [buildErrorEmbed(`Could not find or load that track: ${err.message}`)], isError: true };
     }
 
     let state;
     try {
         state = await ensureConnected(guildId, voiceChannel);
     } catch (err) {
-        return `❌ ${err.message}`;
+        return { embeds: [buildErrorEmbed(err.message)], isError: true };
     }
 
     state.tracks.push(trackInfo);
 
     if (state.player.state.status === AudioPlayerStatus.Idle && state.current === null) {
         await playNext(guildId);
-        return `▶️ Now playing: **${trackInfo.title}** (${fmtDuration(trackInfo.duration)})`;
+        // After playNext shifts the track to current, queue length is state.tracks.length
+        return { embeds: [buildNowPlayingEmbed(trackInfo, state.tracks.length)] };
     }
 
-    return `📥 Added to queue: **${trackInfo.title}** (${fmtDuration(trackInfo.duration)}) — position #${state.tracks.length}`;
+    const position = state.tracks.length; // 1-based position since track was just pushed
+    return { embeds: [buildAddedEmbed(trackInfo, position)] };
 }
 
 function cmdSkip(guildId) {
     const state = queues.get(guildId);
-    if (!state || !state.current) return '❌ Nothing is playing right now.';
+    if (!state || !state.current) {
+        return { embeds: [buildErrorEmbed('Nothing is playing right now.')], isError: true };
+    }
     const skipped = state.current.title;
     state.player.stop();
-    return `⏭️ Skipped **${skipped}**.`;
+    return { embeds: [buildActionEmbed(`⏭️  Skipped **${skipped}**.`)] };
 }
 
 function cmdStop(guildId) {
     const state = queues.get(guildId);
-    if (!state) return '❌ The bot is not in a voice channel.';
+    if (!state) {
+        return { embeds: [buildErrorEmbed('The bot is not in a voice channel.')], isError: true };
+    }
     destroyQueue(guildId);
-    return '⏹️ Stopped playback and left the voice channel.';
+    return { embeds: [buildActionEmbed('⏹️  Stopped playback and left the voice channel.')] };
 }
 
 function cmdQueue(guildId) {
     const state = queues.get(guildId);
     if (!state || (!state.current && state.tracks.length === 0)) {
-        return '📭 The queue is empty.';
+        return { embeds: [buildActionEmbed('📭  The queue is empty.')] };
     }
-    const lines = [];
-    if (state.current) {
-        lines.push(`▶️ **Now playing:** ${state.current.title} (${fmtDuration(state.current.duration)}) — req. by ${state.current.requestedBy}`);
-    }
-    if (state.tracks.length > 0) {
-        lines.push('');
-        lines.push('**Up next:**');
-        state.tracks.slice(0, 10).forEach((t, i) => {
-            lines.push(`${i + 1}. ${t.title} (${fmtDuration(t.duration)}) — req. by ${t.requestedBy}`);
-        });
-        if (state.tracks.length > 10) lines.push(`…and ${state.tracks.length - 10} more.`);
-    }
-    return lines.join('\n');
+    return { embeds: [buildQueueEmbed(state)] };
 }
 
 function cmdPause(guildId) {
     const state = queues.get(guildId);
-    if (!state || !state.current) return '❌ Nothing is playing.';
-    if (state.paused) return '⏸️ Already paused.';
+    if (!state || !state.current) {
+        return { embeds: [buildErrorEmbed('Nothing is playing.')], isError: true };
+    }
+    if (state.paused) {
+        return { embeds: [buildActionEmbed(`⏸️  Already paused — **${state.current.title}**`)] };
+    }
     state.player.pause();
     state.paused = true;
-    return `⏸️ Paused **${state.current.title}**.`;
+    return { embeds: [buildActionEmbed(`⏸️  Paused **${state.current.title}**.`)] };
 }
 
 function cmdResume(guildId) {
     const state = queues.get(guildId);
-    if (!state || !state.current) return '❌ Nothing is playing.';
-    if (!state.paused) return '▶️ Already playing.';
+    if (!state || !state.current) {
+        return { embeds: [buildErrorEmbed('Nothing is playing.')], isError: true };
+    }
+    if (!state.paused) {
+        return { embeds: [buildActionEmbed(`▶️  Already playing — **${state.current.title}**`)] };
+    }
     state.player.unpause();
     state.paused = false;
-    return `▶️ Resumed **${state.current.title}**.`;
+    return { embeds: [buildActionEmbed(`▶️  Resumed **${state.current.title}**.`)] };
 }
 
 function cmdNowPlaying(guildId) {
     const state = queues.get(guildId);
-    if (!state || !state.current) return '🎵 Nothing is playing right now.';
-    const t = state.current;
-    return `🎵 Now playing: **${t.title}** (${fmtDuration(t.duration)}) — requested by ${t.requestedBy}`;
+    if (!state || !state.current) {
+        return { embeds: [buildActionEmbed('🎵  Nothing is playing right now.')] };
+    }
+    return { embeds: [buildNowPlayingEmbed(state.current, state.tracks.length)] };
 }
 
 // ===== SLASH COMMAND DEFINITIONS =====
@@ -442,8 +560,6 @@ const musicSlashCommandDefs = [
 
 // ===== MUSIC COMMAND SET =====
 // Used by handleMusicInteraction to gate-check before deferReply.
-// Any command name NOT in this set gets an immediate `return false`
-// so index.js can handle it (or defer it) without a double-defer crash.
 const MUSIC_COMMANDS = new Set([
     'play', 'skip', 'stop', 'queue', 'pause', 'resume', 'nowplaying',
 ]);
@@ -454,10 +570,8 @@ const MUSIC_COMMANDS = new Set([
 async function handleMusicInteraction(interaction) {
     const { commandName } = interaction;
 
-    // Not a music command — return false WITHOUT calling deferReply.
     if (!MUSIC_COMMANDS.has(commandName)) return false;
 
-    // Music command confirmed — we own the defer from here.
     await interaction.deferReply();
 
     const guildId      = interaction.guildId;
@@ -465,37 +579,46 @@ async function handleMusicInteraction(interaction) {
     const voiceChannel = member?.voice?.channel ?? null;
     const username     = interaction.user.username;
 
-    let reply;
+    let replyPayload;
     let isError = false;
+
     try {
         switch (commandName) {
             case 'play': {
                 const query = interaction.options.getString('query');
-                reply = await cmdPlay(guildId, voiceChannel, query, username);
+                replyPayload = await cmdPlay(guildId, voiceChannel, query, username);
                 break;
             }
-            case 'skip':       reply = cmdSkip(guildId);       break;
-            case 'stop':       reply = cmdStop(guildId);       break;
-            case 'queue':      reply = cmdQueue(guildId);      break;
-            case 'pause':      reply = cmdPause(guildId);      break;
-            case 'resume':     reply = cmdResume(guildId);     break;
-            case 'nowplaying': reply = cmdNowPlaying(guildId); break;
-            default:           reply = '❌ Unknown music command.'; break;
+            case 'skip':       replyPayload = cmdSkip(guildId);       break;
+            case 'stop':       replyPayload = cmdStop(guildId);       break;
+            case 'queue':      replyPayload = cmdQueue(guildId);      break;
+            case 'pause':      replyPayload = cmdPause(guildId);      break;
+            case 'resume':     replyPayload = cmdResume(guildId);     break;
+            case 'nowplaying': replyPayload = cmdNowPlaying(guildId); break;
+            default:
+                replyPayload = { embeds: [buildErrorEmbed('Unknown music command.')] };
+                isError = true;
+                break;
         }
     } catch (err) {
         console.error('[MUSIC SLASH ERROR]', err);
         logSystemEvent('MUSIC_ERROR', 'ERROR', 'music', `/${commandName} failed: ${err.message}`, err);
-        reply = `❌ Music error: ${err.message}`;
+        replyPayload = { embeds: [buildErrorEmbed(`Music error: ${err.message}`)] };
         isError = true;
     }
 
-    await interaction.editReply(reply);
+    if (replyPayload.isError) isError = true;
 
-    // Log every music command to the dashboard
+    await interaction.editReply({ embeds: replyPayload.embeds });
+
+    // Log every music command to the dashboard (plain text summary for internal logging)
     const input = commandName === 'play'
         ? (interaction.options.getString('query') ?? '')
         : '';
-    logCommand('discord', username, `/${commandName}`, input, reply.substring(0, 200), isError);
+    const logSummary = replyPayload.embeds[0]?.data?.description
+        ?? replyPayload.embeds[0]?.data?.title
+        ?? `/${commandName} executed`;
+    logCommand('discord', username, `/${commandName}`, input, logSummary.substring(0, 200), isError);
 
     return true;
 }
