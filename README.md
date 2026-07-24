@@ -210,6 +210,8 @@ Two places now that commands are modular:
 - Google AI API Key
 - EFT API Key *(optional)*
 - Steam Web API Key *(optional, for `/cs2stats`)*
+- CSGoSkins API Key *(optional, for CS2 skin price data)*
+- CSFloat API Key *(optional, for `/cs2float`)*
 
 ### Steps
 
@@ -235,26 +237,25 @@ Two places now that commands are modular:
    ```
 
 4. **Create `.env`**
-   ```env
-   DISCORD_TOKEN=your_discord_bot_token
-   DISCORD_CLIENT_ID=your_discord_application_id
-   DISCORD_GUILD_ID=your_discord_server_id
-   TWITCH_BOT_USERNAME=your_twitch_bot_username
-   TWITCH_OAUTH_TOKEN=oauth:your_twitch_token
-   TWITCH_CHANNEL=your_channel_name
-   GOOGLE_GENERATIVE_AI_API_KEY=your_google_ai_api_key
-   EFT_API_KEY=your_eft_api_key
-   STEAM_API_KEY=your_steam_api_key
+
+   Copy the example file and fill in your values:
+   ```bash
+   cp .env.example .env
    ```
 
-   | Variable | Where to get it |
-   |---|---|
-   | `DISCORD_TOKEN` | [Discord Developer Portal](https://discord.com/developers/applications) → Bot → Token |
-   | `DISCORD_CLIENT_ID` | Developer Portal → General Information → Application ID |
-   | `DISCORD_GUILD_ID` | Discord → Server Settings → Widget, or right-click your server icon → Copy Server ID (enable Developer Mode first) |
-   | `TWITCH_OAUTH_TOKEN` | [twitchapps.com/tmi](https://twitchapps.com/tmi) |
-   | `GOOGLE_GENERATIVE_AI_API_KEY` | [aistudio.google.com](https://aistudio.google.com) |
-   | `STEAM_API_KEY` | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) |
+   | Variable | Required | Where to get it |
+   |---|---|---|
+   | `DISCORD_TOKEN` | ✅ | [Discord Developer Portal](https://discord.com/developers/applications) → Bot → Token |
+   | `DISCORD_CLIENT_ID` | ✅ | Developer Portal → General Information → Application ID |
+   | `DISCORD_GUILD_ID` | ✅ | Discord → Server Settings → Widget, or right-click your server icon → Copy Server ID (enable Developer Mode first) |
+   | `GOOGLE_GENERATIVE_AI_API_KEY` | ✅ | [aistudio.google.com](https://aistudio.google.com) |
+   | `TWITCH_BOT_USERNAME` | ✅ | Your Twitch bot account username |
+   | `TWITCH_OAUTH_TOKEN` | ✅ | [twitchapps.com/tmi](https://twitchapps.com/tmi) |
+   | `TWITCH_CHANNEL` | ✅ | Your Twitch channel name |
+   | `EFT_API_KEY` | Optional | [eft-api.tech](https://eft-api.tech) — required for `/player` |
+   | `STEAM_API_KEY` | Optional | [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) — required for `/cs2stats` |
+   | `CSGOSKINS_API_KEY` | Optional | Required for CS2 skin price lookups via `/cs2price` |
+   | `CSFLOAT_API_KEY` | Optional | [csfloat.com](https://csfloat.com) — required for `/cs2float` |
 
 5. **Start the bot**
    ```bash
@@ -338,26 +339,27 @@ The bot uses a **modular architecture**. `index.js` is a thin event router — a
 
 ```
 Birds-Server-AI-Bot/
-├── index.js               # Discord client, slash command registration, event routing
-├── dashboard-server.js    # Express API + dashboard frontend server
-├── music.js               # Music slash command handler (deferReply, routing)
-├── music-player.js        # Voice connection (DAVE E2EE), yt-dlp, ffmpeg queue engine
-├── memory.js              # SQLite conversation storage, context selection, auto-cleanup
-├── database.js            # SQLite init, log tables, CDN URL tracking
-├── logger.js              # Structured console + dashboard log emitter
-├── personas.js            # AI personality definitions
-├── persona-manager.js     # Persona state, switching logic
+├── index.js                        # Discord client, slash command registration, event routing
+├── dashboard-server.js             # Express API + dashboard frontend server
+├── music.js                        # Music slash command handler (deferReply, routing) — ACTIVE
+├── music-player.js                 # Voice connection (DAVE E2EE), yt-dlp, ffmpeg queue engine — ACTIVE
+├── music-player.deprecated.js      # Previous music rewrite — REFERENCE ONLY, not loaded at runtime
+├── memory.js                       # SQLite conversation storage, context selection, auto-cleanup
+├── database.js                     # SQLite init, log tables, CDN URL tracking
+├── logger.js                       # Structured console + dashboard log emitter
+├── personas.js                     # AI personality definitions
+├── persona-manager.js              # Persona state, switching logic
 ├── commands/
-│   ├── utility.js         # /ask, /image, /meme, /code, /clearmemory, /persona, /personas
-│   ├── admin.js           # /pzrestart (Birds Server specific)
-│   ├── cs2.js             # All CS2 commands
-│   └── tarkov.js          # All Tarkov commands
+│   ├── utility.js                  # /ask, /image, /meme, /code, /clearmemory, /persona, /personas
+│   ├── admin.js                    # /pzrestart (Birds Server specific)
+│   ├── cs2.js                      # All CS2 commands
+│   └── tarkov.js                   # All Tarkov commands
 ├── services/
-│   ├── ai.js              # Gemini AI text + image generation
-│   ├── image.js           # Image generation rate limiting + Replicate integration
-│   └── twitch.js          # Twitch IRC via tmi.js
+│   ├── ai.js                       # Gemini AI text + image generation
+│   ├── image.js                    # Image generation rate limiting + Replicate integration
+│   └── twitch.js                   # Twitch IRC via tmi.js
 └── public/
-    └── dashboard.html     # Dashboard frontend
+    └── dashboard.html              # Dashboard frontend
 ```
 
 ### Module Responsibilities
@@ -367,6 +369,7 @@ Birds-Server-AI-Bot/
 | `index.js` | Discord/Twitch client setup, slash command registration, event routing to modules |
 | `music.js` | Owns all music slash command interaction handling; only place that calls `deferReply` for music |
 | `music-player.js` | Voice connection lifecycle (DAVE E2EE), yt-dlp search/stream, ffmpeg pipeline, per-guild queue |
+| `music-player.deprecated.js` | Previous music rewrite — kept for reference only, not loaded at runtime |
 | `commands/utility.js` | AI, image gen, meme, persona, memory utility commands |
 | `commands/admin.js` | Server-specific admin commands (PZ restart) |
 | `commands/cs2.js` | All CS2 slash commands and Steam API calls |
