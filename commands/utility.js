@@ -1,8 +1,6 @@
 // commands/utility.js
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
-const fs   = require('fs');
-const path = require('path');
-const os   = require('os');
+const https = require('https');
 const { addToMemory, clearChannelMemory } = require('../memory.js');
 const { logCommand, logSystemEvent } = require('../logger.js');
 const { getCurrentPersona, getPersonaErrorMessage, setPersona, getAvailablePersonas } = require('../persona-manager.js');
@@ -84,12 +82,9 @@ function extractImagePrompt(messageContent) {
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024; // 5MB
 
-// Derive a safe file extension from a MIME type string.
-// Gemini returns types like 'image/png', 'image/jpeg', 'image/webp'.
 function mimeToExt(mimeType) {
     if (!mimeType) return 'png';
     const sub = mimeType.split('/')[1] || 'png';
-    // Normalise 'jpeg' → 'jpg' for friendlier filenames
     return sub === 'jpeg' ? 'jpg' : sub;
 }
 
@@ -130,6 +125,57 @@ async function getImageAttachments(message) {
         }
     }
     return images;
+}
+
+// ===== NATIVE HTTPS MULTIPART UPLOAD =====
+// Posts a file buffer directly to a Discord webhook URL using Node's built-in
+// https module. This completely bypasses undici and its connection pool, which
+// is the root cause of UND_ERR_SOCKET on large file uploads after a long-lived
+// keep-alive connection is half-closed by Discord's CDN.
+
+function postImageViaWebhook(webhookUrl, imageBuffer, filename, mimeType) {
+    return new Promise((resolve, reject) => {
+        const CRLF    = '\r\n';
+        const boundary = `boundary${Date.now()}${Math.random().toString(36).slice(2)}`;
+
+        const preamble = Buffer.from(
+            `--${boundary}${CRLF}` +
+            `Content-Disposition: form-data; name="files[0]"; filename="${filename}"${CRLF}` +
+            `Content-Type: ${mimeType}${CRLF}${CRLF}`
+        );
+        const epilogue = Buffer.from(`${CRLF}--${boundary}--${CRLF}`);
+        const body     = Buffer.concat([preamble, imageBuffer, epilogue]);
+
+        const url    = new URL(webhookUrl);
+        const options = {
+            hostname: url.hostname,
+            path:     url.pathname + url.search,
+            method:   'POST',
+            headers:  {
+                'Content-Type':   `multipart/form-data; boundary=${boundary}`,
+                'Content-Length': body.length,
+            },
+            // Force a new socket — never reuse a pooled connection.
+            agent: new https.Agent({ keepAlive: false }),
+        };
+
+        const req = https.request(options, res => {
+            const chunks = [];
+            res.on('data', chunk => chunks.push(chunk));
+            res.on('end', () => {
+                const text = Buffer.concat(chunks).toString();
+                if (res.statusCode >= 200 && res.statusCode < 300) {
+                    resolve(text);
+                } else {
+                    reject(new Error(`Discord webhook returned ${res.statusCode}: ${text.substring(0, 200)}`));
+                }
+            });
+        });
+
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+    });
 }
 
 // ===== DISCORD SAFE SEND UTILITIES =====
@@ -287,40 +333,36 @@ const commands = {
                 return;
             }
 
-            const ext     = mimeToExt(result.mimeType);
-            const tmpFile = path.join(os.tmpdir(), `imagine_${Date.now()}_${interaction.user.id}.${ext}`);
+            const ext      = mimeToExt(result.mimeType);
+            const filename = `generated.${ext}`;
 
-            // Write the buffer to a temp file so we can pass fs.createReadStream
-            // to AttachmentBuilder. A file-backed ReadStream forces undici to open
-            // a brand-new TLS socket for the multipart POST instead of reusing the
-            // stale keep-alive connection that Discord's CDN closed server-side
-            // between deferReply and the upload. Readable.from(buffer) does NOT
-            // escape the connection pool — only a file descriptor does.
-            await fs.promises.writeFile(tmpFile, result.buffer);
+            // Acknowledge the interaction immediately via Discord.js (text only).
+            // This must happen before the file upload or Discord shows
+            // "interaction failed" after 3 seconds.
+            await interaction.editReply(`🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`);
+
+            // Build the interaction followUp webhook URL and POST the image
+            // using Node's native https module. This completely bypasses undici
+            // and its connection pool. The root cause of all previous failures
+            // (UND_ERR_SOCKET / AbortError) is undici reusing a keep-alive
+            // TLS socket that Discord's CDN has already half-closed. A native
+            // https.request with keepAlive:false opens a fresh OS-level socket
+            // that has zero connection affinity with the bot's REST client.
+            const webhookUrl = `https://discord.com/api/v10/webhooks/${interaction.applicationId}/${interaction.token}`;
 
             try {
-                const attachment = new AttachmentBuilder(
-                    fs.createReadStream(tmpFile),
-                    { name: `generated.${ext}` }
-                );
-
-                // editReply first (text only) so Discord marks the interaction
-                // as responded and doesn't show "interaction failed".
-                await interaction.editReply(`🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`);
-
-                // followUp carries the file on a completely independent webhook
-                // POST, further decoupling the file upload from the interaction
-                // reply lifecycle.
-                await interaction.followUp({ files: [attachment] });
-
-            } finally {
-                // Clean up temp file regardless of success or failure.
-                fs.unlink(tmpFile, err => {
-                    if (err) console.warn(`[Image] Failed to delete temp file ${tmpFile}:`, err.message);
-                });
+                await postImageViaWebhook(webhookUrl, result.buffer, filename, result.mimeType);
+                console.log(`[Image] Upload complete — ${result.buffer.length} bytes via native https`);
+            } catch (uploadErr) {
+                console.error('[Image] Native https upload failed:', uploadErr.message);
+                logSystemEvent('IMAGE_UPLOAD_ERROR', 'ERROR', 'image',
+                    `Native upload failed for ${username}: ${uploadErr.message}`, uploadErr);
+                // Best-effort: try to tell the user something went wrong.
+                await interaction.followUp('❌ Image was generated but failed to upload. Please try again.').catch(() => {});
+                return;
             }
 
-            logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes, ${result.mimeType}]`);
+            logCommand('discord', username, '/imagine', cleanPrompt, `[image uploaded — ${result.buffer.length} bytes, ${result.mimeType}]`);
         }
     },
 };
