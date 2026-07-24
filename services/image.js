@@ -1,15 +1,15 @@
 // services/image.js
-const { generateText } = require('ai');
-const { google } = require('@ai-sdk/google');
-const Replicate = require('replicate');
-const { logCommand, logSystemEvent } = require('../logger.js');
+const { logSystemEvent } = require('../logger.js');
 const { generateTextWithFallback } = require('./ai.js');
 
 // ===== CONFIG =====
-const IMAGE_RATE_LIMIT_MAX      = 3;   // max generates per window
-const IMAGE_RATE_LIMIT_WINDOW   = 60;  // seconds
-const IMAGE_MAX_PROMPT_LENGTH   = 500;
-const IMAGE_MODEL               = 'black-forest-labs/flux-schnell';
+const IMAGE_RATE_LIMIT_MAX    = 3;
+const IMAGE_RATE_LIMIT_WINDOW = 60;  // seconds
+const IMAGE_MAX_PROMPT_LENGTH = 500;
+const IMAGE_MODEL             = 'gemini-3.1-flash-image';
+const IMAGE_RETRY_MAX         = 3;
+const IMAGE_RETRY_BASE_MS     = 2000;
+const RETRYABLE_STATUS_CODES  = new Set([429, 500, 502, 503, 504]);
 
 // ===== RATE LIMIT STORE =====
 // Map<userId, { count: number, windowStart: number }>
@@ -47,26 +47,21 @@ const NSFW_TERMS = [
 ];
 
 const NSFW_REPLACEMENTS = {
-    'nude':      'clothed person',
-    'naked':     'clothed person',
-    'nsfw':      'appropriate',
-    'explicit':  'tasteful',
-    'gore':      'peaceful scene',
-    'violence':  'calm scene',
+    'nude':     'clothed person',
+    'naked':    'clothed person',
+    'nsfw':     'appropriate',
+    'explicit': 'tasteful',
+    'gore':     'peaceful scene',
+    'violence': 'calm scene',
 };
 
 function sanitizeImagePrompt(prompt) {
     let sanitized = prompt.substring(0, IMAGE_MAX_PROMPT_LENGTH);
-
     for (const term of NSFW_TERMS) {
         const replacement = NSFW_REPLACEMENTS[term] || '';
         sanitized = sanitized.replace(new RegExp(`\\b${term}\\b`, 'gi'), replacement);
     }
-
-    // Collapse any double spaces from removals
-    sanitized = sanitized.replace(/\s{2,}/g, ' ').trim();
-
-    return sanitized;
+    return sanitized.replace(/\s{2,}/g, ' ').trim();
 }
 
 // ===== RATE LIMIT CHECK =====
@@ -75,7 +70,6 @@ function checkImageRateLimit(userId) {
     const data = imageRateLimitStore.get(userId);
 
     if (!data || (now - data.windowStart) > IMAGE_RATE_LIMIT_WINDOW * 1000) {
-        // Fresh window
         imageRateLimitStore.set(userId, { count: 1, windowStart: now });
         return { allowed: true, remaining: IMAGE_RATE_LIMIT_MAX - 1 };
     }
@@ -97,7 +91,7 @@ async function enhanceImagePrompt(rawPrompt) {
             messages: [
                 {
                     role: 'system',
-                    content: `You are an expert at writing image generation prompts for Flux (a diffusion model).
+                    content: `You are an expert at writing image generation prompts for Gemini image generation.
 Take the user's simple request and expand it into a rich, detailed prompt.
 Rules:
 - Add art style, lighting, mood, camera angle if they make sense
@@ -111,13 +105,19 @@ Rules:
         console.log(`[Image] Prompt enhanced: "${rawPrompt}" → "${text.substring(0, 80)}..."`);
         return text.trim();
     } catch (error) {
-        // If enhancement fails, just use the raw prompt — don't block image generation
         console.warn('[Image] Prompt enhancement failed, using raw prompt:', error.message);
         return rawPrompt;
     }
 }
 
+// ===== SLEEP HELPER =====
+function sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // ===== CORE IMAGE GENERATION =====
+// Uses GOOGLE_GENERATIVE_AI_API_KEY via the Gemini generateContent REST API.
+// This matches the original implementation from the pre-refactor index.js.
 async function generateImage(prompt, userId = 'unknown', options = {}) {
     const { enhance = true, platform = 'discord' } = options;
 
@@ -139,59 +139,94 @@ async function generateImage(prompt, userId = 'unknown', options = {}) {
     // 3. Optionally enhance the prompt via AI
     const finalPrompt = enhance ? await enhanceImagePrompt(sanitized) : sanitized;
 
-    // 4. Generate
-    try {
-        console.log(`[Image] Generating for ${userId} on ${platform} — prompt: "${finalPrompt.substring(0, 80)}..."`);
-        logSystemEvent('IMAGE_GENERATE', 'INFO', 'image', `Generating image for ${userId}: "${finalPrompt.substring(0, 80)}"`);
+    // 4. Generate via Gemini REST API
+    const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+    if (!apiKey) {
+        logSystemEvent('IMAGE_ERROR', 'ERROR', 'image', 'GOOGLE_GENERATIVE_AI_API_KEY is not set');
+        return { success: false, error: '🔑 Image generation is not configured. Contact the server admin.' };
+    }
 
-        const replicate = new Replicate({ auth: process.env.REPLICATE_API_TOKEN });
+    const url  = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent?key=${apiKey}`;
+    const body = {
+        contents: [{ parts: [{ text: finalPrompt }] }],
+        generationConfig: { responseModalities: ['TEXT', 'IMAGE'] },
+    };
 
-        const output = await replicate.run(IMAGE_MODEL, {
-            input: {
-                prompt: finalPrompt,
-                num_outputs: 1,
-                output_format: 'webp',
-                output_quality: 80,
-            },
-        });
+    let lastError = null;
 
-        const imageUrl = Array.isArray(output) ? output[0] : output;
-
-        if (!imageUrl) {
-            throw new Error('Replicate returned no output URL');
+    for (let attempt = 1; attempt <= IMAGE_RETRY_MAX; attempt++) {
+        if (attempt > 1) {
+            const waitMs = IMAGE_RETRY_BASE_MS * Math.pow(2, attempt - 2);
+            console.log(`[Image] Retry ${attempt}/${IMAGE_RETRY_MAX} — waiting ${waitMs}ms`);
+            await sleep(waitMs);
         }
 
-        // Fetch the image as a buffer for Discord attachment
-        const response = await fetch(imageUrl);
-        if (!response.ok) throw new Error(`Failed to fetch image buffer: ${response.status}`);
-        const buffer = Buffer.from(await response.arrayBuffer());
+        try {
+            console.log(`[Image] Generating for ${userId} on ${platform} (attempt ${attempt}) — "${finalPrompt.substring(0, 80)}..."`);
+            logSystemEvent('IMAGE_GENERATE', 'INFO', 'image', `Generating image for ${userId}: "${finalPrompt.substring(0, 80)}"`);
 
-        console.log(`[Image] Success — ${buffer.length} bytes`);
-        logSystemEvent('IMAGE_SUCCESS', 'INFO', 'image', `Image generated for ${userId} — ${buffer.length} bytes`);
+            const res = await fetch(url, {
+                method:  'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body:    JSON.stringify(body),
+            });
 
-        return {
-            success:       true,
-            buffer,
-            imageUrl,
-            finalPrompt,
-            originalPrompt: prompt,
-            remaining:     rateCheck.remaining,
-        };
+            if (!res.ok) {
+                const errText = await res.text();
+                if (RETRYABLE_STATUS_CODES.has(res.status)) {
+                    lastError = new Error(`HTTP ${res.status}: ${errText.substring(0, 120)}`);
+                    console.warn(`[Image] Retryable error on attempt ${attempt}:`, lastError.message);
+                    continue;
+                }
+                throw new Error(`HTTP ${res.status}: ${errText.substring(0, 200)}`);
+            }
 
-    } catch (error) {
-        console.error('[Image Generation Error]', error);
-        logSystemEvent('IMAGE_ERROR', 'ERROR', 'image', `Image generation failed for ${userId}: ${error.message}`, error);
+            const data = await res.json();
+            const parts = data?.candidates?.[0]?.content?.parts || [];
+            const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
 
-        // Friendly error messages based on failure type
-        let friendlyError = '❌ Image generation failed. Try again in a moment.';
-        const msg = (error.message || '').toLowerCase();
-        if (msg.includes('nsfw') || msg.includes('safety'))    friendlyError = '🚫 That prompt triggered the content filter. Try describing something different.';
-        if (msg.includes('rate limit') || msg.includes('429')) friendlyError = '⏳ Replicate is rate limiting us. Try again in ~30 seconds.';
-        if (msg.includes('timeout') || msg.includes('timed'))  friendlyError = '⌛ Image generation timed out. Try a simpler prompt.';
-        if (msg.includes('token') || msg.includes('auth'))     friendlyError = '🔑 API authentication error. Contact the server admin.';
+            if (!imagePart) {
+                throw new Error('Gemini response contained no image part');
+            }
 
-        return { success: false, error: friendlyError };
+            const buffer = Buffer.from(imagePart.inlineData.data, 'base64');
+            const mimeType = imagePart.inlineData.mimeType;
+
+            console.log(`[Image] Success — ${buffer.length} bytes (${mimeType})`);
+            logSystemEvent('IMAGE_SUCCESS', 'INFO', 'image', `Image generated for ${userId} — ${buffer.length} bytes`);
+
+            return {
+                success:        true,
+                buffer,
+                mimeType,
+                finalPrompt,
+                originalPrompt: prompt,
+                remaining:      rateCheck.remaining,
+            };
+
+        } catch (error) {
+            lastError = error;
+            const msg = (error.message || '').toLowerCase();
+            const isRetryable = RETRYABLE_STATUS_CODES.has(parseInt(msg.match(/\d{3}/)?.[0])) ||
+                                msg.includes('fetch failed') ||
+                                msg.includes('network');
+            if (!isRetryable || attempt === IMAGE_RETRY_MAX) break;
+            console.warn(`[Image] Attempt ${attempt} failed, will retry:`, error.message);
+        }
     }
+
+    // All attempts failed
+    console.error('[Image Generation Error]', lastError);
+    logSystemEvent('IMAGE_ERROR', 'ERROR', 'image', `Image generation failed for ${userId} after ${IMAGE_RETRY_MAX} attempts: ${lastError?.message}`, lastError);
+
+    let friendlyError = '❌ Image generation failed. Try again in a moment.';
+    const msg = (lastError?.message || '').toLowerCase();
+    if (msg.includes('nsfw') || msg.includes('safety'))    friendlyError = '🚫 That prompt triggered the content filter. Try describing something differently.';
+    if (msg.includes('rate limit') || msg.includes('429')) friendlyError = '⏳ Too many requests to the image API. Try again in ~30 seconds.';
+    if (msg.includes('timeout') || msg.includes('timed'))  friendlyError = '⌛ Image generation timed out. Try a simpler prompt.';
+    if (msg.includes('auth') || msg.includes('key'))       friendlyError = '🔑 API authentication error. Contact the server admin.';
+
+    return { success: false, error: friendlyError };
 }
 
 // ===== EXPORTS =====
