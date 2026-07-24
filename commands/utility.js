@@ -1,5 +1,6 @@
 // commands/utility.js
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
+const { Readable } = require('stream');
 const { addToMemory, clearChannelMemory } = require('../memory.js');
 const { logCommand, logSystemEvent } = require('../logger.js');
 const { getCurrentPersona, getPersonaErrorMessage, setPersona, getAvailablePersonas } = require('../persona-manager.js');
@@ -285,15 +286,23 @@ const commands = {
             }
 
             // Derive the correct extension from the MIME type Gemini returned.
-            // Gemini returns inline base64 with a mimeType (e.g. 'image/png');
-            // hardcoding 'webp' caused Discord to abort the upload.
-            const ext        = mimeToExt(result.mimeType);
-            const attachment = new AttachmentBuilder(result.buffer, { name: `generated.${ext}` });
+            const ext = mimeToExt(result.mimeType);
 
-            await interaction.editReply({
-                content: `🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`,
-                files:   [attachment],
-            });
+            // FIX: Wrap the buffer in a Readable stream so undici streams the
+            // upload instead of needing to know Content-Length up-front. This
+            // prevents UND_ERR_SOCKET on large (~750 KB) payloads.
+            const stream     = Readable.from(result.buffer);
+            const attachment = new AttachmentBuilder(stream, { name: `generated.${ext}` });
+
+            // FIX: Use followUp (a fresh webhook POST) for the file upload instead
+            // of editReply, which reuses the stale undici connection that Discord
+            // closes server-side between deferReply and the upload arriving. This
+            // eliminates the AbortError / SocketError at the editReply call site.
+            // The editReply below immediately acknowledges the interaction so
+            // Discord does not show "interaction failed" while the file uploads.
+            await interaction.editReply(`🎨 **Prompt:** ${result.finalPrompt.substring(0, 200)}`);
+
+            await interaction.followUp({ files: [attachment] });
 
             logCommand('discord', username, '/imagine', cleanPrompt, `[image generated — ${result.buffer.length} bytes, ${result.mimeType}]`);
         }
