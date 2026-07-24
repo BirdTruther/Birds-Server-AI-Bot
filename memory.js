@@ -1,4 +1,5 @@
 const { db } = require('./database.js');
+const { logSystemEvent } = require('./logger.js');
 
 // Create conversation memory table
 try {
@@ -22,6 +23,7 @@ try {
   console.log('[MEMORY] Conversation memory tables initialized');
 } catch (err) {
   console.error('[MEMORY] Table creation error:', err);
+  logSystemEvent('MEMORY_INIT', 'ERROR', 'memory', `Table creation failed: ${err.message}`, err);
 }
 
 // Configuration
@@ -51,6 +53,7 @@ function addToMemory(platform, channelId, username, message, isBotResponse = fal
     });
   } catch (err) {
     console.error('[MEMORY] Store error:', err);
+    logSystemEvent('MEMORY_STORE', 'ERROR', 'memory', `Failed to store message for ${platform}:${channelId}: ${err.message}`, err);
   }
 }
 
@@ -95,6 +98,7 @@ function getSmartContext(platform, channelId, currentUsername) {
     return recentContext.join('\n');
   } catch (err) {
     console.error('[MEMORY] Context retrieval error:', err);
+    logSystemEvent('MEMORY_CONTEXT', 'ERROR', 'memory', `Context retrieval failed for ${platform}:${channelId}: ${err.message}`, err);
     return 'Error loading conversation history.';
   }
 }
@@ -112,6 +116,7 @@ function getConversationStats(platform, channelId) {
     return result.count;
   } catch (err) {
     console.error('[MEMORY] Stats error:', err);
+    logSystemEvent('MEMORY_STATS', 'ERROR', 'memory', `Stats query failed for ${platform}:${channelId}: ${err.message}`, err);
     return 0;
   }
 }
@@ -134,10 +139,13 @@ function cleanupOldMemory(platform, channelId) {
 
     if (count > CONFIG.CLEANUP_AFTER_MESSAGES) {
       const result = cleanupOldMessages.run(platform, channelId, CONFIG.CLEANUP_AFTER_MESSAGES);
-      console.log(`[MEMORY] Cleaned up ${result.changes} old messages for ${platform}:${channelId}`);
+      const msg = `Channel cleanup completed — ${result.changes} old messages removed for ${platform}:${channelId}`;
+      console.log(`[MEMORY] ${msg}`);
+      logSystemEvent('MEMORY_CLEANUP', 'INFO', 'memory', msg);
     }
   } catch (err) {
     console.error('[MEMORY] Cleanup error:', err);
+    logSystemEvent('MEMORY_CLEANUP', 'ERROR', 'memory', `Channel cleanup failed for ${platform}:${channelId}: ${err.message}`, err);
   }
 }
 
@@ -149,10 +157,13 @@ function clearChannelMemory(platform, channelId) {
       WHERE platform = @platform AND channel_id = @channel_id
     `).run({ platform, channel_id: channelId });
 
-    console.log(`[MEMORY] Cleared ${result.changes} messages from ${platform}:${channelId}`);
+    const msg = `Cleared ${result.changes} messages from ${platform}:${channelId}`;
+    console.log(`[MEMORY] ${msg}`);
+    logSystemEvent('MEMORY_CLEAR', 'INFO', 'memory', msg);
     return result.changes;
   } catch (err) {
     console.error('[MEMORY] Clear error:', err);
+    logSystemEvent('MEMORY_CLEAR', 'ERROR', 'memory', `Clear failed for ${platform}:${channelId}: ${err.message}`, err);
     return 0;
   }
 }
@@ -167,9 +178,16 @@ const purgeAgedMessages = db.prepare(`
 setInterval(() => {
   try {
     const result = purgeAgedMessages.run();
-    console.log(`[MEMORY] Periodic cleanup completed — removed ${result.changes} aged messages`);
+    const deleted = result.changes;
+    const severity = deleted === 0 ? 'WARNING' : 'INFO';
+    const msg = deleted === 0
+      ? 'Periodic cleanup ran — 0 rows deleted (nothing aged out yet)'
+      : `Periodic cleanup completed — ${deleted} aged messages removed`;
+    console.log(`[MEMORY] ${msg}`);
+    logSystemEvent('MEMORY_PERIODIC_CLEANUP', severity, 'memory', msg);
   } catch (err) {
     console.error('[MEMORY] Periodic cleanup error:', err);
+    logSystemEvent('MEMORY_PERIODIC_CLEANUP', 'ERROR', 'memory', `Periodic cleanup failed: ${err.message}`, err);
   }
 }, 60 * 60 * 1000); // Every hour
 
