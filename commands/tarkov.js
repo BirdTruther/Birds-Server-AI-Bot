@@ -25,8 +25,8 @@ async function getTarkovPrice(itemName) {
         const data = await request(TARKOV_API_URL, query, { name: itemName });
         if (data.itemsByName?.length > 0) {
             const item = data.itemsByName[0];
-            const fleaPrice = item.avg24hPrice ? `₽${item.avg24hPrice.toLocaleString()}` : 'N/A';
-            const traders = item.sellFor?.slice(0, 2).map(s => `${s.source}:₽${s.price.toLocaleString()}`).join(', ') || 'None';
+            const fleaPrice = item.avg24hPrice ? `\u20bd${item.avg24hPrice.toLocaleString()}` : 'N/A';
+            const traders = item.sellFor?.slice(0, 2).map(s => `${s.source}:\u20bd${s.price.toLocaleString()}`).join(', ') || 'None';
             let stats = '';
             if (item.properties?.penetrationPower) stats = ` | PEN:${item.properties.penetrationPower} DMG:${item.properties.damage}`;
             const wikiLink = item.link ? ` | ${item.link}` : '';
@@ -36,6 +36,9 @@ async function getTarkovPrice(itemName) {
     } catch (error) {
         console.error('[Tarkov Price Error]', error);
         logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Price lookup failed for ${itemName}`, error);
+        if (error?.response?.status === 503) {
+            return `\u26a0\ufe0f tarkov.dev is currently unavailable. Try again in a few minutes.`;
+        }
         return `Error fetching: ${itemName}`;
     }
 }
@@ -62,7 +65,7 @@ async function getBestAmmo(searchCaliber) {
             const bestAmmo = matchingAmmo.sort((a, b) =>
                 (b.properties.penetrationPower || 0) - (a.properties.penetrationPower || 0)
             )[0];
-            const fleaPrice = bestAmmo.avg24hPrice ? `₽${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
+            const fleaPrice = bestAmmo.avg24hPrice ? `\u20bd${bestAmmo.avg24hPrice.toLocaleString()}` : 'N/A';
             const traderSource = bestAmmo.sellFor?.[0]?.source || 'Flea';
             const cleanTrader = traderSource === 'flea-market' ? 'Flea' : traderSource.replace(/-/g, ' L');
             return `${bestAmmo.name} | PEN:${bestAmmo.properties.penetrationPower} DMG:${bestAmmo.properties.damage} | ${fleaPrice} (${cleanTrader})`;
@@ -71,6 +74,9 @@ async function getBestAmmo(searchCaliber) {
     } catch (error) {
         console.error('[Best Ammo Error]', error);
         logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Best ammo lookup failed for ${searchCaliber}`, error);
+        if (error?.response?.status === 503) {
+            return `\u26a0\ufe0f tarkov.dev is currently unavailable. Try again in a few minutes.`;
+        }
         return `Error: ${searchCaliber}`;
     }
 }
@@ -93,6 +99,9 @@ async function getTraderResets() {
     } catch (error) {
         console.error('[Trader Resets Error]', error);
         logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', 'Trader resets lookup failed', error);
+        if (error?.response?.status === 503) {
+            return `\u26a0\ufe0f tarkov.dev is currently unavailable. Try again in a few minutes.`;
+        }
         return 'Error fetching traders';
     }
 }
@@ -114,6 +123,9 @@ async function getMapInfo(mapName) {
     } catch (error) {
         console.error('[Map Info Error]', error);
         logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Map info lookup failed for ${mapName}`, error);
+        if (error?.response?.status === 503) {
+            return `\u26a0\ufe0f tarkov.dev is currently unavailable. Try again in a few minutes.`;
+        }
         return `Error: ${mapName}`;
     }
 }
@@ -134,6 +146,9 @@ async function getPlayerStats(playerName) {
     } catch (error) {
         console.error('[Player Stats Error]', error);
         logSystemEvent('TARKOV_ERROR', 'WARNING', 'tarkov', `Player stats lookup failed for ${playerName}`, error);
+        if (error?.response?.status === 503) {
+            return `\u26a0\ufe0f tarkov.dev is currently unavailable. Try again in a few minutes.`;
+        }
         return `Error fetching player: ${playerName}`;
     }
 }
