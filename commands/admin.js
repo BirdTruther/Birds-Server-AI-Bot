@@ -28,6 +28,7 @@ async function pickRandomPlayers({ guild, count = 5, voiceOnly = false, filterRo
 }
 
 // ===== SLASH COMMAND DEFINITIONS =====
+const commands = {
     pickplayers: {
         data: new SlashCommandBuilder()
             .setName('pickplayers')
