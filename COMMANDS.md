@@ -64,16 +64,6 @@ You can also **mention** the bot or **reply** to a bot message to chat with it d
 
 ---
 
-## Server Admin
-
-| Command | Description |
-|---|---|
-| `/pzrestart` | Trigger a Project Zomboid server restart |
-
-> **Birds Server specific.** See [Removing /pzrestart](SETUP.md#removing-pzrestart) if you don't run a PZ server.
-
----
-
 ## AI Personas
 
 Switch via `/persona` or the web dashboard.
