@@ -3,18 +3,7 @@ const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { spawn } = require('child_process');
 const { logCommand, logSystemEvent } = require('../logger.js');
 
-// ===== SERVICE FUNCTIONS =====
-
-function startPZRestartTask() {
-    const child = spawn('sudo', ['bash', '/home/pz_restart.sh'], {
-        detached: true,
-        stdio: 'ignore',
-        env: process.env,
-    });
-    child.unref();
-    return child;
-}
-
+// CS2 Picker
 async function pickRandomPlayers({ guild, count = 5, voiceOnly = false, filterRole = null }) {
     await guild.members.fetch();
 
@@ -39,21 +28,6 @@ async function pickRandomPlayers({ guild, count = 5, voiceOnly = false, filterRo
 }
 
 // ===== SLASH COMMAND DEFINITIONS =====
-
-const commands = {
-    pzrestart: {
-        data: new SlashCommandBuilder()
-            .setName('pzrestart')
-            .setDescription('Restart the Project Zomboid server'),
-
-        async execute(interaction) {
-            await interaction.editReply('🔄 Project Zomboid server restart initiated...');
-            const child = startPZRestartTask();
-            logSystemEvent('PZ_RESTART', 'INFO', 'discord', `PZ restart triggered by ${interaction.user.username} (PID: ${child.pid})`);
-            logCommand('discord', interaction.user.username, '/pzrestart', '', 'PZ restart initiated');
-        }
-    },
-
     pickplayers: {
         data: new SlashCommandBuilder()
             .setName('pickplayers')
@@ -118,6 +92,5 @@ const commands = {
 // ===== EXPORTS =====
 module.exports = {
     commands,
-    startPZRestartTask,
     pickRandomPlayers,
 };
