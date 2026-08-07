@@ -21,6 +21,7 @@ const utilityCommands = require('./commands/utility.js');
 const adminCommands   = require('./commands/admin.js');
 const cs2Commands     = require('./commands/cs2.js');
 const tarkovCommands  = require('./commands/tarkov.js');
+const allergyCommands = require('./commands/allergies.js');
 
 // Discord-only helpers (live in utility.js)
 const {
@@ -92,6 +93,7 @@ const allCommands = {
     ...adminCommands.commands,
     ...cs2Commands.commands,
     ...tarkovCommands.commands,
+    ...allergyCommands.commands,
 };
 
 // ===== DISCORD CLIENT =====

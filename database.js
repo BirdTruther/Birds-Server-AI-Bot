@@ -86,6 +86,26 @@ try {
     )
   `);
 
+  // Tarkov seasonal wipe — characters and their up-to-3 allergies
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tarkov_characters (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL DEFAULT '',
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tarkov_allergies (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      character_id INTEGER NOT NULL,
+      allergy TEXT NOT NULL,
+      UNIQUE(character_id, allergy),
+      FOREIGN KEY(character_id) REFERENCES tarkov_characters(id) ON DELETE CASCADE
+    )
+  `);
+
   // Create index for faster queries
   db.exec(`
     CREATE INDEX IF NOT EXISTS idx_timestamp ON command_logs(timestamp DESC);
@@ -304,6 +324,152 @@ function setSetting(key, value) {
   }
 }
 
+// ===== TARKOV SEASONAL ALLERGIES =====
+
+const MAX_ALLERGIES = 3;
+
+function normalizeAllergy(allergy) {
+  return String(allergy || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function getCharacterByUserId(userId) {
+  try {
+    return db.prepare('SELECT * FROM tarkov_characters WHERE user_id = ?').get(String(userId)) || null;
+  } catch (err) {
+    console.error('[DATABASE] getCharacterByUserId error:', err);
+    return null;
+  }
+}
+
+function getOrCreateCharacter(userId, name = '') {
+  try {
+    const existing = getCharacterByUserId(userId);
+    if (existing) {
+      if (name && name !== existing.name) {
+        db.prepare('UPDATE tarkov_characters SET name = ? WHERE id = ?').run(name, existing.id);
+        existing.name = name;
+      }
+      return existing;
+    }
+    const info = db.prepare('INSERT INTO tarkov_characters (user_id, name) VALUES (?, ?)').run(String(userId), name);
+    return { id: Number(info.lastInsertRowid), user_id: String(userId), name, created_at: null };
+  } catch (err) {
+    console.error('[DATABASE] getOrCreateCharacter error:', err);
+    return null;
+  }
+}
+
+function getCharacterAllergies(userId) {
+  try {
+    const character = getCharacterByUserId(userId);
+    if (!character) return { character, allergies: [] };
+    const rows = db.prepare(
+      'SELECT allergy FROM tarkov_allergies WHERE character_id = ? ORDER BY id ASC'
+    ).all(character.id);
+    return { character, allergies: rows.map(r => r.allergy) };
+  } catch (err) {
+    console.error('[DATABASE] getCharacterAllergies error:', err);
+    return { character: null, allergies: [] };
+  }
+}
+
+function addAllergy(userId, allergy, name = '') {
+  const normalized = normalizeAllergy(allergy);
+  if (!normalized) return { ok: false, message: '❌ Allergy name cannot be empty.' };
+
+  const character = getOrCreateCharacter(userId, name);
+  if (!character) return { ok: false, message: '❌ Could not create character.' };
+
+  const { allergies } = getCharacterAllergies(userId);
+  if (allergies.includes(normalized)) return { ok: false, message: `⚠️ **${normalized}** is already on your list.` };
+  if (allergies.length >= MAX_ALLERGIES) {
+    return {
+      ok: false,
+      message: `❌ You already have **${allergies.length}/${MAX_ALLERGIES}** allergies (${allergies.join(', ')}).\nUse \`/removeallergy\` first.`
+    };
+  }
+
+  try {
+    db.prepare('INSERT INTO tarkov_allergies (character_id, allergy) VALUES (?, ?)').run(character.id, normalized);
+    return { ok: true, message: `✅ Added **${normalized}**. Allergies (${allergies.length + 1}/${MAX_ALLERGIES}): ${[...allergies, normalized].join(', ')}` };
+  } catch (err) {
+    console.error('[DATABASE] addAllergy error:', err);
+    return { ok: false, message: '❌ Could not add allergy.' };
+  }
+}
+
+function removeAllergy(userId, allergy) {
+  const normalized = normalizeAllergy(allergy);
+  if (!normalized) return { ok: false, message: '❌ Allergy name cannot be empty.' };
+
+  const character = getCharacterByUserId(userId);
+  if (!character) return { ok: false, message: `❌ You don't have any allergies registered.` };
+
+  try {
+    const info = db.prepare('DELETE FROM tarkov_allergies WHERE character_id = ? AND allergy = ?').run(character.id, normalized);
+    if (info.changes === 0) return { ok: false, message: `❌ **${normalized}** is not on your list.` };
+
+    const { allergies } = getCharacterAllergies(userId);
+    return {
+      ok: true,
+      message: allergies.length > 0
+        ? `✅ Removed **${normalized}**. Remaining (${allergies.length}/${MAX_ALLERGIES}): ${allergies.join(', ')}`
+        : `✅ Removed **${normalized}**. You now have no allergies.`
+    };
+  } catch (err) {
+    console.error('[DATABASE] removeAllergy error:', err);
+    return { ok: false, message: '❌ Could not remove allergy.' };
+  }
+}
+
+function searchAllergyHolders(allergy) {
+  const normalized = normalizeAllergy(allergy);
+  if (!normalized) return [];
+  try {
+    return db.prepare(`
+      SELECT c.user_id, c.name, c.id AS character_id
+      FROM tarkov_allergies a
+      JOIN tarkov_characters c ON c.id = a.character_id
+      WHERE a.allergy = ?
+      ORDER BY c.name, c.id
+    `).all(normalized);
+  } catch (err) {
+    console.error('[DATABASE] searchAllergyHolders error:', err);
+    return [];
+  }
+}
+
+function getCommonAllergies() {
+  try {
+    return db.prepare(`
+      SELECT a.allergy, COUNT(*) AS holders
+      FROM tarkov_allergies a
+      GROUP BY a.allergy
+      HAVING COUNT(*) >= 2
+      ORDER BY holders DESC, a.allergy ASC
+    `).all();
+  } catch (err) {
+    console.error('[DATABASE] getCommonAllergies error:', err);
+    return [];
+  }
+}
+
+function getAllCharacters() {
+  try {
+    return db.prepare(`
+      SELECT c.user_id, c.name, c.id AS character_id,
+             GROUP_CONCAT(a.allergy, ', ') AS allergy_list
+      FROM tarkov_characters c
+      LEFT JOIN tarkov_allergies a ON a.character_id = c.id
+      GROUP BY c.id
+      ORDER BY c.name, c.id
+    `).all();
+  } catch (err) {
+    console.error('[DATABASE] getAllCharacters error:', err);
+    return [];
+  }
+}
+
 // Graceful shutdown
 function closeDatabase() {
   try {
@@ -338,5 +504,12 @@ module.exports = {
   clearLogs,
   clearSystemLogs,
   getSetting,
-  setSetting
+  setSetting,
+  getOrCreateCharacter,
+  getCharacterAllergies,
+  addAllergy,
+  removeAllergy,
+  searchAllergyHolders,
+  getCommonAllergies,
+  getAllCharacters
 };
