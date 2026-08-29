@@ -36,24 +36,40 @@ const CONFIG = {
 };
 
 // ===== LONG-TERM FACT SHEET =====
-// Durable, AI-maintained facts per channel. Stored as a JSON blob in
+// Durable, AI-maintained facts for the server. Stored as a JSON blob in
 // bot_settings (same pattern as the hate list). The AI rewrites the whole
 // sheet each consolidation pass, so facts can be added, changed, or removed.
-const FACT_MAX        = 25;   // Max facts stored per channel
+const FACT_MAX        = 25;   // Max facts stored for the server
 const FACT_MAX_LEN    = 140;  // Max chars per fact
 const FACT_TOPIC_MAX  = 8;    // Max topics per fact
 const MIN_NEW_MESSAGES = 5;   // Consolidation skips unless this many new msgs
 
-function factsKey(channelId)         { return `memoryFacts:${channelId}`; }
-function factsLastIdKey(channelId)   { return `memoryFactsLastId:${channelId}`; }
+// Facts are server-wide. Keep the key names stable so the sheet survives
+// restarts and future config changes.
+const FACTS_SCOPE = 'global';
+function factsKey()       { return `memoryFacts:${FACTS_SCOPE}`; }
+function factsLastIdKey() { return `memoryFactsLastId:${FACTS_SCOPE}`; }
 
-// Get facts for a channel, optionally filtered to one topic (e.g. a username).
+// Get server facts, optionally filtered to one topic (e.g. a username).
 function getLongTermFacts(platform, channelId, filterTopic) {
   try {
     let facts = [];
-    try { facts = JSON.parse(getSetting(factsKey(channelId), '[]')); }
+    const stored = getSetting(factsKey(), null);
+    try { facts = JSON.parse(stored || '[]'); }
     catch { facts = []; }
     if (!Array.isArray(facts)) facts = [];
+
+    // Migrate existing channel sheets into the new server-wide sheet on the
+    // first read, without deleting the old settings until consolidation saves.
+    if (!stored) {
+      const legacyRows = db.prepare("SELECT value FROM bot_settings WHERE key LIKE 'memoryFacts:%' AND key != ?").all(factsKey());
+      for (const row of legacyRows) {
+        try {
+          const legacy = JSON.parse(row.value);
+          if (Array.isArray(legacy)) facts.push(...legacy);
+        } catch { /* ignore malformed legacy sheets */ }
+      }
+    }
     if (filterTopic) {
       const t = String(filterTopic).toLowerCase();
       facts = facts.filter(f => (f.topics || []).some(x => String(x).toLowerCase() === t));
@@ -76,23 +92,23 @@ function saveFacts(platform, channelId, facts) {
           : [],
       })).filter(f => f.fact)
     : [];
-  setSetting(factsKey(channelId), JSON.stringify(trimmed));
+  setSetting(factsKey(), JSON.stringify(trimmed));
   return trimmed;
 }
 
 function getLastConsolidatedId(channelId) {
-  return parseInt(getSetting(factsLastIdKey(channelId), '0'), 10) || 0;
+  return parseInt(getSetting(factsLastIdKey(), '0'), 10) || 0;
 }
 
 function setLastConsolidatedId(channelId, id) {
-  setSetting(factsLastIdKey(channelId), String(id));
+  setSetting(factsLastIdKey(), String(id));
 }
 
 // Pull new messages since a given id (bounded) — used to feed consolidation.
 const getMessagesSince = db.prepare(`
   SELECT id, username, message, is_bot_response
   FROM conversation_memory
-  WHERE platform = @platform AND channel_id = @channel_id AND id > @after
+  WHERE platform = @platform AND id > @after
   ORDER BY id ASC
   LIMIT @limit
 `);

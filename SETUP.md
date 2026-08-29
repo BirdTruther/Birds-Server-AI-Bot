@@ -170,8 +170,9 @@ sudo systemctl restart discordbot
 | `GET` | `/api/hate/list` | Current hate list (user IDs) |
 | `POST` | `/api/hate/add` | Add to hate list `{ "userId": "..." }` |
 | `POST` | `/api/hate/remove` | Remove from hate list `{ "userId": "..." }` |
-| `GET` | `/api/memory/facts?channel=...` | Current long-term memory fact sheet |
-| `POST` | `/api/memory/facts/rebuild` | Force-rebuild facts `{ "channel": "..." }` |
+| `GET` | `/api/memory/facts` | Current server-wide long-term memory fact sheet |
+| `POST` | `/api/memory/facts/add` | Add a fact `{ "fact": "...", "topics": "..." }` |
+| `POST` | `/api/memory/facts/rebuild` | Force-rebuild the server-wide fact sheet |
 | `POST` | `/api/export/start` | Start a memorial-message export |
 | `GET` | `/api/export/status/:jobId` | Export job status |
 | `GET` | `/api/export/download/:jobId` | Download completed export |

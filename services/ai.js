@@ -90,7 +90,8 @@ Rewrite the memory sheet based on the recent chat. Your job is to keep the sheet
 
 - ADD new durable facts worth remembering beyond today: users' names, what they play (Tarkov/CS2/etc.), their playstyle, inside jokes, roles, preferences, recurring topics.
 - UPDATE any existing fact that has changed or become more accurate.
-- REMOVE facts that are stale, wrong, now-ignored, or just noise/fluff.
+- Do not remove a fact merely because it is old. REMOVE only facts that are
+  clearly false, directly contradicted by newer information, or obvious noise.
 - Keep it to at most ${FACT_MAX} facts total.
 - Each fact: a short, conversational line, plus a "topics" list (lowercase keywords including usernames, games, etc.).
 

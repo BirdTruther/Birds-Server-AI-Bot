@@ -182,67 +182,41 @@ app.post('/api/hate/remove', (req, res) => {
 
 // ===== MEMORY FACTS ENDPOINTS =====
 app.get('/api/memory/facts', (req, res) => {
-  const channel = req.query.channel || req.query.channelId || '';
-  const tasks = channel
-    ? [channel]
-    : (() => {
-        try {
-          return Array.from(new Set([
-            getHateChannelId(),
-          ].filter(Boolean)));
-        } catch (err) { return []; }
-      })();
-  if (getDiscordClient && getDiscordClient()) {
-    try {
-      const channels = getDiscordClient().channels.cache.filter(c => c.isTextBased());
-      for (const [, c] of channels) if (c.id) tasks.push(c.id);
-    } catch (err) { /* ignore */ }
-  }
-  // Dedup + keep an order that puts explicit selection first
-  const unique = [...new Set(tasks)].filter(Boolean);
-  const selected = unique[0];
-  const facts = selected ? getLongTermFacts('discord', selected) : [];
-  const lastId = selected ? getLastConsolidatedId(selected) : 0;
-  const channelsRes = unique.map(id => {
-    const name = getDiscordClient && getDiscordClient()
-      ? (getDiscordClient().channels.cache.get(id)?.name || id)
-      : id;
-    return { id, name, factCount: getLongTermFacts('discord', id).length, lastId: getLastConsolidatedId(id) };
+  res.json({
+    success: true,
+    scope: 'server',
+    facts: getLongTermFacts('discord', 'global'),
+    lastId: getLastConsolidatedId('global'),
   });
-  res.json({ success: true, channel: selected || '', channels: channelsRes, facts, lastId });
 });
 
 app.post('/api/memory/facts/add', (req, res) => {
-  const channel = (req.body && (req.body.channel || req.body.channelId)) || '';
   const fact = String((req.body && req.body.fact) || '').trim();
   const topics = Array.isArray(req.body && req.body.topics)
     ? req.body.topics
     : String((req.body && req.body.topics) || '').split(',');
 
-  if (!channel) return res.status(400).json({ success: false, error: 'channel is required' });
   if (!fact) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', channel);
+  const facts = getLongTermFacts('discord', 'global');
   if (facts.some(existing => existing.fact.toLowerCase() === fact.toLowerCase())) {
     return res.status(409).json({ success: false, error: 'That fact already exists' });
   }
 
-  const updated = saveFacts('discord', channel, [
+  const updated = saveFacts('discord', 'global', [
     ...facts,
     { fact, topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean) },
   ]);
   const added = updated.some(existing => existing.fact.toLowerCase() === fact.toLowerCase());
   if (!added) return res.status(400).json({ success: false, error: 'Fact could not be saved' });
-  console.log(`[API] Memory fact added for ${channel}: ${fact}`);
+  console.log(`[API] Global memory fact added: ${fact}`);
   res.json({ success: true, facts: updated });
 });
 
 app.post('/api/memory/facts/rebuild', async (req, res) => {
-  const channel = (req.body && (req.body.channel || req.body.channelId)) || '';
-  if (!channel) return res.status(400).json({ success: false, error: 'channel is required' });
   try {
-    const result = await consolidateChannelFacts('discord', channel, true);
-    res.json({ success: true, ...result, facts: getLongTermFacts('discord', channel) });
+    const result = await consolidateChannelFacts('discord', 'global', true);
+    res.json({ success: true, ...result, facts: getLongTermFacts('discord', 'global') });
   } catch (err) {
     console.error('[API] Memory rebuild error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to rebuild memory: ' + err.message });

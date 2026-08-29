@@ -9,7 +9,7 @@ Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 int
 ## What It Does
 
 - **AI chat** — Mention the bot or reply to it. Supports text, image understanding, and image generation via Gemini.
-- **Long-term memory** — The AI builds a durable "fact sheet" per channel (names, mains, inside jokes) and references it across sessions; also feeds roasts. Hourly, cost-bounded consolidation.
+- **Long-term memory** — The AI builds one durable server-wide "fact sheet" (names, mains, inside jokes) and references it across channels; also feeds roasts. Hourly, cost-bounded consolidation.
 - **Tarkov** — Item prices, ammo rankings, trader timers, map/boss info, player stats.
 - **Tarkov Allergies** — Roleplay allergy tracking; log and compare what members are allergic to.
 - **Hate List** — Admin-managed roleplay roast list; the bot tags and roasts listed users with AI-generated lines.

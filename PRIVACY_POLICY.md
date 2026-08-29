@@ -20,7 +20,7 @@ The Bot processes the content of messages that are:
 - Sent in Twitch channels the Bot is active in
 - Submitted via slash commands (`/ask`, `/imagine`, etc.)
 
-Message text is stored temporarily in a local SQLite database for **conversation memory** purposes (see Section 3). The Bot also maintains a small AI-generated fact sheet per channel, derived from conversation history.
+Message text is stored temporarily in a local SQLite database for **conversation memory** purposes (see Section 3). The Bot also maintains a small AI-generated server-wide fact sheet, derived from conversation history.
 
 ### 2b. User Identifiers
 
@@ -85,7 +85,7 @@ We do **not** sell, rent, or share your data with advertisers or data brokers.
 ## 6. Data Retention
 
 - **Conversation memory:** Messages are kept for 7 days, with a maximum of 1,000 messages per channel. Older messages are automatically deleted.
-- **Long-term facts:** The Bot may retain up to 25 short, AI-generated facts per channel. Facts can be added, updated, or removed during hourly consolidation and remain until changed or manually removed by the server administrator.
+- **Long-term facts:** The Bot may retain up to 25 short, AI-generated facts for the server. Facts can be added, updated, or removed during hourly consolidation and remain until changed or manually removed by the server administrator.
 - **Command logs:** Logs are retained for up to 30 days and can be manually cleared via the dashboard (`POST /api/bot/logs/clear`).
 - **Images:** Not retained. Processed in-memory only.
 

@@ -155,20 +155,11 @@ discordClient.once(Events.ClientReady, async (client) => {
     startHateTimer(client);
     console.log('[HATE] Proactive hate timer started');
 
-    // Long-term memory: hourly, turn each active text channel's recent chat
-    // into a durable AI-maintained fact sheet ("Patrick learns").
+    // Long-term memory: hourly, turn recent server chat into one durable,
+    // AI-maintained fact sheet ("Patrick learns").
     const consolidateMemory = async () => {
         try {
-            const guild = client.guilds.cache.first();
-            if (!guild) return;
-            const textChannels = guild.channels.cache.filter(ch => ch.isTextBased() && !ch.isThread());
-            for (const ch of textChannels.values()) {
-                try {
-                    await consolidateChannelFacts('discord', ch.id);
-                } catch (err) {
-                    console.error(`[MEMORY] Consolidation error for #${ch.name}:`, err.message);
-                }
-            }
+            await consolidateChannelFacts('discord', 'global');
         } catch (err) {
             console.error('[MEMORY] Consolidation timer error:', err.message);
             logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation sweep failed: ${err.message}`, err);
@@ -292,9 +283,9 @@ function startHateTimer(client) {
             // where it hurts. Filter by their Discord username first, then any.
             const targetUsername = member?.user?.username?.toLowerCase();
             const targetFacts = targetUsername
-                ? getContextFacts('discord', channelId, targetUsername)
+                ? getContextFacts('discord', 'global', targetUsername)
                 : '';
-            const roastFacts = targetFacts || getContextFacts('discord', channelId);
+            const roastFacts = targetFacts || getContextFacts('discord', 'global');
 
             await channel.sendTyping();
             const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts);

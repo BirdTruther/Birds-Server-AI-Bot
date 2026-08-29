@@ -620,7 +620,6 @@
             </div>
             <div class="modal-body">
                 <div class="logs-controls">
-                    <select id="memory-channel" class="persona-select" style="min-width:180px;"></select>
                     <input type="text" id="memory-filter" class="logs-search" placeholder="Filter facts or topics...">
                     <button class="button button-primary" id="memory-refresh-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="memory-rebuild-btn">&#x2699;&#xFE0F; Rebuild Now</button>
@@ -644,7 +643,7 @@
                 </table>
             </div>
             <div class="modal-footer">
-                <span style="color:var(--color-text-secondary);">Up to 25 facts per channel</span>
+                <span style="color:var(--color-text-secondary);">Up to 25 facts for the server</span>
                 <button class="button button-secondary" id="close-memory-btn">Close</button>
             </div>
         </div>
@@ -729,24 +728,11 @@
                 try {
                     const badge = document.getElementById('memory-status');
                     const count = document.getElementById('memory-count');
-                    const channelSelect = document.getElementById('memory-channel');
                     const filter = document.getElementById('memory-filter').value.trim().toLowerCase();
 
-                    const query = channelSelect.value ? `?channel=${encodeURIComponent(channelSelect.value)}` : '';
-                    const res = await fetch(`${API_BASE}/memory/facts${query}`);
+                    const res = await fetch(`${API_BASE}/memory/facts`);
                     const data = await res.json();
                     if (!data.success) return;
-
-                    // Populate channel dropdown on first load
-                    if (channelSelect.options.length === 0 && data.channels && data.channels.length) {
-                        for (const c of data.channels) {
-                            const opt = document.createElement('option');
-                            opt.value = c.id;
-                            opt.textContent = `${c.name} (${c.factCount} facts)`;
-                            channelSelect.appendChild(opt);
-                        }
-                        if (!data.channel && channelSelect.options.length) channelSelect.value = channelSelect.options[0].value;
-                    }
 
                     let facts = data.facts || [];
                     if (filter) {
@@ -779,14 +765,11 @@
             }
 
             async rebuildMemory() {
-                const channelSelect = document.getElementById('memory-channel');
-                const channel = channelSelect.value;
-                if (!channel) { alert('Select a channel first'); return; }
                 try {
                     const res = await fetch(`${API_BASE}/memory/facts/rebuild`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channel })
+                        body: JSON.stringify({})
                     });
                     const data = await res.json();
                     alert(data.success ? `Rebuilt: ${(data.facts || []).length} facts` : (data.error || 'Rebuild failed'));
@@ -798,17 +781,15 @@
             }
 
             async addMemoryFact() {
-                const channel = document.getElementById('memory-channel').value;
                 const factInput = document.getElementById('memory-fact-input');
                 const topicsInput = document.getElementById('memory-topics-input');
                 const fact = factInput.value.trim();
-                if (!channel) { alert('Select a channel first'); return; }
                 if (!fact) { alert('Enter a fact first'); return; }
                 try {
                     const res = await fetch(`${API_BASE}/memory/facts/add`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ channel, fact, topics: topicsInput.value })
+                        body: JSON.stringify({ fact, topics: topicsInput.value })
                     });
                     const data = await res.json();
                     if (!data.success) { alert(data.error || 'Failed to add fact'); return; }
@@ -841,7 +822,6 @@
                 document.getElementById('memory-view-btn').addEventListener('click', () => this.openMemoryModal());
                 document.getElementById('close-memory-modal').addEventListener('click', () => this.closeMemoryModal());
                 document.getElementById('close-memory-btn').addEventListener('click', () => this.closeMemoryModal());
-                document.getElementById('memory-channel').addEventListener('change', () => this.loadMemory());
                 document.getElementById('memory-filter').addEventListener('input', () => this.loadMemory());
                 document.getElementById('check-bot-btn').addEventListener('click', () => this.checkBotStatus());
                 document.getElementById('reload-commands-btn').addEventListener('click', () => this.reloadCommands());
