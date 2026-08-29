@@ -10,10 +10,10 @@ const { addToMemory } = require('./memory.js');
 const { logCommand, logSystemEvent } = require('./logger.js');
 const { getSetting, setSetting } = require('./database.js');
 const { musicSlashCommandDefs, handleMusicInteraction } = require('./music.js');
-const { isHated, buildHateJab, buildCallout } = require('./hate-manager.js');
+const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, canPing, isOnPingCooldown } = require('./hate-manager.js');
 
 // Services
-const { getAIResponse, isWildRequest, getWildRequestResponse } = require('./services/ai.js');
+const { getAIResponse, isWildRequest, getWildRequestResponse, generateHateRoast } = require('./services/ai.js');
 const { generateImage, detectImageRequest, sanitizeImagePrompt, checkImageRateLimit } = require('./services/image.js');
 require('./services/twitch.js'); // self-initializing — connects on require
 
@@ -142,6 +142,18 @@ discordClient.once(Events.ClientReady, async (client) => {
 
     rotatePresence(client);
     setInterval(() => rotatePresence(client), CONFIG.PRESENCE_ROTATE_MS);
+
+    // Give the dashboard server a live handle on the Discord client so its
+    // endpoints (hate-list announcements, exports) can send messages.
+    try {
+        global.setDiscordClientForExport(client);
+        console.log('[DASHBOARD] Discord client registered with dashboard server');
+    } catch (err) {
+        console.error('[DASHBOARD] Failed to register Discord client:', err.message);
+    }
+
+    startHateTimer(client);
+    console.log('[HATE] Proactive hate timer started');
 });
 
 // ===== SLASH COMMAND HANDLER =====
@@ -192,23 +204,78 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
 // ===== HATE LIST AUGMENTATION =====
 // Adds the bot's "hated user" flavor to replies and random callouts.
 
+// Append a roast jab to an AI reply for a hated user (rate-limited so spam
+// mentioners don't burn extra AI calls on the sass every single message).
 function augmentReplyWithHate(userId, username, response) {
     if (!isHated(userId)) return response;
-    const jab = buildHateJab(username);
-    // Keep replies under the 2000-char safe-send limit
+    if (!canPing(userId)) return response;
+    const jab = buildHateJab(username, userId);
     const room = 2000 - response.length - jab.length - 3;
     if (room > 10) return `${response}\n\n${jab}`;
     return response;
 }
 
-// Chance (per hated-user message) to fire a random callout in the channel.
+// Fire a roast at a hated user's general-chat message. High chance so it
+// actually happens a lot, but gated by canPing so we don't spam them 5x in a
+// row while they type.
 function maybeRandomCallout(userId, username, channel) {
     if (!isHated(userId)) return;
-    // ~8% chance, not on every message
-    if (Math.random() > 0.08) return;
-    const callout = buildCallout(username);
+    if (!canPing(userId)) return;
+    // ~40% chance — the bot reacts a lot when they talk.
+    if (Math.random() > 0.40) return;
+    const callout = buildCallout(username, userId, true);
     safeDiscordSend(channel, callout);
-    logCommand('discord', username, '@mention (hate callout)', '', callout);
+    logCommand('discord', username, 'hate callout', '', callout);
+}
+
+// ===== HATE CALLOUT HANDLER =====
+// Reacts when a hated user chats in general (no mention/reply needed). Menions
+// and replies are skipped here because they already get an augmented AI reply.
+discordClient.on(Events.MessageCreate, (message) => {
+    if (message.author.bot) return;
+    if (message.mentions.has(discordClient.user)) return;
+    if (message.reference) return;
+    maybeRandomCallout(message.author.id, message.author.username, message.channel);
+});
+
+// ===== PROACTIVE HATE TIMER =====
+// Once per hour, with a HEAVY chance (~70%), the bot randomly picks a hated
+// user and has the AI generate a fresh, random tagged roast into the channel.
+// The check-in is fed into the AI so the roast is varied, not a canned line.
+function startHateTimer(client) {
+    setInterval(async () => {
+        try {
+            const hated = getHatedUserIds();
+            if (hated.length === 0) return;
+
+            const channelId = getHateChannelId();
+            if (!channelId) return;
+            const channel = client.channels.cache.get(channelId);
+            if (!channel?.isTextBased()) return;
+
+            // Heavy chance this hour that the bot actually fires.
+            if (Math.random() > 0.70) return;
+
+            // Pick a target not on cooldown.
+            const targets = hated.filter(uid => !isOnPingCooldown(uid));
+            if (targets.length === 0) return;
+            const target = targets[Math.floor(Math.random() * targets.length)];
+            if (!canPing(target)) return;
+
+            const member = channel.guild?.members?.cache?.get(target);
+            const name = member?.displayName || `<@${target}>`;
+
+            await channel.sendTyping();
+            const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list');
+
+            safeDiscordSend(channel, roast);
+            logSystemEvent('HATE', 'INFO', 'discord', `Proactive AI roast fired at ${target}: ${roast}`);
+            logCommand('discord', name, 'hate proactive', '', roast);
+        } catch (err) {
+            console.error('[HATE] Proactive timer error:', err.message);
+            logSystemEvent('HATE_ERROR', 'WARNING', 'discord', `Proactive hate timer failed: ${err.message}`);
+        }
+    }, 60 * 60 * 1000); // every 1 hour
 }
 
 // ===== DISCORD MESSAGE HANDLER =====
@@ -226,8 +293,6 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!userMessage && !hasImageAttachment(message)) return;
-
-    maybeRandomCallout(message.author.id, username, message.channel);
 
     if (isWildRequest(userMessage)) {
         const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);

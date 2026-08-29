@@ -3,7 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
-const { getHatedUserIds, addToHateList, removeFromHateList } = require('./hate-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId } = require('./hate-manager.js');
 
 // Load cultist enabled state from DB on startup (persists across reboots)
 let cultistState = {
@@ -143,6 +143,20 @@ app.post('/api/persona/set', (req, res) => {
 });
 
 // ===== HATE LIST ENDPOINTS =====
+
+// Announce a newly-added hate-list victim into the configured roast channel.
+function announceHateAdd(userId) {
+  const client = getDiscordClient();
+  if (!client) return;
+  const channelId = getHateChannelId();
+  if (!channelId) return;
+  const channel = client.channels.cache.get(channelId);
+  if (!channel?.isTextBased()) return;
+  channel.send(`📢 Heads up, everyone — <@${userId}> just made the hate list. Get rekt.`).catch(err =>
+    console.error('[HATE] Announce send failed:', err.message)
+  );
+}
+
 app.get('/api/hate/list', (req, res) => {
   res.json({ success: true, list: getHatedUserIds() });
 });
@@ -152,6 +166,7 @@ app.post('/api/hate/add', (req, res) => {
   if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
   const result = addToHateList(userId);
   console.log(`[API] Hate list add: ${userId} — ${result.message}`);
+  if (result.ok) announceHateAdd(userId);
   res.json(result);
 });
 
@@ -226,6 +241,11 @@ global.setDiscordClientForExport = (client) => {
   });
   console.log('[EXPORT] Discord client registered for memorial message export');
 };
+
+// Shared getter so hate-list announcements (and anything else) can reach Discord.
+function getDiscordClient() {
+  return discordClientRef;
+}
 
 const exportJobs = {};
 

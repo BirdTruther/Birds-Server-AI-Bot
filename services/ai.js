@@ -170,10 +170,45 @@ ${memoryContext}
     }
 }
 
+// ===== HATE ROAST GENERATOR =====
+// Generate a fresh, varied roast for a hated user using the AI, so the bot
+// doesn't just cycle canned lines. Returns a short tagged roast.
+
+async function generateHateRoast(username, userId, reasonContext = '') {
+    const persona = getCurrentPersona();
+
+    const reason = reasonContext || "randomly roasting a member you have put on your private hate list";
+    const prompt = `${persona.systemPrompt}
+
+**SPECIAL SITUATION — RANDOM HATE ROAST:**
+You're being ${reason}.
+Keep it SHORT — a single sentence or two at most.
+Make it funny, specific, and on-brand for your current personality.
+Stay fully in character. Do NOT be generic — write something fresh every time.
+Tag the target at the START using: <@${userId}>
+You may reference Tarkov, CS2, or gaming if it fits.
+Never start with the same opener twice — vary it.`;
+
+    try {
+        const { text } = await generateTextWithFallback({
+            messages: [
+                { role: 'system', content: prompt },
+                { role: 'user', content: `Roast ${username}, then tag them with <@${userId}>.` },
+            ]
+        });
+        return (text || '').trim();
+    } catch (error) {
+        console.error('[HATE] AI roast generation failed:', error.message);
+        logSystemEvent('HATE_ERROR', 'WARNING', 'discord', `AI roast failed for ${username}: ${error.message}`);
+        return `${username} is on the hate list for a reason. <@${userId}>`;
+    }
+}
+
 // ===== EXPORTS =====
 module.exports = {
     generateTextWithFallback,
     getAIResponse,
     getWildRequestResponse,
+    generateHateRoast,
     isWildRequest,
 };

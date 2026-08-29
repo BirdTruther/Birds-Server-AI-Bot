@@ -5,7 +5,7 @@
 
 const { SlashCommandBuilder } = require('discord.js');
 const { logCommand } = require('../logger.js');
-const { getHatedUserIds, addToHateList, removeFromHateList } = require('../hate-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId, setHateChannelId } = require('../hate-manager.js');
 
 const commands = {
     hate: {
@@ -25,6 +25,11 @@ const commands = {
             .addSubcommand(sub =>
                 sub.setName('list')
                     .setDescription('List everyone the bot hates')
+            )
+            .addSubcommand(sub =>
+                sub.setName('channel')
+                    .setDescription('Set which channel the bot randomly roasts into')
+                    .addChannelOption(o => o.setName('channel').setDescription('The channel').setRequired(true))
             ),
 
         async execute(interaction) {
@@ -41,10 +46,22 @@ const commands = {
                         const member = interaction.guild?.members?.cache?.get(id);
                         return member ? `**${member.displayName}**` : `<@${id}>`;
                     });
-                    result = `😈 The hate list (${ids.length}):\n${names.join('\n')}`;
+                    const chan = getHateChannelId()
+                        ? `\nRoasts fire into: <#${getHateChannelId()}>`
+                        : '\n⚠️ No roast channel set — use `/hate channel` to enable random roasts.';
+                    result = `😈 The hate list (${ids.length}):\n${names.join('\n')}${chan}`;
                 }
                 await interaction.editReply(result);
                 logCommand('discord', username, '/hate list', '', result);
+                return;
+            }
+
+            if (sub === 'channel') {
+                const channelId = interaction.options.getChannel('channel').id;
+                setHateChannelId(channelId);
+                const result = `📢 Roasts will fire into <#${channelId}>.`;
+                await interaction.editReply(result);
+                logCommand('discord', username, '/hate channel', channelId, result);
                 return;
             }
 
