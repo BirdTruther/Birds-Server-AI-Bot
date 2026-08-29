@@ -7,7 +7,7 @@
 
 ## 1. Acceptance of Terms
 
-By adding Birds-Server-AI-Bot ("ThePatrick") to your Discord server or interacting with it on Twitch, you agree to these Terms of Service. If you do not agree, please remove the Bot from your server and discontinue use.
+By adding Birds-Server-AI-Bot ("ThePatrick") to your Discord server, accessing it through the Birds Server onboarding process, or continuing to interact with it on Discord or Twitch, you agree to these Terms of Service. If you do not agree, please discontinue use of the Bot. Access to Patrick in the Birds Server may also require completing the server's rules and Makki verification process.
 
 ## 2. Description of Service
 
@@ -19,6 +19,9 @@ Birds-Server-AI-Bot is a free, open-source community bot that provides:
 - Counter-Strike 2 data lookups (skin prices, float values, player stats, maps)
 - Random meme fetching
 - Discord slash commands and Twitch chat commands
+- Tarkov roleplay allergy tracking
+- An admin-managed roleplay hate list with AI-generated roasts
+- Durable server-wide AI memory based on Bot interactions
 - A local web dashboard for server administrators
 
 ## 3. User Conduct

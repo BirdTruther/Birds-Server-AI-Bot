@@ -1,7 +1,7 @@
 # Privacy Policy
 
 **Birds-Server-AI-Bot**
-**Last Updated: June 16, 2026**
+**Last Updated: August 29, 2026**
 
 ---
 
@@ -58,6 +58,7 @@ These logs are stored locally on the server running the Bot. They are accessible
 | Data | Purpose | Retention |
 |---|---|---|
 | Message content | AI conversation context (last 8 messages per channel) | 7 days, then auto-deleted |
+| Long-term facts | Server-wide AI-maintained facts derived from Bot interactions | Retained until updated or removed by the server administrator |
 | Usernames | Display in conversation context and command logs | 7 days (memory), 30 days (logs) |
 | Command inputs/outputs | Dashboard command log display | 30 days, then auto-deleted |
 | Images sent for analysis | Passed to Google Gemini for analysis only | Not stored |
@@ -85,7 +86,7 @@ We do **not** sell, rent, or share your data with advertisers or data brokers.
 ## 6. Data Retention
 
 - **Conversation memory:** Messages are kept for 7 days, with a maximum of 1,000 messages per channel. Older messages are automatically deleted.
-- **Long-term facts:** The Bot may retain up to 25 short, AI-generated facts for the server. Facts can be added, updated, or removed during hourly consolidation and remain until changed or manually removed by the server administrator.
+- **Long-term facts:** The Bot may retain up to 25 short, AI-generated facts for the server. Facts are built from Bot interactions, can also be entered by a server administrator, and remain until updated or removed by the server administrator.
 - **Command logs:** Logs are retained for up to 30 days and can be manually cleared via the dashboard (`POST /api/bot/logs/clear`).
 - **Images:** Not retained. Processed in-memory only.
 
