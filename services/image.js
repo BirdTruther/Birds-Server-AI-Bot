@@ -102,8 +102,31 @@ Rules:
                 { role: 'user', content: rawPrompt },
             ],
         });
-        console.log(`[Image] Prompt enhanced: "${rawPrompt}" → "${text.substring(0, 80)}..."`);
-        return text.trim();
+        const enhanced = text.trim();
+
+        // If Gemini "enhanced" the prompt into a refusal / content-policy
+        // message, don't feed that refusal into the image model. Fall back to
+        // the raw prompt. Try to detect refusals generically across phrasing.
+        const lower = enhanced.toLowerCase();
+        if (!enhanced ||
+            lower.includes('cannot fulfill') ||
+            lower.includes('unable to fulfill') ||
+            lower.includes('can\'t fulfill') ||
+            lower.includes('can’t fulfill') ||
+            lower.includes('violates (my )?content policy') ||
+            lower.includes('against my (content )?policies') ||
+            lower.includes('i (can\'t|can’t|cannot|am unable) (create|generate|depict|produce)') ||
+            lower.includes('won\'t') ||
+            lower.includes('won’t') ||
+            lower.includes('not (able|allowed) to (create|generate|depict|produce|draw)') ||
+            /^(i\s+(can'?t|cannot|am unable to|won'?t)|sorry[,.!]|i'm sorry|i\'m sorry)/i.test(enhanced) ||
+            lower.length < 3) {
+            console.warn('[Image] Prompt enhancement returned a refusal; using raw prompt');
+            return rawPrompt;
+        }
+
+        console.log(`[Image] Prompt enhanced: "${rawPrompt}" → "${enhanced.substring(0, 80)}..."`);
+        return enhanced;
     } catch (error) {
         console.warn('[Image] Prompt enhancement failed, using raw prompt:', error.message);
         return rawPrompt;
@@ -186,6 +209,25 @@ async function generateImage(prompt, userId = 'unknown', options = {}) {
             const imagePart = parts.find(p => p.inlineData?.mimeType?.startsWith('image/'));
 
             if (!imagePart) {
+                // No image came back — figure out why so we can give a useful
+                // error instead of a generic one.
+                const finishReason = data?.candidates?.[0]?.finishReason || '';
+                const safetyProbs = data?.candidates?.[0]?.safetyRatings?.length || 0;
+                const promptFeedback = data?.promptFeedback?.blockReason || '';
+                const candidateText = parts.map(p => p.text || '').join(' ').trim().substring(0, 150);
+
+                // Content policy / safety blocks and Gemini "refusal" text
+                // should produce a clear, helpful message rather than
+                // "no image part".
+                const refusals = /safety|blocklist|blocked|block|violation|not allowed|refus|cannot|unable|couldn't|couldn’t|won't|won’t|policy/i;
+                const refusalMsg = `${finishReason} ${promptFeedback} ${candidateText}`;
+
+                if (refusals.test(refusalMsg)) {
+                    const err = new Error('Content policy: the image model refused to generate this image');
+                    err.isSafety = true;
+                    throw err;
+                }
+
                 throw new Error('Gemini response contained no image part');
             }
 
@@ -221,7 +263,9 @@ async function generateImage(prompt, userId = 'unknown', options = {}) {
 
     let friendlyError = '❌ Image generation failed. Try again in a moment.';
     const msg = (lastError?.message || '').toLowerCase();
-    if (msg.includes('nsfw') || msg.includes('safety'))    friendlyError = '🚫 That prompt triggered the content filter. Try describing something differently.';
+    if (lastError?.isSafety || msg.includes('nsfw') || msg.includes('safety') || msg.includes('content policy') || msg.includes('refused')) {
+        friendlyError = '🚫 That prompt triggered the content filter. Try describing something differently.';
+    }
     if (msg.includes('rate limit') || msg.includes('429')) friendlyError = '⏳ Too many requests to the image API. Try again in ~30 seconds.';
     if (msg.includes('timeout') || msg.includes('timed'))  friendlyError = '⌛ Image generation timed out. Try a simpler prompt.';
     if (msg.includes('auth') || msg.includes('key'))       friendlyError = '🔑 API authentication error. Contact the server admin.';
