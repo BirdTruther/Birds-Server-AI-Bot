@@ -53,7 +53,7 @@ Music uses `yt-dlp` + `ffmpeg` — no API key required.
 | Command | Description | Args |
 |---|---|---|
 | `/ask` | Ask the AI a question | `question` |
-| `/image` | Generate an AI image with Gemini | `prompt` |
+| `/imagine` | Generate an AI image with Gemini | `prompt` |
 | `/persona` | Switch the bot's personality | `name` |
 | `/personas` | List all available personas | — |
 | `/clearmemory` | Clear conversation memory for this channel | — |
@@ -61,6 +61,43 @@ Music uses `yt-dlp` + `ffmpeg` — no API key required.
 | `/code` | Get the GitHub repo link | — |
 
 You can also **mention** the bot or **reply** to a bot message to chat with it directly. Attach an image to have it analyzed.
+
+---
+
+## Tarkov Allergies
+
+Roleplay allergies for the server. Track and "react" to what members are allergic to.
+
+| Command | Description | Args |
+|---|---|---|
+| `/addallergy` | Add an allergy to a user (defaults to you) | `allergy`, `user`* |
+| `/removeallergy` | Remove an allergy | `allergy` |
+| `/allergies` | List a user's allergies (defaults to you) | `user`* |
+| `/searchallergy` | Find which users share an allergy | `allergy` |
+| `/commonallergies` | Show the most common allergies server-wide | — |
+
+---
+
+## Hate List
+
+Admin-managed roleplay "hate list". Admins add users, and the bot roasts them: chat reactions tag hated users, and roughly once per hour the bot has a chance to fire an AI-generated roast into the configured channel.
+
+| Command | Description | Args |
+|---|---|---|
+| `/hate add` | Add a user to the hate list | `user` |
+| `/hate remove` | Remove a user from the hate list | `user` |
+| `/hate list` | Show all hated users | — |
+| `/hate channel` | Set the channel where roasts fire | `channel` |
+
+> `/hate` commands are gated by Discord-native slash-command permissions — only admins you grant them to can use them.
+
+---
+
+## Admin
+
+| Command | Description | Args |
+|---|---|---|
+| `/pickplayers` | Randomly pick players (for CS2 lobbies, etc.) | `count`*, `voice_only`*, `role`* |
 
 ---
 

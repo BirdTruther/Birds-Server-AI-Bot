@@ -147,20 +147,9 @@ sudo systemctl restart discordbot
 
 ---
 
-## Removing `/pzrestart`
+## `/pickplayers`
 
-`/pzrestart` is Birds Server specific. To remove it:
-
-1. Delete `commands/admin.js`
-2. Remove the `admin` import and command registration from `index.js`
-
-If you keep it, add a sudoers rule (`sudo visudo`):
-
-```
-birds ALL=(ALL) NOPASSWD: /bin/bash /home/pz_restart.sh
-```
-
-Replace `birds` with your bot's Linux user.
+`/pickplayers` randomly selects members from the server (optionally voice-only or role-filtered) — handy for building CS2 lobbies. It runs entirely in-process and requires no special permissions, so there's nothing to configure. If you don't want it, delete `commands/admin.js` and remove the `admin` import + command registration from `index.js`.
 
 ---
 
@@ -171,8 +160,16 @@ Replace `birds` with your bot's Linux user.
 | `GET` | `/` | Dashboard HTML |
 | `GET` | `/api/bot/status` | Uptime and system stats |
 | `GET` | `/api/bot/logs` | Command log history |
-| `POST` | `/api/bot/logs/clear` | Clear all logs |
+| `POST` | `/api/bot/logs/clear` | Clear command logs |
+| `GET` | `/api/bot/system-logs` | System/event log history |
+| `POST` | `/api/bot/system-logs/clear` | Clear system logs |
 | `GET` | `/api/persona/current` | Current persona |
 | `POST` | `/api/persona/set` | Set persona `{ "persona": "key" }` |
 | `GET` | `/api/cultist/status` | Cultist tracker state |
 | `POST` | `/api/cultist/toggle` | Enable/disable Cultist notifications |
+| `GET` | `/api/hate/list` | Current hate list (user IDs) |
+| `POST` | `/api/hate/add` | Add to hate list `{ "userId": "..." }` |
+| `POST` | `/api/hate/remove` | Remove from hate list `{ "userId": "..." }` |
+| `POST` | `/api/export/start` | Start a memorial-message export |
+| `GET` | `/api/export/status/:jobId` | Export job status |
+| `GET` | `/api/export/download/:jobId` | Download completed export |

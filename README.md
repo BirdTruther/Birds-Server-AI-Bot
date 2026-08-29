@@ -1,6 +1,6 @@
 # Birds-Server-AI-Bot
 
-Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 integration, Gemini AI, voice music, and a live web dashboard.
+Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 integration, Gemini AI, voice music, roleplay features, and a live web dashboard.
 
 **[Commands →](COMMANDS.md)** | **[Setup & Deployment →](SETUP.md)**
 
@@ -10,10 +10,12 @@ Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 int
 
 - **AI chat** — Mention the bot or reply to it. Supports text, image understanding, and image generation via Gemini.
 - **Tarkov** — Item prices, ammo rankings, trader timers, map/boss info, player stats.
+- **Tarkov Allergies** — Roleplay allergy tracking; log and compare what members are allergic to.
+- **Hate List** — Admin-managed roleplay roast list; the bot tags and roasts listed users with AI-generated lines.
 - **CS2** — Skin prices, float values, player stats, map callouts, case simulator.
 - **Music** — YouTube voice playback via `yt-dlp` + `ffmpeg`. No API key required.
 - **Twitch** — Connects to Twitch IRC and relays messages to Discord.
-- **Dashboard** — Live web UI at `http://localhost:3001` for logs, persona switching, and Cultist tracking.
+- **Dashboard** — Live web UI at `http://localhost:3001` for logs, persona switching, hate list, and Cultist tracking.
 
 ---
 
@@ -23,7 +25,7 @@ Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 int
 |---|---|
 | Runtime | Node.js ≥ 20.18.1 |
 | Discord | discord.js 14 + @discordjs/voice 0.19.2 |
-| AI | Google Gemini 2.5 Flash via `@ai-sdk/google` |
+| AI | Google Gemini via `@ai-sdk/google` (text `gemini-2.5-flash`, images `gemini-3.1-flash-image`) |
 | Database | SQLite via `better-sqlite3` |
 | Dashboard | Express + vanilla HTML |
 | Music | `yt-dlp` + `ffmpeg` (system binaries) |
@@ -44,11 +46,14 @@ database.js                 # SQLite schema, log tables
 logger.js                   # Structured logging to console + dashboard stream
 personas.js                 # AI personality definitions
 persona-manager.js          # Persona state and switching logic
+hate-manager.js             # Hate list storage, roast pools, ping cooldowns
 commands/
-  utility.js                # /ask, /image, /meme, /code, /clearmemory, /persona, /personas
-  admin.js                  # /pzrestart (Birds Server specific)
+  utility.js                # /ask, /imagine, /meme, /code, /clearmemory, /persona, /personas
+  admin.js                  # /pickplayers
   cs2.js                    # All CS2 commands
   tarkov.js                 # All Tarkov commands
+  allergies.js              # Tarkov roleplay allergy commands
+  hate.js                   # /hate add|remove|list|channel
 services/
   ai.js                     # Gemini text generation + vision
   image.js                  # Gemini image generation + rate limiting
