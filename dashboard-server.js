@@ -3,6 +3,7 @@ const cors = require('cors');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList } = require('./hate-manager.js');
 
 // Load cultist enabled state from DB on startup (persists across reboots)
 let cultistState = {
@@ -139,6 +140,27 @@ app.post('/api/persona/set', (req, res) => {
   if (!success) return res.status(400).json({ success: false, error: 'Persona switch failed' });
   console.log(`[API] Persona changed to: ${persona}`);
   res.json({ success: true, persona });
+});
+
+// ===== HATE LIST ENDPOINTS =====
+app.get('/api/hate/list', (req, res) => {
+  res.json({ success: true, list: getHatedUserIds() });
+});
+
+app.post('/api/hate/add', (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
+  const result = addToHateList(userId);
+  console.log(`[API] Hate list add: ${userId} — ${result.message}`);
+  res.json(result);
+});
+
+app.post('/api/hate/remove', (req, res) => {
+  const { userId } = req.body;
+  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
+  const result = removeFromHateList(userId);
+  console.log(`[API] Hate list remove: ${userId} — ${result.message}`);
+  res.json(result);
 });
 
 app.get('/api/bot/logs', (req, res) => {

@@ -374,6 +374,27 @@
                 </div>
             </div>
 
+            <!-- Hate List Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-icon">&#x1F608;</span> Bot's Hate List</div>
+                    <span id="hate-status" class="status-badge inactive">OFFLINE</span>
+                </div>
+                <p style="color:var(--color-text-secondary);margin-bottom:15px;">These Discord users get extra venom from the bot. Heavy roast vibes.</p>
+                <div class="status-info">
+                    <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
+                </div>
+                <div class="control-section">
+                    <label class="control-label" for="hate-user">User ID</label>
+                    <input type="text" id="hate-user" placeholder="Discord user ID" class="persona-select" style="width:100%;margin-bottom:10px;">
+                    <div>
+                        <button class="button button-primary" id="hate-add-btn">&#x1F608; Add</button>
+                        <button class="button button-secondary" id="hate-remove-btn">&#x1F607; Remove</button>
+                        <button class="button button-secondary" id="hate-refresh-btn">&#x1F504; Refresh</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Bot Status Card -->
             <div class="card">
                 <div class="card-header">
@@ -611,6 +632,42 @@
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
+                this.loadHateList();
+            }
+
+            async loadHateList() {
+                try {
+                    const badge = document.getElementById('hate-status');
+                    const count = document.getElementById('hate-count');
+                    const res = await fetch(`${API_BASE}/hate/list`);
+                    const data = await res.json();
+                    if (data.success) {
+                        count.textContent = data.list.length;
+                        badge.textContent = data.list.length > 0 ? `${data.list.length} HATED` : 'CLEAR';
+                        badge.className = 'status-badge ' + (data.list.length > 0 ? 'active' : 'inactive');
+                    }
+                } catch (e) {
+                    console.error('[HATE] load failed', e);
+                }
+            }
+
+            async hateAction(action) {
+                const userId = document.getElementById('hate-user').value.trim();
+                if (!userId) { alert('Enter a Discord user ID'); return; }
+                try {
+                    const res = await fetch(`${API_BASE}/hate/${action}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ userId })
+                    });
+                    const data = await res.json();
+                    alert(data.message || (data.success ? 'Done' : data.error));
+                    document.getElementById('hate-user').value = '';
+                    this.loadHateList();
+                } catch (e) {
+                    console.error('[HATE] action failed', e);
+                    alert('Failed to update hate list');
+                }
             }
 
             initializeEventListeners() {
@@ -620,6 +677,12 @@
                 document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
                 document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
+                document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
+                document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
+                document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
+                document.getElementById('hate-user').addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') this.hateAction('add');
+                });
                 document.getElementById('check-bot-btn').addEventListener('click', () => this.checkBotStatus());
                 document.getElementById('reload-commands-btn').addEventListener('click', () => this.reloadCommands());
                 document.getElementById('clear-memory-btn').addEventListener('click', () => this.clearMemory());

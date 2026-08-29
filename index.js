@@ -10,6 +10,7 @@ const { addToMemory } = require('./memory.js');
 const { logCommand, logSystemEvent } = require('./logger.js');
 const { getSetting, setSetting } = require('./database.js');
 const { musicSlashCommandDefs, handleMusicInteraction } = require('./music.js');
+const { isHated, buildHateJab, buildCallout } = require('./hate-manager.js');
 
 // Services
 const { getAIResponse, isWildRequest, getWildRequestResponse } = require('./services/ai.js');
@@ -22,6 +23,7 @@ const adminCommands   = require('./commands/admin.js');
 const cs2Commands     = require('./commands/cs2.js');
 const tarkovCommands  = require('./commands/tarkov.js');
 const allergyCommands = require('./commands/allergies.js');
+const hateCommands    = require('./commands/hate.js');
 
 // Discord-only helpers (live in utility.js)
 const {
@@ -94,6 +96,7 @@ const allCommands = {
     ...cs2Commands.commands,
     ...tarkovCommands.commands,
     ...allergyCommands.commands,
+    ...hateCommands.commands,
 };
 
 // ===== DISCORD CLIENT =====
@@ -186,6 +189,28 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     await interaction.editReply(`❌ Unknown command: \`/${commandName}\``);
 });
 
+// ===== HATE LIST AUGMENTATION =====
+// Adds the bot's "hated user" flavor to replies and random callouts.
+
+function augmentReplyWithHate(userId, username, response) {
+    if (!isHated(userId)) return response;
+    const jab = buildHateJab(username);
+    // Keep replies under the 2000-char safe-send limit
+    const room = 2000 - response.length - jab.length - 3;
+    if (room > 10) return `${response}\n\n${jab}`;
+    return response;
+}
+
+// Chance (per hated-user message) to fire a random callout in the channel.
+function maybeRandomCallout(userId, username, channel) {
+    if (!isHated(userId)) return;
+    // ~8% chance, not on every message
+    if (Math.random() > 0.08) return;
+    const callout = buildCallout(username);
+    safeDiscordSend(channel, callout);
+    logCommand('discord', username, '@mention (hate callout)', '', callout);
+}
+
 // ===== DISCORD MESSAGE HANDLER =====
 discordClient.on(Events.MessageCreate, async (message) => {
     if (message.author.bot) return;
@@ -201,6 +226,8 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     const userMessage = message.content.replace(/<@!?\d+>/g, '').trim();
     if (!userMessage && !hasImageAttachment(message)) return;
+
+    maybeRandomCallout(message.author.id, username, message.channel);
 
     if (isWildRequest(userMessage)) {
         const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
@@ -235,13 +262,15 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
-        const response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
+        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
+        response = augmentReplyWithHate(message.author.id, username, response);
         await safeDiscordReply(message, response);
         logCommand('discord', username, '@mention (image analysis)', userMessage, response);
         return;
     }
 
-    const response = await getAIResponse(userMessage, 'discord', channelId, username);
+    let response = await getAIResponse(userMessage, 'discord', channelId, username);
+    response = augmentReplyWithHate(message.author.id, username, response);
     await safeDiscordReply(message, response);
     logCommand('discord', username, '@mention', userMessage, response);
 });
@@ -273,13 +302,15 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
-        const response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
+        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
+        response = augmentReplyWithHate(message.author.id, username, response);
         await safeDiscordReply(message, response);
         logCommand('discord', username, 'reply (image analysis)', userMessage, response);
         return;
     }
 
-    const response = await getAIResponse(userMessage, 'discord', channelId, username);
+    let response = await getAIResponse(userMessage, 'discord', channelId, username);
+    response = augmentReplyWithHate(message.author.id, username, response);
     await safeDiscordReply(message, response);
     logCommand('discord', username, 'reply', userMessage, response);
 });
