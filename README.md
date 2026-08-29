@@ -9,13 +9,14 @@ Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 int
 ## What It Does
 
 - **AI chat** — Mention the bot or reply to it. Supports text, image understanding, and image generation via Gemini.
+- **Long-term memory** — The AI builds a durable "fact sheet" per channel (names, mains, inside jokes) and references it across sessions; also feeds roasts. Hourly, cost-bounded consolidation.
 - **Tarkov** — Item prices, ammo rankings, trader timers, map/boss info, player stats.
 - **Tarkov Allergies** — Roleplay allergy tracking; log and compare what members are allergic to.
 - **Hate List** — Admin-managed roleplay roast list; the bot tags and roasts listed users with AI-generated lines.
 - **CS2** — Skin prices, float values, player stats, map callouts, case simulator.
 - **Music** — YouTube voice playback via `yt-dlp` + `ffmpeg`. No API key required.
 - **Twitch** — Connects to Twitch IRC and relays messages to Discord.
-- **Dashboard** — Live web UI at `http://localhost:3001` for logs, persona switching, hate list, and Cultist tracking.
+- **Dashboard** — Live web UI at `http://localhost:3001` for logs, persona switching, hate list, long-term memory, and Cultist tracking.
 
 ---
 
@@ -41,14 +42,14 @@ dashboard-server.js         # Express API + dashboard frontend
 music.js                    # Music slash command handler (ACTIVE)
 music-player.js             # Voice engine — yt-dlp, ffmpeg, DAVE E2EE (ACTIVE)
 music-player.deprecated.js  # Previous rewrite — reference only, not loaded at runtime
-memory.js                   # SQLite conversation context
+memory.js                   # SQLite conversation context + long-term fact sheet
 database.js                 # SQLite schema, log tables
 logger.js                   # Structured logging to console + dashboard stream
 personas.js                 # AI personality definitions
 persona-manager.js          # Persona state and switching logic
 hate-manager.js             # Hate list storage, roast pools, ping cooldowns
 commands/
-  utility.js                # /ask, /imagine, /meme, /code, /clearmemory, /persona, /personas
+  utility.js                # /ask, /imagine, /meme, /code, /persona, /personas
   admin.js                  # /pickplayers
   cs2.js                    # All CS2 commands
   tarkov.js                 # All Tarkov commands

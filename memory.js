@@ -1,4 +1,4 @@
-const { db } = require('./database.js');
+const { db, getSetting, setSetting } = require('./database.js');
 const { logSystemEvent } = require('./logger.js');
 
 // Create conversation memory table
@@ -34,6 +34,82 @@ const CONFIG = {
   CLEANUP_AFTER_MESSAGES: 1000,   // Keep last N messages per channel
   MAX_MESSAGE_AGE_HOURS: 24       // Don't pull context older than this
 };
+
+// ===== LONG-TERM FACT SHEET =====
+// Durable, AI-maintained facts per channel. Stored as a JSON blob in
+// bot_settings (same pattern as the hate list). The AI rewrites the whole
+// sheet each consolidation pass, so facts can be added, changed, or removed.
+const FACT_MAX        = 25;   // Max facts stored per channel
+const FACT_MAX_LEN    = 140;  // Max chars per fact
+const FACT_TOPIC_MAX  = 8;    // Max topics per fact
+const MIN_NEW_MESSAGES = 5;   // Consolidation skips unless this many new msgs
+
+function factsKey(channelId)         { return `memoryFacts:${channelId}`; }
+function factsLastIdKey(channelId)   { return `memoryFactsLastId:${channelId}`; }
+
+// Get facts for a channel, optionally filtered to one topic (e.g. a username).
+function getLongTermFacts(platform, channelId, filterTopic) {
+  try {
+    let facts = [];
+    try { facts = JSON.parse(getSetting(factsKey(channelId), '[]')); }
+    catch { facts = []; }
+    if (!Array.isArray(facts)) facts = [];
+    if (filterTopic) {
+      const t = String(filterTopic).toLowerCase();
+      facts = facts.filter(f => (f.topics || []).some(x => String(x).toLowerCase() === t));
+    }
+    return facts;
+  } catch (err) {
+    console.error('[MEMORY] getFacts error:', err);
+    logSystemEvent('MEMORY_FACTS', 'ERROR', 'memory', `Failed to load facts for ${channelId}: ${err.message}`, err);
+    return [];
+  }
+}
+
+// Validate + cap a fact array, then persist it.
+function saveFacts(platform, channelId, facts) {
+  const trimmed = Array.isArray(facts)
+    ? facts.slice(0, FACT_MAX).map(f => ({
+        fact:   String((f && f.fact) || '').substring(0, FACT_MAX_LEN).trim(),
+        topics: Array.isArray(f && f.topics)
+          ? (f.topics).slice(0, FACT_TOPIC_MAX).map(String).filter(t => t.trim())
+          : [],
+      })).filter(f => f.fact)
+    : [];
+  setSetting(factsKey(channelId), JSON.stringify(trimmed));
+  return trimmed;
+}
+
+function getLastConsolidatedId(channelId) {
+  return parseInt(getSetting(factsLastIdKey(channelId), '0'), 10) || 0;
+}
+
+function setLastConsolidatedId(channelId, id) {
+  setSetting(factsLastIdKey(channelId), String(id));
+}
+
+// Pull new messages since a given id (bounded) — used to feed consolidation.
+const getMessagesSince = db.prepare(`
+  SELECT id, username, message, is_bot_response
+  FROM conversation_memory
+  WHERE platform = @platform AND channel_id = @channel_id AND id > @after
+  ORDER BY id ASC
+  LIMIT @limit
+`);
+
+function getNewMessagesSince(platform, channelId, afterId, limit = 100) {
+  return getMessagesSince.all({ platform, channel_id: channelId, after: afterId, limit });
+}
+
+// Render facts as a ready-to-inject block string (empty if none).
+// Optional filterTopic narrows to facts whose topics include that value.
+function getContextFacts(platform, channelId, filterTopic) {
+  const facts = getLongTermFacts(platform, channelId, filterTopic);
+  if (!facts.length) return '';
+  return facts
+    .map((f, i) => `${i + 1}. ${f.fact}` + (f.topics && f.topics.length ? ` [${f.topics.join(', ')}]` : ''))
+    .join('\n');
+}
 
 // Store a message in memory
 const storeMessage = db.prepare(`
@@ -196,5 +272,15 @@ module.exports = {
   getSmartContext,
   getConversationStats,
   cleanupOldMemory,
-  clearChannelMemory
+  clearChannelMemory,
+  // Long-term facts
+  getLongTermFacts,
+  saveFacts,
+  getLastConsolidatedId,
+  setLastConsolidatedId,
+  getNewMessagesSince,
+  getContextFacts,
+  MIN_NEW_MESSAGES,
+  FACT_MAX,
+  FACT_MAX_LEN,
 };

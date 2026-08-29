@@ -56,7 +56,6 @@ Music uses `yt-dlp` + `ffmpeg` — no API key required.
 | `/imagine` | Generate an AI image with Gemini | `prompt` |
 | `/persona` | Switch the bot's personality | `name` |
 | `/personas` | List all available personas | — |
-| `/clearmemory` | Clear conversation memory for this channel | — |
 | `/meme` | Fetch a random meme | — |
 | `/code` | Get the GitHub repo link | — |
 

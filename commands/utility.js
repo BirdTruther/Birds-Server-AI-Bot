@@ -1,7 +1,7 @@
 // commands/utility.js
 const { SlashCommandBuilder, AttachmentBuilder } = require('discord.js');
 const https = require('https');
-const { addToMemory, clearChannelMemory } = require('../memory.js');
+const { addToMemory } = require('../memory.js');
 const { logCommand, logSystemEvent } = require('../logger.js');
 const { getCurrentPersona, getPersonaErrorMessage, setPersona, getAvailablePersonas } = require('../persona-manager.js');
 const { getAIResponse, isWildRequest, getWildRequestResponse } = require('../services/ai.js');
@@ -263,18 +263,6 @@ const commands = {
             const result = `Available personas: ${buildPersonaList()}`;
             await interaction.editReply(result);
             logCommand('discord', interaction.user.username, '/personas', '', result);
-        }
-    },
-
-    clearmemory: {
-        data: new SlashCommandBuilder()
-            .setName('clearmemory')
-            .setDescription('Clear AI conversation memory for this channel'),
-
-        async execute(interaction) {
-            clearChannelMemory('discord', interaction.channelId);
-            await interaction.editReply('🧹 Memory cleared for this channel.');
-            logCommand('discord', interaction.user.username, '/clearmemory', '', 'Memory cleared');
         }
     },
 

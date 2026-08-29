@@ -395,6 +395,21 @@
                 </div>
             </div>
 
+            <!-- Bot Memory Card -->
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title"><span class="card-icon">&#x1F9E0;</span> Bot Memory</div>
+                    <span id="memory-status" class="status-badge inactive">OFFLINE</span>
+                </div>
+                <p style="color:var(--color-text-secondary);margin-bottom:15px;">Durable facts Patrick remembers about the server and its people.</p>
+                <div class="status-info">
+                    <div class="status-item"><span class="status-label">Facts:</span><span class="status-value" id="memory-count">0</span></div>
+                </div>
+                <div class="control-section">
+                    <button class="button button-primary" id="memory-view-btn">&#x1F9E0; View Memory</button>
+                </div>
+            </div>
+
             <!-- Bot Status Card -->
             <div class="card">
                 <div class="card-header">
@@ -422,7 +437,6 @@
                 </div>
                 <div class="control-section">
                     <button class="button button-primary" id="reload-commands-btn">&#x1F504; Reload Commands</button>
-                    <button class="button button-primary" id="clear-memory-btn">&#x1F9E0; Clear Memory</button>
                     <button class="button button-secondary" id="view-logs-btn">&#x1F4CB; Command Logs</button>
                     <button class="button button-secondary" id="view-system-logs-btn">&#x1F527; System Logs</button>
                     <!-- FIX 2: Export Status button opens the new modal -->
@@ -597,6 +611,45 @@
         </div>
     </div>
 
+    <!-- Bot Memory Modal -->
+    <div id="memory-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title"><span>&#x1F9E0;</span> Bot Memory</div>
+                <button class="modal-close" id="close-memory-modal">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="logs-controls">
+                    <select id="memory-channel" class="persona-select" style="min-width:180px;"></select>
+                    <input type="text" id="memory-filter" class="logs-search" placeholder="Filter facts or topics...">
+                    <button class="button button-primary" id="memory-refresh-btn">&#x1F504; Refresh</button>
+                    <button class="button button-secondary" id="memory-rebuild-btn">&#x2699;&#xFE0F; Rebuild Now</button>
+                </div>
+                <p style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Facts may be added, updated, or removed during hourly consolidation.</p>
+                <div class="control-section" style="margin-bottom:12px;">
+                    <label class="control-label" for="memory-fact-input">Add a fact manually</label>
+                    <input type="text" id="memory-fact-input" class="persona-select" style="width:100%;margin-bottom:8px;" maxlength="140" placeholder="e.g. Bradyn mains scav runs in Tarkov">
+                    <input type="text" id="memory-topics-input" class="persona-select" style="width:100%;margin-bottom:8px;" placeholder="Topics, comma separated (e.g. bradyn, tarkov)">
+                    <button class="button button-primary" id="memory-add-btn">&#x2795; Add Fact</button>
+                </div>
+                <table id="memory-table" style="width:100%;border-collapse:collapse;margin-top:12px;">
+                    <thead>
+                        <tr style="text-align:left;color:var(--color-text-secondary);">
+                            <th style="padding:6px;">#</th>
+                            <th style="padding:6px;">Fact</th>
+                            <th style="padding:6px;">Topics</th>
+                        </tr>
+                    </thead>
+                    <tbody id="memory-tbody"></tbody>
+                </table>
+            </div>
+            <div class="modal-footer">
+                <span style="color:var(--color-text-secondary);">Up to 25 facts per channel</span>
+                <button class="button button-secondary" id="close-memory-btn">Close</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = '/api';
 
@@ -614,6 +667,7 @@
                 this.logsModal = document.getElementById('logs-modal');
                 this.systemLogsModal = document.getElementById('system-logs-modal');
                 this.exportStatusModal = document.getElementById('export-status-modal');
+                this.memoryModal = document.getElementById('memory-modal');
                 this.logsAutoRefresh = null;
                 this.systemLogsAutoRefresh = null;
                 this.currentLogsPlatform = 'all';
@@ -633,6 +687,7 @@
                 this.updateFooterTime();
                 this.loadCurrentPersona();
                 this.loadHateList();
+                this.loadMemory();
             }
 
             async loadHateList() {
@@ -670,6 +725,103 @@
                 }
             }
 
+            async loadMemory() {
+                try {
+                    const badge = document.getElementById('memory-status');
+                    const count = document.getElementById('memory-count');
+                    const channelSelect = document.getElementById('memory-channel');
+                    const filter = document.getElementById('memory-filter').value.trim().toLowerCase();
+
+                    const query = channelSelect.value ? `?channel=${encodeURIComponent(channelSelect.value)}` : '';
+                    const res = await fetch(`${API_BASE}/memory/facts${query}`);
+                    const data = await res.json();
+                    if (!data.success) return;
+
+                    // Populate channel dropdown on first load
+                    if (channelSelect.options.length === 0 && data.channels && data.channels.length) {
+                        for (const c of data.channels) {
+                            const opt = document.createElement('option');
+                            opt.value = c.id;
+                            opt.textContent = `${c.name} (${c.factCount} facts)`;
+                            channelSelect.appendChild(opt);
+                        }
+                        if (!data.channel && channelSelect.options.length) channelSelect.value = channelSelect.options[0].value;
+                    }
+
+                    let facts = data.facts || [];
+                    if (filter) {
+                        facts = facts.filter(f =>
+                            (f.fact || '').toLowerCase().includes(filter) ||
+                            (f.topics || []).some(t => String(t).toLowerCase().includes(filter))
+                        );
+                    }
+
+                    count.textContent = facts.length;
+                    badge.textContent = facts.length > 0 ? `${facts.length} FACTS` : 'EMPTY';
+                    badge.className = 'status-badge ' + (facts.length > 0 ? 'active' : 'inactive');
+
+                    const tbody = document.getElementById('memory-tbody');
+                    tbody.innerHTML = '';
+                    if (!facts.length) {
+                        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--color-text-secondary);padding:8px;">No facts yet — the AI will build them as chat accumulates.</td></tr>';
+                        return;
+                    }
+                    facts.forEach((f, i) => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `<td style="padding:6px;color:var(--color-text-secondary);">${i + 1}</td>
+                            <td style="padding:6px;">${(f.fact || '').replace(/</g, '&lt;')}</td>
+                            <td style="padding:6px;color:var(--color-accent);">${(f.topics || []).map(t => `#${t}`).join(' ')}</td>`;
+                        tbody.appendChild(tr);
+                    });
+                } catch (e) {
+                    console.error('[MEMORY] load failed', e);
+                }
+            }
+
+            async rebuildMemory() {
+                const channelSelect = document.getElementById('memory-channel');
+                const channel = channelSelect.value;
+                if (!channel) { alert('Select a channel first'); return; }
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/rebuild`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channel })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? `Rebuilt: ${(data.facts || []).length} facts` : (data.error || 'Rebuild failed'));
+                    this.loadMemory();
+                } catch (e) {
+                    console.error('[MEMORY] rebuild failed', e);
+                    alert('Failed to rebuild memory');
+                }
+            }
+
+            async addMemoryFact() {
+                const channel = document.getElementById('memory-channel').value;
+                const factInput = document.getElementById('memory-fact-input');
+                const topicsInput = document.getElementById('memory-topics-input');
+                const fact = factInput.value.trim();
+                if (!channel) { alert('Select a channel first'); return; }
+                if (!fact) { alert('Enter a fact first'); return; }
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/add`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ channel, fact, topics: topicsInput.value })
+                    });
+                    const data = await res.json();
+                    if (!data.success) { alert(data.error || 'Failed to add fact'); return; }
+                    factInput.value = '';
+                    topicsInput.value = '';
+                    alert('Fact added');
+                    this.loadMemory();
+                } catch (e) {
+                    console.error('[MEMORY] add fact failed', e);
+                    alert('Failed to add fact');
+                }
+            }
+
             initializeEventListeners() {
                 document.getElementById('persona-select').addEventListener('change', (e) => this.updatePersonaDescription(e));
                 document.getElementById('apply-persona-btn').addEventListener('click', () => this.applyPersona());
@@ -683,9 +835,16 @@
                 document.getElementById('hate-user').addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') this.hateAction('add');
                 });
+                document.getElementById('memory-refresh-btn').addEventListener('click', () => this.loadMemory());
+                document.getElementById('memory-rebuild-btn').addEventListener('click', () => this.rebuildMemory());
+                document.getElementById('memory-add-btn').addEventListener('click', () => this.addMemoryFact());
+                document.getElementById('memory-view-btn').addEventListener('click', () => this.openMemoryModal());
+                document.getElementById('close-memory-modal').addEventListener('click', () => this.closeMemoryModal());
+                document.getElementById('close-memory-btn').addEventListener('click', () => this.closeMemoryModal());
+                document.getElementById('memory-channel').addEventListener('change', () => this.loadMemory());
+                document.getElementById('memory-filter').addEventListener('input', () => this.loadMemory());
                 document.getElementById('check-bot-btn').addEventListener('click', () => this.checkBotStatus());
                 document.getElementById('reload-commands-btn').addEventListener('click', () => this.reloadCommands());
-                document.getElementById('clear-memory-btn').addEventListener('click', () => this.clearMemory());
                 document.getElementById('view-logs-btn').addEventListener('click', () => this.openLogsModal());
                 document.getElementById('view-system-logs-btn').addEventListener('click', () => this.openSystemLogsModal());
                 document.getElementById('close-logs-modal').addEventListener('click', () => this.closeLogsModal());
@@ -726,6 +885,7 @@
                 this.logsModal.addEventListener('click', (e) => { if (e.target === this.logsModal) this.closeLogsModal(); });
                 this.systemLogsModal.addEventListener('click', (e) => { if (e.target === this.systemLogsModal) this.closeSystemLogsModal(); });
                 this.exportStatusModal.addEventListener('click', (e) => { if (e.target === this.exportStatusModal) this.closeExportStatusModal(); });
+                this.memoryModal.addEventListener('click', (e) => { if (e.target === this.memoryModal) this.closeMemoryModal(); });
             }
 
             startAutoRefresh() {
@@ -829,7 +989,15 @@
             }
 
             async reloadCommands() { this.showAlert('Commands reloaded (restart bot to apply changes)', 'success'); }
-            async clearMemory() { this.showAlert('Memory cleared for current session', 'success'); }
+
+            openMemoryModal() {
+                this.memoryModal.classList.add('show');
+                this.loadMemory();
+            }
+
+            closeMemoryModal() {
+                this.memoryModal.classList.remove('show');
+            }
 
             openLogsModal() {
                 this.logsModal.classList.add('show');

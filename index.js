@@ -6,14 +6,14 @@ const { Client, Events, GatewayIntentBits, AttachmentBuilder, REST, Routes, Acti
 require('dotenv').config();
 
 // Core modules
-const { addToMemory } = require('./memory.js');
+const { addToMemory, getContextFacts } = require('./memory.js');
 const { logCommand, logSystemEvent } = require('./logger.js');
 const { getSetting, setSetting } = require('./database.js');
 const { musicSlashCommandDefs, handleMusicInteraction } = require('./music.js');
 const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, canPing, isOnPingCooldown } = require('./hate-manager.js');
 
 // Services
-const { getAIResponse, isWildRequest, getWildRequestResponse, generateHateRoast } = require('./services/ai.js');
+const { getAIResponse, isWildRequest, getWildRequestResponse, generateHateRoast, consolidateChannelFacts } = require('./services/ai.js');
 const { generateImage, detectImageRequest, sanitizeImagePrompt, checkImageRateLimit } = require('./services/image.js');
 require('./services/twitch.js'); // self-initializing — connects on require
 
@@ -154,6 +154,29 @@ discordClient.once(Events.ClientReady, async (client) => {
 
     startHateTimer(client);
     console.log('[HATE] Proactive hate timer started');
+
+    // Long-term memory: hourly, turn each active text channel's recent chat
+    // into a durable AI-maintained fact sheet ("Patrick learns").
+    const consolidateMemory = async () => {
+        try {
+            const guild = client.guilds.cache.first();
+            if (!guild) return;
+            const textChannels = guild.channels.cache.filter(ch => ch.isTextBased() && !ch.isThread());
+            for (const ch of textChannels.values()) {
+                try {
+                    await consolidateChannelFacts('discord', ch.id);
+                } catch (err) {
+                    console.error(`[MEMORY] Consolidation error for #${ch.name}:`, err.message);
+                }
+            }
+        } catch (err) {
+            console.error('[MEMORY] Consolidation timer error:', err.message);
+            logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation sweep failed: ${err.message}`, err);
+        }
+    };
+    consolidateMemory();
+    setInterval(consolidateMemory, 60 * 60 * 1000);
+    console.log('[MEMORY] Long-term memory consolidation timer started (hourly)');
 });
 
 // ===== SLASH COMMAND HANDLER =====
@@ -265,8 +288,16 @@ function startHateTimer(client) {
             const member = channel.guild?.members?.cache?.get(target);
             const name = member?.displayName || `<@${target}>`;
 
+            // Ammunition: facts remembered about THIS user, so the roast hits
+            // where it hurts. Filter by their Discord username first, then any.
+            const targetUsername = member?.user?.username?.toLowerCase();
+            const targetFacts = targetUsername
+                ? getContextFacts('discord', channelId, targetUsername)
+                : '';
+            const roastFacts = targetFacts || getContextFacts('discord', channelId);
+
             await channel.sendTyping();
-            const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list');
+            const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts);
 
             safeDiscordSend(channel, roast);
             logSystemEvent('HATE', 'INFO', 'discord', `Proactive AI roast fired at ${target}: ${roast}`);
