@@ -82,16 +82,95 @@ function getLongTermFacts(platform, channelId, filterTopic) {
   }
 }
 
-// Validate + cap a fact array, then persist it.
+// Normalize a single fact into a safe shape, preserving the pinned flag.
+function normalizeFact(f) {
+  return {
+    fact:   String((f && f.fact) || '').substring(0, FACT_MAX_LEN).trim(),
+    topics: Array.isArray(f && f.topics)
+      ? (f.topics).slice(0, FACT_TOPIC_MAX).map(String).filter(t => t.trim())
+      : [],
+    pinned: !!(f && f.pinned),
+  };
+}
+
+// Manually-added facts are pinned and must outlive AI consolidation.
+function isPinned(f) { return !!(f && f.pinned); }
+
+// Determine whether two facts plausibly describe the same thing (used to
+// decide if a disk-pinned fact has been replaced by a newer pinned version).
+function factsOverlap(a, b) {
+  if (a.fact.toLowerCase() === b.fact.toLowerCase()) return true;
+  const at = (a.topics || []).map(String).map(t => t.toLowerCase());
+  const bt = (b.topics || []).map(String).map(t => t.toLowerCase());
+  return at.some(t => bt.includes(t));
+}
+
+// Validate + cap a fact array, then persist it. Pinned facts are never
+// dropped: whatever the caller (or the AI) returns, any fact already pinned
+// in the stored sheet is re-merged before saving, so a manual fact can't be
+// lost to consolidation, the 25-fact cap, or model omission. When the AI
+// returns a newer pinned version of a pinned fact (edit/rename), the newer
+// version wins. Duplicates are resolved in favour of the incoming entry.
 function saveFacts(platform, channelId, facts) {
-  const trimmed = Array.isArray(facts)
-    ? facts.slice(0, FACT_MAX).map(f => ({
-        fact:   String((f && f.fact) || '').substring(0, FACT_MAX_LEN).trim(),
-        topics: Array.isArray(f && f.topics)
-          ? (f.topics).slice(0, FACT_TOPIC_MAX).map(String).filter(t => t.trim())
-          : [],
-      })).filter(f => f.fact)
+  const incoming = Array.isArray(facts)
+    ? facts.map(normalizeFact).filter(f => f.fact)
     : [];
+
+  // Pinned facts currently on disk — these must survive.
+  const stored = getLongTermFacts(platform, channelId);
+  const storedPinned = stored.filter(isPinned);
+
+  // Re-merge pinned facts from disk. The AI never sets "pinned" on its
+  // output, so if it regenerates text that matches a disk-pinned fact,
+  // the unpinned copy would win dedup (first-in) and silently kill the pin.
+  // Fix: when a disk-pinned fact is covered by an incoming fact (same text
+  // or overlapping topics), REPLACE the incoming version with the pinned
+  // copy so the flag survives. When not covered, push it as before.
+  for (const sp of storedPinned) {
+    const coveredIdx = incoming.findIndex(inc => factsOverlap(sp, inc));
+    if (coveredIdx !== -1) {
+      incoming[coveredIdx] = { ...sp, fact: incoming[coveredIdx].fact };
+    } else {
+      incoming.push(sp);
+    }
+  }
+
+  // De-duplicate by fact text (case-insensitive), keeping the first.
+  const seen = new Set();
+  const deduped = incoming.filter(inc => {
+    const key = inc.fact.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  // Cap. Pinned facts are prioritised so they can't be pushed out by overflow.
+  const pinnned = deduped.filter(isPinned);
+  const unpinned = deduped.filter(f => !isPinned(f));
+  const trimmed = [...pinnned, ...unpinned].slice(0, FACT_MAX);
+
+  setSetting(factsKey(), JSON.stringify(trimmed));
+  return trimmed;
+}
+
+// Low-level writer used by explicit admin operations (edit/delete/pin).
+// Unlike saveFacts, this does NOT re-merge existing pinned facts from disk —
+// the caller has decided the exact final set, so we write it verbatim
+// (normalized, deduped, capped). Pinned flags on the passed facts are kept.
+function replaceFacts(platform, channelId, facts) {
+  const incoming = Array.isArray(facts)
+    ? facts.map(normalizeFact).filter(f => f.fact)
+    : [];
+  const seen = new Set();
+  const deduped = incoming.filter(inc => {
+    const key = inc.fact.toLowerCase();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  const pinnned = deduped.filter(isPinned);
+  const unpinned = deduped.filter(f => !isPinned(f));
+  const trimmed = [...pinnned, ...unpinned].slice(0, FACT_MAX);
   setSetting(factsKey(), JSON.stringify(trimmed));
   return trimmed;
 }
@@ -299,4 +378,7 @@ module.exports = {
   MIN_NEW_MESSAGES,
   FACT_MAX,
   FACT_MAX_LEN,
+  isPinned,
+  normalizeFact,
+  replaceFacts,
 };

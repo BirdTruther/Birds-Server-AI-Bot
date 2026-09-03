@@ -146,6 +146,10 @@
         .button-primary:active { transform: translateY(0); }
         .button-secondary { background: rgba(255,255,255,0.1); color: var(--color-text-primary); border: 1px solid rgba(255,255,255,0.2); }
         .button-secondary:hover { background: rgba(255,255,255,0.15); border-color: rgba(255,255,255,0.3); }
+        .button-warn { background: rgba(250,204,21,0.15); color:#facc15; border:1px solid rgba(250,204,21,0.4); }
+        .button-warn:hover { background: rgba(250,204,21,0.25); border-color: rgba(250,204,21,0.6); }
+        .button-danger { background: rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.4); }
+        .button-danger:hover { background: rgba(239,68,68,0.25); border-color: rgba(239,68,68,0.6); }
         .button:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; }
 
         /* FIX 3: Persona dropdown — fully visible at rest with solid bg/text/option colors */
@@ -624,7 +628,7 @@
                     <button class="button button-primary" id="memory-refresh-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="memory-rebuild-btn">&#x2699;&#xFE0F; Rebuild Now</button>
                 </div>
-                <p style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Facts may be added, updated, or removed during hourly consolidation.</p>
+                <p style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Manually added facts are <strong>pinned</strong> so consolidation never drops them. Use the row actions to edit, pin/unpin, or delete a fact anytime.</p>
                 <div class="control-section" style="margin-bottom:12px;">
                     <label class="control-label" for="memory-fact-input">Add a fact manually</label>
                     <input type="text" id="memory-fact-input" class="persona-select" style="width:100%;margin-bottom:8px;" maxlength="140" placeholder="e.g. Bradyn mains scav runs in Tarkov">
@@ -637,6 +641,7 @@
                             <th style="padding:6px;">#</th>
                             <th style="padding:6px;">Fact</th>
                             <th style="padding:6px;">Topics</th>
+                            <th style="padding:6px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody id="memory-tbody"></tbody>
@@ -749,15 +754,34 @@
                     const tbody = document.getElementById('memory-tbody');
                     tbody.innerHTML = '';
                     if (!facts.length) {
-                        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--color-text-secondary);padding:8px;">No facts yet — the AI will build them as chat accumulates.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--color-text-secondary);padding:8px;">No facts yet — the AI will build them as chat accumulates.</td></tr>';
                         return;
                     }
                     facts.forEach((f, i) => {
                         const tr = document.createElement('tr');
-                        tr.innerHTML = `<td style="padding:6px;color:var(--color-text-secondary);">${i + 1}</td>
+                        tr.dataset.fact = (f.fact || '').replace(/"/g, '&quot;');
+                        const pinBtn = f.pinned
+                            ? '<button class="button button-warn" data-action="pin" title="Unpin this fact" style="padding:3px 8px;font-size:12px;margin:2px;">&#128274; Unpin</button>'
+                            : '<button class="button button-secondary" data-action="pin" title="Pin this fact so consolidation never drops it" style="padding:3px 8px;font-size:12px;margin:2px;">&#128391; Pin</button>';
+                        tr.innerHTML = `<td style="padding:6px;color:var(--color-text-secondary);">${f.pinned ? '&#128274;' : ''} ${i + 1}</td>
                             <td style="padding:6px;">${(f.fact || '').replace(/</g, '&lt;')}</td>
-                            <td style="padding:6px;color:var(--color-accent);">${(f.topics || []).map(t => `#${t}`).join(' ')}</td>`;
+                            <td style="padding:6px;color:var(--color-accent);">${(f.topics || []).map(t => `#${t}`).join(' ')}</td>
+                            <td style="padding:6px;white-space:nowrap;">
+                                <button class="button button-secondary" data-action="edit" style="padding:3px 8px;font-size:12px;margin:2px;">&#9998; Edit</button>
+                                ${pinBtn}
+                                <button class="button button-danger" data-action="delete" style="padding:3px 8px;font-size:12px;margin:2px;">&#128465; Del</button>
+                            </td>`;
                         tbody.appendChild(tr);
+                    });
+                    tbody.querySelectorAll('[data-action]').forEach(btn => {
+                        btn.addEventListener('click', () => {
+                            const fact = btn.closest('tr').dataset.fact;
+                            switch (btn.dataset.action) {
+                                case 'edit':   this.editMemoryFact(fact); break;
+                                case 'pin':    this.toggleMemoryPin(fact); break;
+                                case 'delete': this.deleteMemoryFact(fact); break;
+                            }
+                        });
                     });
                 } catch (e) {
                     console.error('[MEMORY] load failed', e);
@@ -800,6 +824,61 @@
                 } catch (e) {
                     console.error('[MEMORY] add fact failed', e);
                     alert('Failed to add fact');
+                }
+            }
+
+            async editMemoryFact(oldFact) {
+                const newFact = prompt('Edit fact:', oldFact);
+                if (newFact === null) return;
+                const trimmed = newFact.trim();
+                if (!trimmed) { alert('Fact cannot be empty'); return; }
+                const topics = prompt('Topics (comma separated):');
+                if (topics === null) return;
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/edit`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ oldFact, fact: trimmed, topics })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? 'Fact updated' : (data.error || 'Failed to update fact'));
+                    this.loadMemory();
+                } catch (e) {
+                    console.error('[MEMORY] edit fact failed', e);
+                    alert('Failed to update fact');
+                }
+            }
+
+            async toggleMemoryPin(fact) {
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/pin`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fact })
+                    });
+                    const data = await res.json();
+                    if (!data.success) { alert(data.error || 'Failed to update pin'); return; }
+                    this.loadMemory();
+                } catch (e) {
+                    console.error('[MEMORY] pin toggle failed', e);
+                    alert('Failed to update pin');
+                }
+            }
+
+            async deleteMemoryFact(fact) {
+                if (!confirm(`Delete fact:\n\n"${fact}"`)) return;
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/delete`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fact })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? 'Fact deleted' : (data.error || 'Failed to delete fact'));
+                    this.loadMemory();
+                } catch (e) {
+                    console.error('[MEMORY] delete fact failed', e);
+                    alert('Failed to delete fact');
                 }
             }
 

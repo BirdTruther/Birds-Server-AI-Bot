@@ -5,7 +5,7 @@
 
 const { SlashCommandBuilder } = require('discord.js');
 const { logCommand } = require('../logger.js');
-const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId, setHateChannelId } = require('../hate-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList, isHated, getHateChannelId, setHateChannelId } = require('../hate-manager.js');
 
 const commands = {
     hate: {
@@ -25,6 +25,10 @@ const commands = {
             .addSubcommand(sub =>
                 sub.setName('list')
                     .setDescription('List everyone the bot hates')
+            )
+            .addSubcommand(sub =>
+                sub.setName('remove-me')
+                    .setDescription('Remove yourself from the hate list')
             )
             .addSubcommand(sub =>
                 sub.setName('channel')
@@ -62,6 +66,23 @@ const commands = {
                 const result = `📢 Roasts will fire into <#${channelId}>.`;
                 await interaction.editReply(result);
                 logCommand('discord', username, '/hate channel', channelId, result);
+                return;
+            }
+
+            // Self-service: the caller can remove THEMSELVES from the list.
+            // (Self-remove is intentionally open so a listed player can opt out
+            // anytime; targeted add/remove for others stays permission-gated.)
+            if (sub === 'remove-me') {
+                const userId = interaction.user.id;
+                if (!isHated(userId)) {
+                    await interaction.editReply('😇 You aren\'t on the hate list anyway. No redemption arc needed.');
+                    logCommand('discord', username, '/hate remove-me', userId, 'not on list');
+                    return;
+                }
+                const result = removeFromHateList(userId);
+                const reply = `${result.message} (<@${userId}> stepped out)`;
+                await interaction.editReply(reply);
+                logCommand('discord', username, '/hate remove-me', userId, reply);
                 return;
             }
 

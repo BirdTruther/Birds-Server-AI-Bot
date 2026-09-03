@@ -4,7 +4,7 @@ const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
 const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId } = require('./hate-manager.js');
-const { getLongTermFacts, saveFacts, getLastConsolidatedId } = require('./memory.js');
+const { getLongTermFacts, saveFacts, replaceFacts, getLastConsolidatedId } = require('./memory.js');
 const { consolidateChannelFacts } = require('./services/ai.js');
 
 // Load cultist enabled state from DB on startup (persists across reboots)
@@ -205,7 +205,7 @@ app.post('/api/memory/facts/add', (req, res) => {
 
   const updated = saveFacts('discord', 'global', [
     ...facts,
-    { fact, topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean) },
+    { fact, pinned: true, topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean) },
   ]);
   const added = updated.some(existing => existing.fact.toLowerCase() === fact.toLowerCase());
   if (!added) return res.status(400).json({ success: false, error: 'Fact could not be saved' });
@@ -221,6 +221,81 @@ app.post('/api/memory/facts/rebuild', async (req, res) => {
     console.error('[API] Memory rebuild error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to rebuild memory: ' + err.message });
   }
+});
+
+// Edit an existing fact (replace text/topics). Pinned status is preserved
+// unless an explicit pinned toggle is passed.
+app.post('/api/memory/facts/edit', (req, res) => {
+  const target = String((req.body && req.body.oldFact) || '').trim();
+  const newFact = String((req.body && req.body.fact) || '').trim();
+  const topics = Array.isArray(req.body && req.body.topics)
+    ? req.body.topics
+    : String((req.body && req.body.topics) || '').split(',');
+
+  if (!target || !newFact) {
+    return res.status(400).json({ success: false, error: 'oldFact and fact are required' });
+  }
+
+  const facts = getLongTermFacts('discord', 'global');
+  const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: 'Fact not found' });
+  }
+
+  if (newFact.toLowerCase() !== target.toLowerCase() &&
+      facts.some(f => f.fact.toLowerCase() === newFact.toLowerCase())) {
+    return res.status(409).json({ success: false, error: 'A fact with that text already exists' });
+  }
+
+  const hasPinOverride = Object.prototype.hasOwnProperty.call(req.body || {}, 'pinned');
+  const updatedFact = {
+    fact: newFact,
+    topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean),
+    pinned: hasPinOverride ? !!req.body.pinned : !!facts[idx].pinned,
+  };
+  const updatedArr = facts.slice();
+  updatedArr[idx] = updatedFact;
+
+  const saved = replaceFacts('discord', 'global', updatedArr);
+  console.log(`[API] Global memory fact edited: ${target} -> ${newFact}`);
+  res.json({ success: true, facts: saved, fact: saved.find(f => f.fact.toLowerCase() === newFact.toLowerCase()) });
+});
+
+// Delete a fact by text.
+app.post('/api/memory/facts/delete', (req, res) => {
+  const target = String((req.body && req.body.fact) || '').trim();
+  if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
+
+  const facts = getLongTermFacts('discord', 'global');
+  const filtered = facts.filter(f => f.fact.toLowerCase() !== target.toLowerCase());
+  if (filtered.length === facts.length) {
+    return res.status(404).json({ success: false, error: 'Fact not found' });
+  }
+
+  const saved = replaceFacts('discord', 'global', filtered);
+  console.log(`[API] Global memory fact deleted: ${target}`);
+  res.json({ success: true, facts: saved });
+});
+
+// Pin/unpin a fact by text.
+app.post('/api/memory/facts/pin', (req, res) => {
+  const target = String((req.body && req.body.fact) || '').trim();
+  if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
+
+  const facts = getLongTermFacts('discord', 'global');
+  const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
+  if (idx === -1) {
+    return res.status(404).json({ success: false, error: 'Fact not found' });
+  }
+
+  const pinned = !facts[idx].pinned;
+  const updatedFact = { ...facts[idx], pinned };
+  const updatedArr = facts.slice();
+  updatedArr[idx] = updatedFact;
+
+  const saved = replaceFacts('discord', 'global', updatedArr);
+  console.log(`[API] Global memory fact ${pinned ? 'pinned' : 'unpinned'}: ${target}`);
+  res.json({ success: true, pinned, facts: saved });
 });
 
 app.get('/api/bot/logs', (req, res) => {

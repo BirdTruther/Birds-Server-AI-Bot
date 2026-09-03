@@ -68,7 +68,9 @@ async function consolidateChannelFacts(platform, channelId, force = false) {
 
     const currentFacts = getLongTermFacts(platform, channelId);
     const sheetText = currentFacts.length
-        ? currentFacts.map((f, i) => `${i + 1}. ${f.fact}`).join('\n')
+        ? currentFacts.map((f, i) =>
+            `${i + 1}. ${f.fact}${f.pinned ? ' [PINNED — ALWAYS KEEP VERBATIM]' : ''}`)
+          .join('\n')
         : '(empty — no facts yet)';
 
     const chatText = newMessages
@@ -92,6 +94,9 @@ Rewrite the memory sheet based on the recent chat. Your job is to keep the sheet
 - UPDATE any existing fact that has changed or become more accurate.
 - Do not remove a fact merely because it is old. REMOVE only facts that are
   clearly false, directly contradicted by newer information, or obvious noise.
+- Any fact marked [PINNED — ALWAYS KEEP VERBATIM] MUST be preserved exactly
+  as written, word for word, with its topics. Never edit, drop, or shorten a
+  PINNED fact, even if a user later seems to contradict it.
 - Keep it to at most ${FACT_MAX} facts total.
 - Each fact: a short, conversational line, plus a "topics" list (lowercase keywords including usernames, games, etc.).
 

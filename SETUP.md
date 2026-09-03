@@ -171,7 +171,10 @@ sudo systemctl restart discordbot
 | `POST` | `/api/hate/add` | Add to hate list `{ "userId": "..." }` |
 | `POST` | `/api/hate/remove` | Remove from hate list `{ "userId": "..." }` |
 | `GET` | `/api/memory/facts` | Current server-wide long-term memory fact sheet |
-| `POST` | `/api/memory/facts/add` | Add a fact `{ "fact": "...", "topics": "..." }` |
+| `POST` | `/api/memory/facts/add` | Add a fact (auto-pinned) `{ "fact": "...", "topics": "..." }` |
+| `POST` | `/api/memory/facts/edit` | Edit a fact `{ "oldFact": "...", "fact": "...", "topics": "..." }` |
+| `POST` | `/api/memory/facts/delete` | Delete a fact `{ "fact": "..." }` |
+| `POST` | `/api/memory/facts/pin` | Pin/unpin a fact `{ "fact": "..." }` |
 | `POST` | `/api/memory/facts/rebuild` | Force-rebuild the server-wide fact sheet |
 | `POST` | `/api/export/start` | Start a memorial-message export |
 | `GET` | `/api/export/status/:jobId` | Export job status |
