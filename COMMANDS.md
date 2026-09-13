@@ -85,10 +85,13 @@ Admin-managed roleplay "hate list". Admins add users, and the bot roasts them: c
 |---|---|---|
 | `/hate add` | Add a user to the hate list | `user` |
 | `/hate remove` | Remove a user from the hate list | `user` |
+| `/hate remove-me` | Remove **yourself** from the hate list (self-service, always available) | — |
 | `/hate list` | Show all hated users | — |
 | `/hate channel` | Set the channel where roasts fire | `channel` |
 
-> `/hate` commands are gated by Discord-native slash-command permissions — only admins you grant them to can use them.
+> `add`, `remove`, `list`, and `channel` are gated by Discord-native slash-command permissions — only admins you grant them to can use those. `/hate remove-me` is intentionally open so any listed player can opt out anytime.
+>
+> Proactive roast pings (the hourly AI timer and random chat callouts) can be disabled entirely from the dashboard's "Roast Pings" toggle; on-demand roasts and reply-based attacks stay active.
 
 ---
 

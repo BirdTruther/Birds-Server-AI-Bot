@@ -136,6 +136,10 @@ sudo systemctl restart discordbot
 | Twitch message delay | 1.5s | `services/twitch.js` |
 | Cultist status interval | 30s | `index.js` |
 | Image rate limit | 3 per user / 60s | `services/image.js` |
+| Long-term fact max | 25 facts | `memory.js` → `FACT_MAX` |
+| Long-term fact max length | 140 chars | `memory.js` → `FACT_MAX_LEN` |
+| Recent context messages | 8 | `memory.js` → `CONFIG.MAX_CONTEXT_MESSAGES` |
+| Hate ping window | 4 per 10 min, min 45s gap | `hate-manager.js` → `RATE_WINDOW_MS` / `MAX_PINGS_PER_WINDOW` / `MIN_GAP_MS` |
 | CS2 case key cost | $2.49 | `commands/cs2.js` → `CONFIG.CS2_KEY_COST_USD` |
 | CS2 case max opens | 100 | `commands/cs2.js` → `CONFIG.CS2_CASE_MAX_OPENS` |
 | CS2 price cache TTL | 30 min | `commands/cs2.js` → `CONFIG.CS2_PRICE_CACHE_TTL_MS` |
@@ -170,6 +174,8 @@ sudo systemctl restart discordbot
 | `GET` | `/api/hate/list` | Current hate list (user IDs) |
 | `POST` | `/api/hate/add` | Add to hate list `{ "userId": "..." }` |
 | `POST` | `/api/hate/remove` | Remove from hate list `{ "userId": "..." }` |
+| `GET` | `/api/hate/pings/status` | Roast-pings toggle state |
+| `POST` | `/api/hate/pings/toggle` | Enable/disable roast pings `{ "enabled": bool }` |
 | `GET` | `/api/memory/facts` | Current server-wide long-term memory fact sheet |
 | `POST` | `/api/memory/facts/add` | Add a fact (auto-pinned) `{ "fact": "...", "topics": "..." }` |
 | `POST` | `/api/memory/facts/edit` | Edit a fact `{ "oldFact": "...", "fact": "...", "topics": "..." }` |
