@@ -389,6 +389,10 @@
                     <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
                 </div>
                 <div class="control-section">
+                    <span class="status-label" style="display:block;margin-bottom:10px;">Roast Pings (proactive hate timer + callouts)</span>
+                    <label class="toggle-switch"><input type="checkbox" id="hate-pings-toggle"><span class="slider"></span></label>
+                </div>
+                <div class="control-section">
                     <label class="control-label" for="hate-user">User ID</label>
                     <input type="text" id="hate-user" placeholder="Discord user ID" class="persona-select" style="width:100%;margin-bottom:10px;">
                     <div>
@@ -691,6 +695,7 @@
                 this.updateFooterTime();
                 this.loadCurrentPersona();
                 this.loadHateList();
+                this.loadHatePingsStatus();
                 this.loadMemory();
             }
 
@@ -889,6 +894,7 @@
                 document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
                 document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
+                document.getElementById('hate-pings-toggle').addEventListener('change', (e) => this.toggleHatePings(e));
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
@@ -1029,6 +1035,31 @@
                     this.showAlert('Cultist monitor reset', 'success');
                     this.refreshCultistStatus();
                 } catch (error) { this.showAlert('Reset error: ' + error.message, 'error'); }
+            }
+
+            async loadHatePingsStatus() {
+                try {
+                    const res = await fetch(`${API_BASE}/hate/pings/status`);
+                    const data = await res.json();
+                    document.getElementById('hate-pings-toggle').checked = !!data.enabled;
+                } catch (error) { console.error('Load hate pings status error:', error); }
+            }
+
+            async toggleHatePings(event) {
+                const enabled = event.target.checked;
+                try {
+                    const res = await fetch(`${API_BASE}/hate/pings/toggle`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enabled })
+                    });
+                    const data = await res.json();
+                    if (data.success) {
+                        this.showAlert(`Roast pings ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'warning');
+                    } else {
+                        this.showAlert('Failed to toggle roast pings', 'error');
+                        event.target.checked = !enabled;
+                    }
+                } catch (error) { this.showAlert('Toggle error: ' + error.message, 'error'); }
             }
 
             async checkBotStatus() {

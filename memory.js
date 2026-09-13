@@ -72,7 +72,17 @@ function getLongTermFacts(platform, channelId, filterTopic) {
     }
     if (filterTopic) {
       const t = String(filterTopic).toLowerCase();
-      facts = facts.filter(f => (f.topics || []).some(x => String(x).toLowerCase() === t));
+      const norm = t.replace(/[^a-z0-9]/g, '');
+      facts = facts.filter(f => (f.topics || []).some(x => {
+        const xt = String(x).toLowerCase();
+        // Exact match, or a normalized (alphanumeric-only) containment so a
+        // stored username like "stoutirish" matches a queried display name
+        // like "stout_irish" / "Jeff (Stout_Irish)".
+        if (xt === t) return true;
+        if (!norm) return false;
+        const xnorm = xt.replace(/[^a-z0-9]/g, '');
+        return xnorm && (xnorm.includes(norm) || norm.includes(xnorm));
+      }));
     }
     return facts;
   } catch (err) {
@@ -255,10 +265,13 @@ function getSmartContext(platform, channelId, currentUsername) {
     // Reverse to chronological order
     messages.reverse();
 
-    // Build context - format messages clearly
+    // Build context - format messages clearly. Strip the <proactive> marker
+    // from stored proactive roasts so it doesn't leak into conversation
+    // context, but keep the roast itself for recall.
     const contextLines = messages.map(msg => {
       if (msg.is_bot_response) {
-        return `ThePatrick: ${msg.message}`;
+        const text = String(msg.message).replace(/^<proactive>/, '');
+        return `ThePatrick: ${text}`;
       }
       return `${msg.username}: ${msg.message}`;
     });

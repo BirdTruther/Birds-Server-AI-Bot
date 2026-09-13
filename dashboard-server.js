@@ -19,6 +19,12 @@ console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 
 // Expose getter so index.js can always read the live value
 global.getCultistEnabled = () => cultistState.enabled;
 
+// Roast-ping toggle — gates the proactive hate timer + random callouts so the
+// bot stops pinging hated users unprompted. Persisted across reboots.
+let hatePingsEnabled = getSetting('hatePingsEnabled', 'true') !== 'false';
+console.log(`[DASHBOARD] Roast pings loaded as: ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'}`);
+global.getHatePingsEnabled = () => hatePingsEnabled;
+
 // Command logs storage (in-memory cache for real-time updates, max 500 entries)
 const MAX_LOGS = 500;
 let commandLogs = [];
@@ -117,6 +123,18 @@ app.post('/api/cultist/toggle', (req, res) => {
   setSetting('cultistEnabled', enabled);
   console.log(`[API] Cultist ${enabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
   res.json({ success: true, enabled });
+});
+
+app.get('/api/hate/pings/status', (req, res) => {
+  res.json({ enabled: hatePingsEnabled });
+});
+
+app.post('/api/hate/pings/toggle', (req, res) => {
+  const { enabled } = req.body;
+  hatePingsEnabled = !!enabled;
+  setSetting('hatePingsEnabled', hatePingsEnabled);
+  console.log(`[API] Roast pings ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
+  res.json({ success: true, enabled: hatePingsEnabled });
 });
 
 app.get('/api/bot/status', (req, res) => {

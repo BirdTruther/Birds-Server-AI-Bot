@@ -74,6 +74,9 @@ async function consolidateChannelFacts(platform, channelId, force = false) {
         : '(empty — no facts yet)';
 
     const chatText = newMessages
+        // Skip proactive roast/callout records — those are the bot's own
+        // taunts stored for recall, and we don't want facts mined from them.
+        .filter(m => !(m.is_bot_response && String(m.message).startsWith('<proactive>')))
         .map(m => `${m.is_bot_response ? 'ThePatrick' : m.username}: ${m.message}`)
         .join('\n');
 

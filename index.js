@@ -235,10 +235,16 @@ function augmentReplyWithHate(userId, username, response) {
 function maybeRandomCallout(userId, username, channel) {
     if (!isHated(userId)) return;
     if (!canPing(userId)) return;
+    // Roast pings can be turned off from the dashboard (global toggle).
+    if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled()) return;
     // ~40% chance — the bot reacts a lot when they talk.
     if (Math.random() > 0.40) return;
     const callout = buildCallout(username, userId, true);
     safeDiscordSend(channel, callout);
+    // Record the callout as a bot message so Patrick can recall having said
+    // it later (otherwise he genuinely can't remember his own proactive
+    // roasts). The marker lets consolidation skip mining facts from it.
+    addToMemory('discord', channel.id, 'ThePatrick', `<proactive>${callout}`, true);
     logCommand('discord', username, 'hate callout', '', callout);
 }
 
@@ -270,6 +276,9 @@ function startHateTimer(client) {
             // Heavy chance this hour that the bot actually fires.
             if (Math.random() > 0.70) return;
 
+            // Roast pings can be turned off from the dashboard (global toggle).
+            if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled()) return;
+
             // Pick a target not on cooldown.
             const targets = hated.filter(uid => !isOnPingCooldown(uid));
             if (targets.length === 0) return;
@@ -280,17 +289,25 @@ function startHateTimer(client) {
             const name = member?.displayName || `<@${target}>`;
 
             // Ammunition: facts remembered about THIS user, so the roast hits
-            // where it hurts. Filter by their Discord username first, then any.
+            // where it hurts. Try matching by Discord username first, then by
+            // display name. Deliberately do NOT fall back to the whole global
+            // sheet — unrelated facts (e.g. another user's "is god") leaking
+            // into a targeted roast is what caused the confusing messages.
             const targetUsername = member?.user?.username?.toLowerCase();
             const targetFacts = targetUsername
                 ? getContextFacts('discord', 'global', targetUsername)
                 : '';
-            const roastFacts = targetFacts || getContextFacts('discord', 'global');
+            const roastFacts = targetFacts
+                || getContextFacts('discord', 'global', name.toLowerCase());
 
             await channel.sendTyping();
             const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts);
 
             safeDiscordSend(channel, roast);
+            // Record the roast as a bot message so Patrick can recall having
+            // said it later instead of denying it when called out. The marker
+            // keeps consolidation from mining facts out of the roast itself.
+            addToMemory('discord', channel.id, 'ThePatrick', `<proactive>${roast}`, true);
             logSystemEvent('HATE', 'INFO', 'discord', `Proactive AI roast fired at ${target}: ${roast}`);
             logCommand('discord', name, 'hate proactive', '', roast);
         } catch (err) {
