@@ -330,6 +330,19 @@ function requireAuth(req, res, next) {
   return res.redirect('/auth/login');
 }
 
+// ===== SUPERADMIN GATE =====
+// Superadmins are the allowlisted owners. When auth is disabled (local dev)
+// everything is treated as superadmin.
+function isSuperAdmin(req) {
+  if (config().disabled) return true;
+  return Boolean(req.user && req.user.superAdmin);
+}
+
+function requireSuperAdmin(req, res, next) {
+  if (isSuperAdmin(req)) return next();
+  res.status(403).json({ success: false, error: 'superadmin only' });
+}
+
 // Periodic cleanup of expired sessions + states
 setInterval(() => {
   try {
@@ -351,4 +364,4 @@ setInterval(() => {
 
 warnIfMisconfigured();
 
-module.exports = { attachRoutes, requireAuth, canAccessGuild };
+module.exports = { attachRoutes, requireAuth, canAccessGuild, requireSuperAdmin, isSuperAdmin };

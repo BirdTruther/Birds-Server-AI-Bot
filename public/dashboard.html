@@ -710,6 +710,7 @@
                 this.esmPollTimer = null;
                 this.esmCurrentJobId = null;
                 this.selectedGuildId = null;
+                this.isSuperAdmin = false;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -735,6 +736,9 @@
                     link.href = '/auth/logout';
                     link.textContent = 'Sign out';
                     bar.appendChild(link);
+                    this.isSuperAdmin = Boolean(data.user.superAdmin);
+                    const sysBtn = document.getElementById('view-system-logs-btn');
+                    if (sysBtn) sysBtn.style.display = this.isSuperAdmin ? '' : 'none';
                 } catch (e) {
                     console.error('[AUTH] failed to load session', e);
                 }

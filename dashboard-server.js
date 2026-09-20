@@ -378,7 +378,7 @@ app.get('/api/bot/logs', (req, res) => {
   }
 });
 
-app.get('/api/bot/system-logs', (req, res) => {
+app.get('/api/bot/system-logs', dashboardAuth.requireSuperAdmin, (req, res) => {
   const { log_type, severity, component, limit } = req.query;
   try {
     const filters = { log_type: log_type || 'all', severity: severity || 'all', component: component || 'all', limit: Math.min(parseInt(limit) || 100, 1000) };
@@ -403,7 +403,7 @@ app.post('/api/bot/logs/clear', (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: 'Failed to clear logs' }); }
 });
 
-app.post('/api/bot/system-logs/clear', (req, res) => {
+app.post('/api/bot/system-logs/clear', dashboardAuth.requireSuperAdmin, (req, res) => {
   try {
     const success = clearSystemLogs();
     if (success) res.json({ success: true, message: 'System logs cleared' });
