@@ -200,7 +200,7 @@ function setLastConsolidatedId(scope, id) {
 const getMessagesSince = db.prepare(`
   SELECT id, username, message, is_bot_response
   FROM conversation_memory
-  WHERE platform = @platform AND id > @after
+  WHERE platform = @platform AND channel_id = @channel_id AND id > @after
   ORDER BY id ASC
   LIMIT @limit
 `);
