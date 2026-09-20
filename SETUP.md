@@ -80,6 +80,31 @@ toggle are isolated per Discord server.
 The dashboard's hate controls include a server selector. Configure `/hate
 channel` separately in each server where proactive roasts should run.
 
+### Per-server features
+
+The dashboard's "Managing server" picker (top of the page) scopes everything
+server-specific. It only lists servers where you have Owner / Manage Server /
+Administrator and the bot is present.
+
+| Feature | Scope |
+|---|---|
+| Persona | per server (Twitch/DMs use the global default) |
+| Hate list, roast channel, Roast Pings | per server |
+| Cultist alerts (channel + optional role ping) | per server |
+| Server facts | per server; admins manage their own |
+| Shared memory facts | global — recalled on every server, superadmin-curated |
+| Command logs | per server (superadmin can view all) |
+| System logs | superadmin only |
+
+- **Cultist alerts:** set the alert channel ID and optional role ID per server in
+  the Cultist card, then enable the toggle. The bot posts when the Tarkov night
+  window opens/closes.
+- **Shared memory:** open Bot Memory, tick "Shared memory (all servers)" (bot
+  owner only) to curate the global pool, or press "Share" on a server fact to
+  promote it so Patrick recalls it everywhere.
+- Command logs written before this change have no server tag and appear only in
+  the superadmin "All servers" view.
+
 ### Dashboard login (Discord OAuth)
 
 The dashboard is protected by Discord OAuth login and binds to `127.0.0.1` by
