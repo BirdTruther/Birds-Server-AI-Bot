@@ -251,16 +251,33 @@ app.post('/api/hate/remove', (req, res) => {
 });
 
 // ===== MEMORY FACTS ENDPOINTS =====
+// Facts live in scopes: 'shared' (the global pool, superadmin-managed, recalled
+// on every server) or a guild id (per-server, managed by that server's admins).
+function resolveMemoryScope(req, res) {
+  const scope = (req.body && req.body.scope) || req.query.scope;
+  if (!scope) { res.status(400).json({ success: false, error: 'scope is required' }); return null; }
+  if (scope === 'shared') {
+    if (!dashboardAuth.isSuperAdmin(req)) { res.status(403).json({ success: false, error: 'superadmin only' }); return null; }
+    return 'shared';
+  }
+  if (!dashboardAuth.canAccessGuild(req.user, scope)) { res.status(403).json({ success: false, error: 'forbidden' }); return null; }
+  return scope;
+}
+
 app.get('/api/memory/facts', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   res.json({
     success: true,
-    scope: 'server',
-    facts: getLongTermFacts('discord', 'global'),
-    lastId: getLastConsolidatedId('global'),
+    scope,
+    facts: getLongTermFacts('discord', 'global', undefined, scope),
+    lastId: getLastConsolidatedId(scope),
   });
 });
 
 app.post('/api/memory/facts/add', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const fact = String((req.body && req.body.fact) || '').trim();
   const topics = Array.isArray(req.body && req.body.topics)
     ? req.body.topics
@@ -268,7 +285,7 @@ app.post('/api/memory/facts/add', (req, res) => {
 
   if (!fact) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   if (facts.some(existing => existing.fact.toLowerCase() === fact.toLowerCase())) {
     return res.status(409).json({ success: false, error: 'That fact already exists' });
   }
@@ -276,26 +293,56 @@ app.post('/api/memory/facts/add', (req, res) => {
   const updated = saveFacts('discord', 'global', [
     ...facts,
     { fact, pinned: true, topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean) },
-  ]);
+  ], scope);
   const added = updated.some(existing => existing.fact.toLowerCase() === fact.toLowerCase());
   if (!added) return res.status(400).json({ success: false, error: 'Fact could not be saved' });
-  console.log(`[API] Global memory fact added: ${fact}`);
+  console.log(`[API] Memory fact added (${scope}): ${fact}`);
   res.json({ success: true, facts: updated });
 });
 
 app.post('/api/memory/facts/rebuild', async (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
+  if (scope === 'shared') {
+    return res.status(400).json({ success: false, error: 'Shared memory is curated manually; rebuild runs per server.' });
+  }
   try {
-    const result = await consolidateChannelFacts('discord', 'global', true);
-    res.json({ success: true, ...result, facts: getLongTermFacts('discord', 'global') });
+    const client = getDiscordClient();
+    const guild = client && client.guilds.cache.get(scope);
+    const channelIds = guild ? [...guild.channels.cache.keys()] : [];
+    const result = channelIds.length
+      ? await consolidateChannelFacts('discord', channelIds, true, scope)
+      : { skipped: true, reason: 'no channels found for this server' };
+    res.json({ success: true, ...result, facts: getLongTermFacts('discord', 'global', undefined, scope) });
   } catch (err) {
     console.error('[API] Memory rebuild error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to rebuild memory: ' + err.message });
   }
 });
 
+// Superadmin: copy a fact (usually from a server sheet) into the shared pool so
+// Patrick recalls it on every server.
+app.post('/api/memory/facts/promote', (req, res) => {
+  if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  const fact = String((req.body && req.body.fact) || '').trim();
+  if (!fact) return res.status(400).json({ success: false, error: 'fact is required' });
+  const topics = Array.isArray(req.body && req.body.topics)
+    ? req.body.topics.map(t => String(t).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const shared = getLongTermFacts('discord', 'global', undefined, 'shared');
+  if (shared.some(f => f.fact.toLowerCase() === fact.toLowerCase())) {
+    return res.status(409).json({ success: false, error: 'Already in shared memory' });
+  }
+  const saved = saveFacts('discord', 'global', [...shared, { fact, pinned: true, topics }], 'shared');
+  console.log(`[API] Fact promoted to shared memory: ${fact}`);
+  res.json({ success: true, facts: saved });
+});
+
 // Edit an existing fact (replace text/topics). Pinned status is preserved
 // unless an explicit pinned toggle is passed.
 app.post('/api/memory/facts/edit', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.oldFact) || '').trim();
   const newFact = String((req.body && req.body.fact) || '').trim();
   const topics = Array.isArray(req.body && req.body.topics)
@@ -306,7 +353,7 @@ app.post('/api/memory/facts/edit', (req, res) => {
     return res.status(400).json({ success: false, error: 'oldFact and fact are required' });
   }
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
   if (idx === -1) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
@@ -326,33 +373,37 @@ app.post('/api/memory/facts/edit', (req, res) => {
   const updatedArr = facts.slice();
   updatedArr[idx] = updatedFact;
 
-  const saved = replaceFacts('discord', 'global', updatedArr);
-  console.log(`[API] Global memory fact edited: ${target} -> ${newFact}`);
+  const saved = replaceFacts('discord', 'global', updatedArr, scope);
+  console.log(`[API] Memory fact edited (${scope}): ${target} -> ${newFact}`);
   res.json({ success: true, facts: saved, fact: saved.find(f => f.fact.toLowerCase() === newFact.toLowerCase()) });
 });
 
 // Delete a fact by text.
 app.post('/api/memory/facts/delete', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.fact) || '').trim();
   if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const filtered = facts.filter(f => f.fact.toLowerCase() !== target.toLowerCase());
   if (filtered.length === facts.length) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
   }
 
-  const saved = replaceFacts('discord', 'global', filtered);
-  console.log(`[API] Global memory fact deleted: ${target}`);
+  const saved = replaceFacts('discord', 'global', filtered, scope);
+  console.log(`[API] Memory fact deleted (${scope}): ${target}`);
   res.json({ success: true, facts: saved });
 });
 
 // Pin/unpin a fact by text.
 app.post('/api/memory/facts/pin', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.fact) || '').trim();
   if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
   if (idx === -1) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
@@ -363,8 +414,8 @@ app.post('/api/memory/facts/pin', (req, res) => {
   const updatedArr = facts.slice();
   updatedArr[idx] = updatedFact;
 
-  const saved = replaceFacts('discord', 'global', updatedArr);
-  console.log(`[API] Global memory fact ${pinned ? 'pinned' : 'unpinned'}: ${target}`);
+  const saved = replaceFacts('discord', 'global', updatedArr, scope);
+  console.log(`[API] Memory fact ${pinned ? 'pinned' : 'unpinned'} (${scope}): ${target}`);
   res.json({ success: true, pinned, facts: saved });
 });
 

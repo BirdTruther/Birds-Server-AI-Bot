@@ -657,8 +657,11 @@
                     <input type="text" id="memory-filter" class="logs-search" placeholder="Filter facts or topics...">
                     <button class="button button-primary" id="memory-refresh-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="memory-rebuild-btn">&#x2699;&#xFE0F; Rebuild Now</button>
+                    <label id="memory-shared-label" style="display:none;align-items:center;gap:6px;color:var(--color-text-secondary);font-size:0.85rem;">
+                        <input type="checkbox" id="memory-shared-toggle"> Shared memory (all servers)
+                    </label>
                 </div>
-                <p style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Manually added facts are <strong>pinned</strong> so consolidation never drops them. Use the row actions to edit, pin/unpin, or delete a fact anytime.</p>
+                <p id="memory-scope-note" style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Manually added facts are <strong>pinned</strong> so consolidation never drops them. Use the row actions to edit, pin/unpin, or delete a fact anytime.</p>
                 <div class="control-section" style="margin-bottom:12px;">
                     <label class="control-label" for="memory-fact-input">Add a fact manually</label>
                     <input type="text" id="memory-fact-input" class="persona-select" style="width:100%;margin-bottom:8px;" maxlength="140" placeholder="e.g. Bradyn mains scav runs in Tarkov">
@@ -715,6 +718,7 @@
                 this.esmCurrentJobId = null;
                 this.selectedGuildId = null;
                 this.isSuperAdmin = false;
+                this.viewSharedMemory = false;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -787,6 +791,7 @@
 
             async reloadServerScoped() {
                 await Promise.all([this.loadHateList(), this.loadHatePingsStatus(), this.loadCurrentPersona(), this.loadCultistConfig()]);
+                if (this.memoryModal && this.memoryModal.classList.contains('show')) this.loadMemory();
             }
 
             async loadHateList() {
@@ -825,13 +830,28 @@
                 }
             }
 
+            memoryScope() {
+                return this.viewSharedMemory ? 'shared' : this.selectedGuildId;
+            }
+
             async loadMemory() {
                 try {
                     const badge = document.getElementById('memory-status');
                     const count = document.getElementById('memory-count');
                     const filter = document.getElementById('memory-filter').value.trim().toLowerCase();
 
-                    const res = await fetch(`${API_BASE}/memory/facts`);
+                    // Superadmin-only shared-memory view toggle.
+                    const sharedLabel = document.getElementById('memory-shared-label');
+                    const sharedToggle = document.getElementById('memory-shared-toggle');
+                    sharedLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
+                    let scope = this.memoryScope();
+                    if (!scope) { this.viewSharedMemory = true; scope = 'shared'; }
+                    document.getElementById('memory-scope-note').textContent = this.viewSharedMemory
+                        ? 'SHARED memory — recalled by Patrick on every server. Curated by you.'
+                        : "This server's memory. Use Promote to share a fact with every server.";
+                    if (sharedToggle) sharedToggle.checked = this.viewSharedMemory;
+
+                    const res = await fetch(`${API_BASE}/memory/facts?scope=${encodeURIComponent(scope)}`);
                     const data = await res.json();
                     if (!data.success) return;
 
@@ -856,15 +876,20 @@
                     facts.forEach((f, i) => {
                         const tr = document.createElement('tr');
                         tr.dataset.fact = (f.fact || '').replace(/"/g, '&quot;');
+                        tr.dataset.topics = (f.topics || []).join(',');
                         const pinBtn = f.pinned
                             ? '<button class="button button-warn" data-action="pin" title="Unpin this fact" style="padding:3px 8px;font-size:12px;margin:2px;">&#128274; Unpin</button>'
                             : '<button class="button button-secondary" data-action="pin" title="Pin this fact so consolidation never drops it" style="padding:3px 8px;font-size:12px;margin:2px;">&#128391; Pin</button>';
+                        const promoteBtn = (this.isSuperAdmin && !this.viewSharedMemory)
+                            ? '<button class="button button-secondary" data-action="promote" title="Add this fact to shared memory (recalled on every server)" style="padding:3px 8px;font-size:12px;margin:2px;">&#x1F4E4; Share</button>'
+                            : '';
                         tr.innerHTML = `<td style="padding:6px;color:var(--color-text-secondary);">${f.pinned ? '&#128274;' : ''} ${i + 1}</td>
                             <td style="padding:6px;">${(f.fact || '').replace(/</g, '&lt;')}</td>
                             <td style="padding:6px;color:var(--color-accent);">${(f.topics || []).map(t => `#${t}`).join(' ')}</td>
                             <td style="padding:6px;white-space:nowrap;">
                                 <button class="button button-secondary" data-action="edit" style="padding:3px 8px;font-size:12px;margin:2px;">&#9998; Edit</button>
                                 ${pinBtn}
+                                ${promoteBtn}
                                 <button class="button button-danger" data-action="delete" style="padding:3px 8px;font-size:12px;margin:2px;">&#128465; Del</button>
                             </td>`;
                         tbody.appendChild(tr);
@@ -875,6 +900,7 @@
                             switch (btn.dataset.action) {
                                 case 'edit':   this.editMemoryFact(fact); break;
                                 case 'pin':    this.toggleMemoryPin(fact); break;
+                                case 'promote': this.promoteMemoryFact(fact, btn.closest('tr').dataset.topics || ''); break;
                                 case 'delete': this.deleteMemoryFact(fact); break;
                             }
                         });
@@ -885,11 +911,12 @@
             }
 
             async rebuildMemory() {
+                if (this.viewSharedMemory) { alert('Shared memory is curated manually — switch to a server to rebuild.'); return; }
                 try {
                     const res = await fetch(`${API_BASE}/memory/facts/rebuild`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({ scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? `Rebuilt: ${(data.facts || []).length} facts` : (data.error || 'Rebuild failed'));
@@ -909,7 +936,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/add`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact, topics: topicsInput.value })
+                        body: JSON.stringify({ fact, topics: topicsInput.value, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     if (!data.success) { alert(data.error || 'Failed to add fact'); return; }
@@ -934,7 +961,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/edit`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ oldFact, fact: trimmed, topics })
+                        body: JSON.stringify({ oldFact, fact: trimmed, topics, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? 'Fact updated' : (data.error || 'Failed to update fact'));
@@ -950,7 +977,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/pin`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact })
+                        body: JSON.stringify({ fact, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     if (!data.success) { alert(data.error || 'Failed to update pin'); return; }
@@ -967,7 +994,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/delete`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact })
+                        body: JSON.stringify({ fact, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? 'Fact deleted' : (data.error || 'Failed to delete fact'));
@@ -975,6 +1002,21 @@
                 } catch (e) {
                     console.error('[MEMORY] delete fact failed', e);
                     alert('Failed to delete fact');
+                }
+            }
+
+            async promoteMemoryFact(fact, topics) {
+                if (!this.isSuperAdmin) { alert('Only the bot owner can share a fact'); return; }
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/promote`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fact, topics: String(topics || '').split(',').map(t => t.trim()).filter(Boolean) })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? 'Shared with every server' : (data.error || 'Failed to share fact'));
+                } catch (e) {
+                    console.error('[MEMORY] promote failed', e);
+                    alert('Failed to share fact');
                 }
             }
 
@@ -994,6 +1036,7 @@
                     if (e.key === 'Enter') this.hateAction('add');
                 });
                 document.getElementById('memory-refresh-btn').addEventListener('click', () => this.loadMemory());
+                document.getElementById('memory-shared-toggle').addEventListener('change', (e) => { this.viewSharedMemory = e.target.checked; this.loadMemory(); });
                 document.getElementById('memory-rebuild-btn').addEventListener('click', () => this.rebuildMemory());
                 document.getElementById('memory-add-btn').addEventListener('click', () => this.addMemoryFact());
                 document.getElementById('memory-view-btn').addEventListener('click', () => this.openMemoryModal());

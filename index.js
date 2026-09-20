@@ -173,7 +173,13 @@ discordClient.once(Events.ClientReady, async (client) => {
     // AI-maintained fact sheet ("Patrick learns").
     const consolidateMemory = async () => {
         try {
-            await consolidateChannelFacts('discord', 'global');
+            // Consolidate each Discord server's channels into that server's fact
+            // sheet (scope = guild id). Shared facts are curated separately.
+            for (const [guildId, guild] of discordClient.guilds.cache) {
+                const channelIds = [...guild.channels.cache.keys()];
+                if (channelIds.length === 0) continue;
+                await consolidateChannelFacts('discord', channelIds, false, guildId);
+            }
         } catch (err) {
             console.error('[MEMORY] Consolidation timer error:', err.message);
             logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation sweep failed: ${err.message}`, err);
@@ -312,10 +318,10 @@ function startHateTimer(client) {
                 // into a targeted roast is what caused the confusing messages.
                 const targetUsername = member?.user?.username?.toLowerCase();
                 const targetFacts = targetUsername
-                    ? getContextFacts('discord', 'global', targetUsername)
+                    ? getContextFacts('discord', 'global', targetUsername, guildId)
                     : '';
                 const roastFacts = targetFacts
-                    || getContextFacts('discord', 'global', name.toLowerCase());
+                    || getContextFacts('discord', 'global', name.toLowerCase(), guildId);
 
                 await channel.sendTyping();
                 const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts, guildId);
