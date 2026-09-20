@@ -521,6 +521,9 @@
                     <input type="text" class="logs-search" id="logs-search" placeholder="Search logs...">
                     <button class="button button-primary" id="refresh-logs-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="clear-logs-btn">&#x1F5D1;&#xFE0F; Clear All</button>
+                    <label id="logs-all-label" style="display:none;align-items:center;gap:6px;color:var(--color-text-secondary);font-size:0.85rem;">
+                        <input type="checkbox" id="logs-all-servers"> All servers
+                    </label>
                 </div>
                 <div class="logs-container" id="logs-container">
                     <div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>
@@ -719,6 +722,7 @@
                 this.selectedGuildId = null;
                 this.isSuperAdmin = false;
                 this.viewSharedMemory = false;
+                this.viewAllLogs = false;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -747,6 +751,10 @@
                     this.isSuperAdmin = Boolean(data.user.superAdmin);
                     const sysBtn = document.getElementById('view-system-logs-btn');
                     if (sysBtn) sysBtn.style.display = this.isSuperAdmin ? '' : 'none';
+                    const logsAllLabel = document.getElementById('logs-all-label');
+                    if (logsAllLabel) logsAllLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
+                    const clearLogsBtn = document.getElementById('clear-logs-btn');
+                    if (clearLogsBtn) clearLogsBtn.style.display = this.isSuperAdmin ? '' : 'none';
                 } catch (e) {
                     console.error('[AUTH] failed to load session', e);
                 }
@@ -1052,6 +1060,7 @@
                 document.getElementById('close-system-logs-modal').addEventListener('click', () => this.closeSystemLogsModal());
                 document.getElementById('close-system-logs-btn').addEventListener('click', () => this.closeSystemLogsModal());
                 document.getElementById('refresh-logs-btn').addEventListener('click', () => this.fetchLogs());
+                document.getElementById('logs-all-servers').addEventListener('change', (e) => { this.viewAllLogs = e.target.checked; this.fetchLogs(); });
                 document.getElementById('clear-logs-btn').addEventListener('click', () => this.clearLogs());
                 document.getElementById('refresh-system-logs-btn').addEventListener('click', () => this.fetchSystemLogs());
                 document.getElementById('clear-system-logs-btn').addEventListener('click', () => this.clearSystemLogs());
@@ -1264,7 +1273,8 @@
 
             async fetchLogs() {
                 try {
-                    const url = `${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=200`;
+                    const scope = this.viewAllLogs ? '&all=true' : `&guildId=${encodeURIComponent(this.selectedGuildId || '')}`;
+                    const url = `${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=200${scope}`;
                     const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {

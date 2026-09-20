@@ -420,15 +420,23 @@ app.post('/api/memory/facts/pin', (req, res) => {
 });
 
 app.get('/api/bot/logs', (req, res) => {
-  const { platform, limit } = req.query;
+  const { platform, limit, guildId, all } = req.query;
   const maxResults = Math.min(parseInt(limit) || 100, 1000);
+  // Command logs are per-server. "all" (every server) is superadmin-only.
+  let filterGuildId = null;
+  if (all === 'true') {
+    if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  } else {
+    if (!ensureGuildAccess(req, res, guildId)) return;
+    filterGuildId = guildId;
+  }
   try {
-    const dbLogs = getLogs(platform || 'all', maxResults);
+    const dbLogs = getLogs(platform || 'all', maxResults, filterGuildId);
     const totalCount = getLogCount();
     const formattedLogs = dbLogs.reverse().map(log => ({
       platform: log.platform, username: log.username, command: log.command,
       message: log.message, response: log.response, image_url: log.image_url,
-      error: log.error === 1, timestamp: log.timestamp, id: log.id
+      error: log.error === 1, timestamp: log.timestamp, id: log.id, guildId: log.guild_id || null
     }));
     res.json({ success: true, count: formattedLogs.length, total: totalCount, logs: formattedLogs });
   } catch (error) {
@@ -454,7 +462,7 @@ app.get('/api/bot/system-logs', dashboardAuth.requireSuperAdmin, (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to fetch system logs' }); }
 });
 
-app.post('/api/bot/logs/clear', (req, res) => {
+app.post('/api/bot/logs/clear', dashboardAuth.requireSuperAdmin, (req, res) => {
   try {
     const success = clearLogs();
     if (success) { commandLogs = []; res.json({ success: true, message: 'Logs cleared' }); }

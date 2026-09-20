@@ -7,7 +7,7 @@ require('dotenv').config();
 
 // Core modules
 const { addToMemory, getContextFacts } = require('./memory.js');
-const { logCommand, logSystemEvent } = require('./logger.js');
+const { logCommand, logSystemEvent, runWithLogContext } = require('./logger.js');
 const { getSetting, setSetting } = require('./database.js');
 const { musicSlashCommandDefs, handleMusicInteraction } = require('./music.js');
 const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, canPing, isOnPingCooldown } = require('./hate-manager.js');
@@ -191,7 +191,7 @@ discordClient.once(Events.ClientReady, async (client) => {
 });
 
 // ===== SLASH COMMAND HANDLER =====
-discordClient.on(Events.InteractionCreate, async (interaction) => {
+discordClient.on(Events.InteractionCreate, async (interaction) => runWithLogContext({ guildId: interaction.guildId }, async () => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -233,7 +233,7 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await interaction.editReply(`❌ Unknown command: \`/${commandName}\``);
-});
+}));
 
 // ===== HATE LIST AUGMENTATION =====
 // Adds the bot's "hated user" flavor to replies and random callouts.
@@ -271,12 +271,12 @@ function maybeRandomCallout(userId, username, channel, guildId = null) {
 // ===== HATE CALLOUT HANDLER =====
 // Reacts when a hated user chats in general (no mention/reply needed). Menions
 // and replies are skipped here because they already get an augmented AI reply.
-discordClient.on(Events.MessageCreate, (message) => {
+discordClient.on(Events.MessageCreate, (message) => runWithLogContext({ guildId: message.guildId }, () => {
     if (message.author.bot) return;
     if (message.mentions.has(discordClient.user)) return;
     if (message.reference) return;
     maybeRandomCallout(message.author.id, message.author.username, message.channel, message.guildId);
-});
+}));
 
 // ===== PROACTIVE HATE TIMER =====
 // Once per hour, with a HEAVY chance (~70%), the bot randomly picks a hated
@@ -342,7 +342,7 @@ function startHateTimer(client) {
 }
 
 // ===== DISCORD MESSAGE HANDLER =====
-discordClient.on(Events.MessageCreate, async (message) => {
+discordClient.on(Events.MessageCreate, async (message) => runWithLogContext({ guildId: message.guildId }, async () => {
     if (message.author.bot) return;
     if (message.reference)  return;
 
@@ -401,10 +401,10 @@ discordClient.on(Events.MessageCreate, async (message) => {
     response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
     await safeDiscordReply(message, response);
     logCommand('discord', username, '@mention', userMessage, response);
-});
+}));
 
 // ===== DISCORD REPLY HANDLER =====
-discordClient.on(Events.MessageCreate, async (message) => {
+discordClient.on(Events.MessageCreate, async (message) => runWithLogContext({ guildId: message.guildId }, async () => {
     if (message.author.bot)  return;
     if (!message.reference)  return;
 
@@ -441,7 +441,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
     await safeDiscordReply(message, response);
     logCommand('discord', username, 'reply', userMessage, response);
-});
+}));
 
 // ===== LOGIN =====
 discordClient.login(process.env.DISCORD_TOKEN)
