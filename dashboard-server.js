@@ -7,17 +7,17 @@ const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId } =
 const { getLongTermFacts, saveFacts, replaceFacts, getLastConsolidatedId } = require('./memory.js');
 const { consolidateChannelFacts } = require('./services/ai.js');
 
-// Load cultist enabled state from DB on startup (persists across reboots)
+// Cultist spawn alerts are per-server; the Tarkov clock is global. The actual
+// posting lives in services/cultist.js (run by index.js); here we only expose
+// the clock for the dashboard display and per-guild config endpoints.
+const cultist = require('./services/cultist.js');
 let cultistState = {
-  enabled: getSetting('cultistEnabled', 'true') === 'true',
+  server1Time: '--:--',
+  server2Time: '--:--',
   server1Active: false,
-  server2Active: false,
-  server1Time: '--:--'
+  server2Active: false
 };
-console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 'ENABLED' : 'DISABLED'}`);
-
-// Expose getter so index.js can always read the live value
-global.getCultistEnabled = () => cultistState.enabled;
+console.log('[DASHBOARD] Cultist monitor loaded (per-server config)');
 
 // Roast-ping toggle — gates the proactive hate timer + random callouts so the
 // bot stops pinging hated users unprompted. Each Discord server has its own
@@ -75,29 +75,16 @@ function addLog(entry) {
 
 global.dashboardLogCommand = addLog;
 
-function getCurrentTarkovTime() {
-  const oneDay = 24 * 60 * 60 * 1000;
-  const russia = 3 * 60 * 60 * 1000;
-  const tarkovRatio = 7;
-  const now = Date.now();
-  const tarkovTime = (russia + (now * tarkovRatio)) % oneDay;
-  const totalMinutes = Math.floor(tarkovTime / (60 * 1000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return { hours, minutes };
-}
-
-function isCultistTime(hour) {
-  return hour >= 22 || hour < 7;
-}
-
+// Refresh the shared Tarkov clock shown on the dashboard (source of truth is
+// services/cultist.js, so the display and the alerts never disagree).
 setInterval(() => {
-  const { hours, minutes } = getCurrentTarkovTime();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  cultistState.server1Time = timeStr;
-  cultistState.server1Active = isCultistTime(hours);
-  cultistState.server2Active = isCultistTime((hours + 12) % 24);
+  const snap = cultist.snapshot();
+  cultistState.server1Time = snap.server1Time;
+  cultistState.server2Time = snap.server2Time;
+  cultistState.server1Active = snap.server1Active;
+  cultistState.server2Active = snap.server2Active;
 }, 30000);
+cultistState = { ...cultistState, ...cultist.snapshot() };
 
 function formatUptime(seconds) {
   const totalSecs = Math.floor(seconds);
@@ -151,12 +138,33 @@ app.get('/', (req, res) => {
 
 app.get('/api/cultist/status', (req, res) => { res.json(cultistState); });
 
-app.post('/api/cultist/toggle', (req, res) => {
-  const { enabled } = req.body;
-  cultistState.enabled = enabled;
-  setSetting('cultistEnabled', enabled);
-  console.log(`[API] Cultist ${enabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
-  res.json({ success: true, enabled });
+// Per-server cultist alert config: enable + channel (+ optional role to ping).
+app.get('/api/cultist/config', (req, res) => {
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  res.json({
+    success: true,
+    guildId,
+    enabled: cultist.isCultistEnabled(guildId),
+    channelId: cultist.getCultistChannelId(guildId),
+    roleId: cultist.getCultistRoleId(guildId)
+  });
+});
+
+app.post('/api/cultist/config', (req, res) => {
+  const { guildId, enabled, channelId, roleId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  if (enabled !== undefined) cultist.setCultistEnabled(guildId, !!enabled);
+  if (channelId !== undefined) cultist.setCultistChannelId(guildId, channelId);
+  if (roleId !== undefined) cultist.setCultistRoleId(guildId, roleId);
+  console.log(`[API] Cultist config for guild ${guildId}: enabled=${cultist.isCultistEnabled(guildId)} channel=${cultist.getCultistChannelId(guildId)} role=${cultist.getCultistRoleId(guildId)}`);
+  res.json({
+    success: true,
+    guildId,
+    enabled: cultist.isCultistEnabled(guildId),
+    channelId: cultist.getCultistChannelId(guildId),
+    roleId: cultist.getCultistRoleId(guildId)
+  });
 });
 
 app.get('/api/hate/pings/status', (req, res) => {

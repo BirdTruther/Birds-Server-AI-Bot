@@ -390,13 +390,17 @@
                 </div>
                 <div class="control-section">
                     <label class="control-label">
-                        <span style="display:block;margin-bottom:10px;">Toggle Monitoring</span>
+                        <span style="display:block;margin-bottom:10px;">Post cultist alerts in this server</span>
                         <label class="toggle-switch"><input type="checkbox" id="cultist-toggle"><span class="slider"></span></label>
                     </label>
                 </div>
-                <div>
-                    <button class="button button-primary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
-                    <button class="button button-secondary" id="reset-cultist-btn">&#x2699;&#xFE0F; Reset</button>
+                <div class="control-section">
+                    <label class="control-label" for="cultist-channel">Alert Channel ID</label>
+                    <input type="text" id="cultist-channel" placeholder="Discord channel ID" class="persona-select" style="width:100%;margin-bottom:10px;">
+                    <label class="control-label" for="cultist-role">Cultist Role ID (optional ping)</label>
+                    <input type="text" id="cultist-role" placeholder="Role ID to ping" class="persona-select" style="width:100%;margin-bottom:10px;">
+                    <button class="button button-primary" id="save-cultist-config-btn">&#x1F4BE; Save</button>
+                    <button class="button button-secondary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
                 </div>
             </div>
 
@@ -782,7 +786,7 @@
             }
 
             async reloadServerScoped() {
-                await Promise.all([this.loadHateList(), this.loadHatePingsStatus(), this.loadCurrentPersona()]);
+                await Promise.all([this.loadHateList(), this.loadHatePingsStatus(), this.loadCurrentPersona(), this.loadCultistConfig()]);
             }
 
             async loadHateList() {
@@ -980,7 +984,7 @@
                 document.getElementById('preview-persona-btn').addEventListener('click', () => this.previewPersona());
                 document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
-                document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
+                document.getElementById('save-cultist-config-btn').addEventListener('click', () => this.saveCultistConfig());
                 document.getElementById('hate-pings-toggle').addEventListener('change', (e) => this.toggleHatePings(e));
                 document.getElementById('server-select').addEventListener('change', (e) => this.selectServer(e));
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
@@ -1088,42 +1092,56 @@
             }
 
             async toggleCultist(event) {
-                const enabled = event.target.checked;
+                await this.saveCultistConfig({ enabled: event.target.checked });
+            }
+
+            async loadCultistConfig() {
+                if (!this.selectedGuildId) return;
                 try {
-                    const response = await fetch(`${API_BASE}/cultist/toggle`, {
+                    const res = await fetch(`${API_BASE}/cultist/config${this.serverQuery()}`);
+                    const data = await res.json();
+                    if (!data.success) return;
+                    document.getElementById('cultist-toggle').checked = !!data.enabled;
+                    document.getElementById('cultist-channel').value = data.channelId || '';
+                    document.getElementById('cultist-role').value = data.roleId || '';
+                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
+                } catch (error) { console.error('Load cultist config error:', error); }
+            }
+
+            async saveCultistConfig(overrides = {}) {
+                if (!this.selectedGuildId) { this.showAlert('Select a server first', 'error'); return; }
+                const payload = {
+                    guildId: this.selectedGuildId,
+                    enabled: overrides.enabled !== undefined ? overrides.enabled : document.getElementById('cultist-toggle').checked,
+                    channelId: document.getElementById('cultist-channel').value.trim(),
+                    roleId: document.getElementById('cultist-role').value.trim()
+                };
+                try {
+                    const res = await fetch(`${API_BASE}/cultist/config`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
+                        body: JSON.stringify(payload)
                     });
-                    const data = await response.json();
+                    const data = await res.json();
                     if (data.success) {
-                        this.cultistEnabled = enabled;
-                        this.showAlert(`Cultist monitoring ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'warning');
-                        this.refreshCultistStatus();
+                        this.showAlert(`Cultist alerts ${data.enabled ? 'enabled' : 'disabled'}`, data.enabled ? 'success' : 'warning');
+                        document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
+                    } else {
+                        this.showAlert(data.error || 'Failed to save cultist config', 'error');
                     }
-                } catch (error) { this.showAlert('Toggle error: ' + error.message, 'error'); }
+                } catch (error) { this.showAlert('Save error: ' + error.message, 'error'); }
             }
 
             async refreshCultistStatus() {
                 try {
                     const response = await fetch(`${API_BASE}/cultist/status`);
                     const data = await response.json();
-                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
                     document.getElementById('cultist-s1-status').textContent = data.server1Active ? 'ACTIVE (Cultists!)' : 'Safe';
                     document.getElementById('cultist-s2-status').textContent = data.server2Active ? 'ACTIVE (Cultists!)' : 'Safe';
                     document.getElementById('tarkov-time').textContent = data.server1Time || '--:--';
                     const badge = document.getElementById('cultist-status');
-                    const toggle = document.getElementById('cultist-toggle');
-                    if (data.enabled) { badge.textContent = 'ACTIVE'; badge.className = 'status-badge active'; toggle.checked = true; }
-                    else { badge.textContent = 'OFFLINE'; badge.className = 'status-badge inactive'; toggle.checked = false; }
+                    if (data.server1Active || data.server2Active) { badge.textContent = 'CULTISTS'; badge.className = 'status-badge active'; }
+                    else { badge.textContent = 'SAFE'; badge.className = 'status-badge inactive'; }
                 } catch (error) { console.error('Refresh cultist error:', error); }
-            }
-
-            async resetCultist() {
-                try {
-                    await fetch(`${API_BASE}/cultist/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
-                    this.showAlert('Cultist monitor reset', 'success');
-                    this.refreshCultistStatus();
-                } catch (error) { this.showAlert('Reset error: ' + error.message, 'error'); }
             }
 
             async loadHatePingsStatus() {

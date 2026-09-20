@@ -15,6 +15,7 @@ const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, 
 // Services
 const { getAIResponse, isWildRequest, getWildRequestResponse, generateHateRoast, consolidateChannelFacts } = require('./services/ai.js');
 const { generateImage, detectImageRequest, sanitizeImagePrompt, checkImageRateLimit } = require('./services/image.js');
+const { startCultistMonitor } = require('./services/cultist.js');
 require('./services/twitch.js'); // self-initializing — connects on require
 
 // Command modules
@@ -165,6 +166,8 @@ discordClient.once(Events.ClientReady, async (client) => {
 
     startHateTimer(client);
     console.log('[HATE] Proactive hate timer started');
+
+    startCultistMonitor(client);
 
     // Long-term memory: hourly, turn recent server chat into one durable,
     // AI-maintained fact sheet ("Patrick learns").
