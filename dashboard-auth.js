@@ -227,7 +227,13 @@ function authErrorPage(message) {
 .card{max-width:520px;padding:32px;background:#1e293b;border:1px solid #334155;border-radius:12px;text-align:center}
 h1{font-size:1.25rem;margin:0 0 12px}p{color:#94a3b8;line-height:1.5}a{color:#60a5fa}</style></head>
 <body><div class="card"><h1>ThePatrick Dashboard</h1><p>${escapeHtml(message)}</p>
-<p><a href="/auth/login">Try again</a></p></div></body></html>`;
+ <p><a href="/auth/login">Try again</a></p></div></body></html>`;
+}
+
+function authLandingPage() {
+  return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ThePatrick Dashboard</title>
+<style>body{font-family:system-ui,sans-serif;background:#0f172a;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:20px}.card{width:min(520px,100%);padding:36px;background:#1e293b;border:1px solid #334155;border-radius:16px;text-align:center;box-shadow:0 20px 60px #0005}.bot{font-size:3rem;margin-bottom:8px}h1{font-size:1.6rem;margin:0 0 10px}p{color:#94a3b8;line-height:1.55}.login{display:inline-block;background:#5865f2;color:#fff;text-decoration:none;font-weight:700;padding:12px 20px;border-radius:8px;margin-top:10px}.login:hover{background:#4752c4}</style></head>
+<body><main class="card"><div class="bot">&#x1F916;</div><h1>ThePatrick Dashboard</h1><p>Manage your server's persona, hate list, cultist alerts, memory, and bot settings.</p><a class="login" href="/auth/login?start=1">Sign in with Discord</a></main></body></html>`;
 }
 
 // ===== ROUTES =====
@@ -240,6 +246,8 @@ function attachRoutes(app, options = {}) {
     if (!c.clientId || !c.clientSecret) {
       return res.status(500).send(authErrorPage('Dashboard login is not configured. Set DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET.'));
     }
+    // Show a branded landing page before explicitly starting OAuth.
+    if (req.query.start !== '1') return res.send(authLandingPage());
     const redirect = redirectUri(req);
     const state = makeState();
     const url = new URL('https://discord.com/oauth2/authorize');
