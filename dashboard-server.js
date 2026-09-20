@@ -180,23 +180,26 @@ app.get('/api/bot/status', (req, res) => {
   res.json({ status: 'ONLINE', uptime: uptimeStr, lastCheck: new Date().toLocaleTimeString(), memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB' });
 });
 
-// Persona endpoints — persona state is shared via the database so both
+// Persona endpoints — per Discord server, shared via the database so both
 // index.js (bot process) and dashboard-server.js (Express process) stay in sync.
 app.get('/api/persona/current', (req, res) => {
-  const persona = getCurrentPersona(); // now includes .key
-  res.json({ success: true, persona: persona.key });
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const persona = getCurrentPersona(guildId); // now includes .key
+  res.json({ success: true, persona: persona.key, guildId });
 });
 
 app.post('/api/persona/set', (req, res) => {
-  const { persona } = req.body;
+  const { persona, guildId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
   const valid = getAvailablePersonas();
   if (!valid.includes(persona)) {
     return res.status(400).json({ success: false, error: 'Invalid persona. Valid options: ' + valid.join(', ') });
   }
-  const success = setPersona(persona);
+  const success = setPersona(persona, guildId);
   if (!success) return res.status(400).json({ success: false, error: 'Persona switch failed' });
-  console.log(`[API] Persona changed to: ${persona}`);
-  res.json({ success: true, persona });
+  console.log(`[API] Persona changed to: ${persona} for guild ${guildId}`);
+  res.json({ success: true, persona, guildId });
 });
 
 // ===== HATE LIST ENDPOINTS =====

@@ -778,7 +778,7 @@
             }
 
             async reloadServerScoped() {
-                await Promise.all([this.loadHateList(), this.loadHatePingsStatus()]);
+                await Promise.all([this.loadHateList(), this.loadHatePingsStatus(), this.loadCurrentPersona()]);
             }
 
             async loadHateList() {
@@ -1049,7 +1049,8 @@
 
             async loadCurrentPersona() {
                 try {
-                    const response = await fetch(`${API_BASE}/persona/current`);
+                    if (!this.selectedGuildId) return;
+                    const response = await fetch(`${API_BASE}/persona/current${this.serverQuery()}`);
                     if (!response.ok) throw new Error('Failed to load persona');
                     const data = await response.json();
                     this.currentPersona = data.persona;
@@ -1068,7 +1069,7 @@
                 try {
                     const response = await fetch(`${API_BASE}/persona/set`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ persona })
+                        body: JSON.stringify({ persona, guildId: this.selectedGuildId })
                     });
                     const data = await response.json();
                     if (data.success) { this.currentPersona = persona; this.showAlert(`Persona set to: ${persona}`, 'success'); }

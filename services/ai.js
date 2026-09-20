@@ -140,10 +140,10 @@ function extractJson(raw) {
     return braceMatch ? braceMatch[0] : raw;
 }
 
-async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = []) {
+async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = [], guildId = null) {
     try {
         const memoryContext  = getSmartContext(platform, channelId);
-        const currentPersona = getCurrentPersona();
+        const currentPersona = getCurrentPersona(guildId);
 
         const recentLines    = memoryContext.split('\n');
         const userLineCount  = recentLines.filter(l => l.startsWith(`${username}:`)).length;
@@ -223,8 +223,8 @@ IMPORTANT — vary your response structure. Do NOT:
     }
 }
 
-async function getWildRequestResponse(messageText, platform, channelId, username) {
-    const persona = getCurrentPersona();
+async function getWildRequestResponse(messageText, platform, channelId, username, guildId = null) {
+    const persona = getCurrentPersona(guildId);
 
     const platformNote = platform === 'twitch'
         ? 'Twitch – under 400 chars. Keep it VERY short, chat scrolls fast.'
@@ -273,8 +273,8 @@ ${factsBlock ? `\n**Things you remember about this server:**\n${factsBlock}\n` :
 // Generate a fresh, varied roast for a hated user using the AI, so the bot
 // doesn't just cycle canned lines. Returns a short tagged roast.
 
-async function generateHateRoast(username, userId, reasonContext = '', facts = '') {
-    const persona = getCurrentPersona();
+async function generateHateRoast(username, userId, reasonContext = '', facts = '', guildId = null) {
+    const persona = getCurrentPersona(guildId);
 
     const reason = reasonContext || "randomly roasting a member you have put on your private hate list";
     const factsBlock = facts

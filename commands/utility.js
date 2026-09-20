@@ -12,16 +12,16 @@ const GITHUB_URL = 'https://github.com/BirdTruther';
 
 // ===== PERSONA HELPERS =====
 
-function buildPersonaList() {
+function buildPersonaList(guildId = null) {
     const keys    = getAvailablePersonas();
-    const current = getCurrentPersona();
+    const current = getCurrentPersona(guildId);
     return keys
         .map(key => key === current.name ? `**${key}** (active)` : key)
         .join(', ');
 }
 
-function applyPersona(name) {
-    const success = setPersona(name);
+function applyPersona(name, guildId = null) {
+    const success = setPersona(name, guildId);
     if (success) return `✅ Persona switched to **${name}**.`;
     const available = getAvailablePersonas().join(', ');
     return `❌ Unknown persona "${name}". Available: ${available}`;
@@ -248,7 +248,7 @@ const commands = {
 
         async execute(interaction) {
             const name   = interaction.options.getString('name');
-            const result = applyPersona(name);
+            const result = applyPersona(name, interaction.guildId);
             await interaction.editReply(result);
             logCommand('discord', interaction.user.username, '/persona', name, result);
         }
@@ -260,7 +260,7 @@ const commands = {
             .setDescription('List all available personas'),
 
         async execute(interaction) {
-            const result = `Available personas: ${buildPersonaList()}`;
+            const result = `Available personas: ${buildPersonaList(interaction.guildId)}`;
             await interaction.editReply(result);
             logCommand('discord', interaction.user.username, '/personas', '', result);
         }
@@ -282,13 +282,13 @@ const commands = {
             addToMemory('discord', channelId, username, question);
 
             if (isWildRequest(question)) {
-                const roast = await getWildRequestResponse(question, 'discord', channelId, username);
+                const roast = await getWildRequestResponse(question, 'discord', channelId, username, interaction.guildId);
                 await interaction.editReply(roast);
                 logCommand('discord', username, '/ask (wild)', question, roast);
                 return;
             }
 
-            const response = await getAIResponse(question, 'discord', channelId, username);
+            const response = await getAIResponse(question, 'discord', channelId, username, [], interaction.guildId);
             await interaction.editReply(response);
             logCommand('discord', username, '/ask', question, response);
         }
