@@ -144,3 +144,8 @@ vite.config.ts.timestamp-*
 *.db
 *.db-shm
 *.db-wal
+
+# local-only artifacts (never commit)
+index.js.bak
+*-player-script.js
+"tale lockfile and modules entirely"
