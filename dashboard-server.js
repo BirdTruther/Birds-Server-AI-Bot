@@ -3,7 +3,7 @@ const express = require('express');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
-const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId } = require('./hate-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId, setHateChannelId } = require('./hate-manager.js');
 const { getLongTermFacts, saveFacts, replaceFacts, getLastConsolidatedId } = require('./memory.js');
 const { consolidateChannelFacts } = require('./services/ai.js');
 
@@ -243,6 +243,19 @@ app.get('/api/hate/list', async (req, res) => {
   if (!ensureGuildAccess(req, res, guildId)) return;
   const list = getHatedUserIds(guildId);
   res.json({ success: true, list, users: await describeHatedUsers(list, guildId), guildId });
+});
+
+app.get('/api/hate/config', (req, res) => {
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  res.json({ success: true, guildId, channelId: getHateChannelId(guildId) });
+});
+
+app.post('/api/hate/config', (req, res) => {
+  const { guildId, channelId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  setHateChannelId(channelId || '', guildId);
+  res.json({ success: true, guildId, channelId: getHateChannelId(guildId) });
 });
 
 app.get('/api/hate/all', async (req, res) => {

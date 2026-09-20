@@ -419,6 +419,11 @@
                     <input type="checkbox" id="hate-all-toggle"> View all server lists (superadmin)
                 </label>
                 <div class="control-section">
+                    <label class="control-label" for="hate-channel">Roast Channel ID</label>
+                    <input type="text" id="hate-channel" placeholder="Discord channel ID" class="persona-select" style="width:100%;margin-bottom:8px;">
+                    <button class="button button-primary" id="save-hate-config-btn">&#x1F4BE; Save Roast Channel</button>
+                </div>
+                <div class="control-section">
                     <span class="status-label" style="display:block;margin-bottom:10px;">Roast Pings (proactive hate timer + callouts)</span>
                     <label class="toggle-switch"><input type="checkbox" id="hate-pings-toggle"><span class="slider"></span></label>
                 </div>
@@ -808,8 +813,31 @@
             }
 
             async reloadServerScoped() {
-                await Promise.all([this.loadHateList(), this.loadHatePingsStatus(), this.loadCurrentPersona(), this.loadCultistConfig()]);
+                await Promise.all([this.loadHateList(), this.loadHateConfig(), this.loadHatePingsStatus(), this.loadCurrentPersona(), this.loadCultistConfig()]);
                 if (this.memoryModal && this.memoryModal.classList.contains('show')) this.loadMemory();
+            }
+
+            async loadHateConfig() {
+                if (!this.selectedGuildId) return;
+                try {
+                    const res = await fetch(`${API_BASE}/hate/config${this.serverQuery()}`);
+                    const data = await res.json();
+                    if (data.success) document.getElementById('hate-channel').value = data.channelId || '';
+                } catch (e) { console.error('[HATE] config load failed', e); }
+            }
+
+            async saveHateConfig() {
+                if (!this.selectedGuildId) { alert('Select a server first'); return; }
+                const channelId = document.getElementById('hate-channel').value.trim();
+                try {
+                    const res = await fetch(`${API_BASE}/hate/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ guildId: this.selectedGuildId, channelId })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? (channelId ? 'Roasts will use the saved channel.' : 'Roast channel cleared.') : (data.error || 'Failed to save roast channel'));
+                } catch (e) { alert('Failed to save roast channel'); }
             }
 
             async loadHateList() {
@@ -1066,6 +1094,7 @@
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
                 document.getElementById('hate-all-toggle').addEventListener('change', (e) => { this.viewAllHate = e.target.checked; this.loadHateList(); });
+                document.getElementById('save-hate-config-btn').addEventListener('click', () => this.saveHateConfig());
                 document.getElementById('hate-user').addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') this.hateAction('add');
                 });
