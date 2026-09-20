@@ -415,6 +415,9 @@
                     <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
                 </div>
                 <div id="hate-list" style="max-height:150px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.18);border-radius:6px;color:var(--color-text-secondary);font-family:monospace;font-size:0.85rem;white-space:pre-wrap;">No users on this server's hate list.</div>
+                <label id="hate-all-label" style="display:none;align-items:center;gap:6px;margin-top:10px;color:var(--color-text-secondary);font-size:0.85rem;">
+                    <input type="checkbox" id="hate-all-toggle"> View all server lists (superadmin)
+                </label>
                 <div class="control-section">
                     <span class="status-label" style="display:block;margin-bottom:10px;">Roast Pings (proactive hate timer + callouts)</span>
                     <label class="toggle-switch"><input type="checkbox" id="hate-pings-toggle"><span class="slider"></span></label>
@@ -724,6 +727,7 @@
                 this.isSuperAdmin = false;
                 this.viewSharedMemory = false;
                 this.viewAllLogs = false;
+                this.viewAllHate = false;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -756,6 +760,8 @@
                     if (logsAllLabel) logsAllLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
                     const clearLogsBtn = document.getElementById('clear-logs-btn');
                     if (clearLogsBtn) clearLogsBtn.style.display = this.isSuperAdmin ? '' : 'none';
+                    const hateAllLabel = document.getElementById('hate-all-label');
+                    if (hateAllLabel) hateAllLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
                 } catch (e) {
                     console.error('[AUTH] failed to load session', e);
                 }
@@ -794,6 +800,9 @@
 
             async selectServer(event) {
                 this.selectedGuildId = event.target.value || null;
+                this.viewAllHate = false;
+                const allToggle = document.getElementById('hate-all-toggle');
+                if (allToggle) allToggle.checked = false;
                 if (!this.selectedGuildId) return;
                 await this.reloadServerScoped();
             }
@@ -807,15 +816,26 @@
                 try {
                     const badge = document.getElementById('hate-status');
                     const count = document.getElementById('hate-count');
-                    if (!this.selectedGuildId) return;
-                    const res = await fetch(`${API_BASE}/hate/list${this.serverQuery()}`);
+                    if (!this.selectedGuildId && !this.viewAllHate) return;
+                    const res = await fetch(this.viewAllHate ? `${API_BASE}/hate/all` : `${API_BASE}/hate/list${this.serverQuery()}`);
                     const data = await res.json();
-                    if (data.success) {
+                    if (!data.success) return;
+                    const list = document.getElementById('hate-list');
+                    if (this.viewAllHate) {
+                        const groups = data.groups || [];
+                        const total = groups.reduce((sum, group) => sum + group.users.length, 0);
+                        count.textContent = total;
+                        badge.textContent = total > 0 ? `${total} HATED` : 'CLEAR';
+                        badge.className = 'status-badge ' + (total > 0 ? 'active' : 'inactive');
+                        list.textContent = total
+                            ? groups.map(group => `${group.guildName}\n${group.users.map(user => `  • ${user.name} (${user.id})`).join('\n')}`).join('\n\n')
+                            : 'No hate-list entries across connected servers.';
+                    } else {
                         count.textContent = data.list.length;
                         badge.textContent = data.list.length > 0 ? `${data.list.length} HATED` : 'CLEAR';
                         badge.className = 'status-badge ' + (data.list.length > 0 ? 'active' : 'inactive');
-                        document.getElementById('hate-list').textContent = data.list.length
-                            ? data.list.map(id => `• ${id}`).join('\n')
+                        list.textContent = data.users?.length
+                            ? data.users.map(user => `• ${user.name} (${user.id})`).join('\n')
                             : 'No users on this server\'s hate list.';
                     }
                 } catch (e) {
@@ -824,6 +844,7 @@
             }
 
             async hateAction(action) {
+                if (this.viewAllHate) { alert('Switch back to a server list before changing entries.'); return; }
                 const userId = document.getElementById('hate-user').value.trim();
                 if (!userId) { alert('Enter a Discord user ID'); return; }
                 try {
@@ -1044,6 +1065,7 @@
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
+                document.getElementById('hate-all-toggle').addEventListener('change', (e) => { this.viewAllHate = e.target.checked; this.loadHateList(); });
                 document.getElementById('hate-user').addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') this.hateAction('add');
                 });

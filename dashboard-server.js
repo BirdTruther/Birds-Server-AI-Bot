@@ -225,10 +225,40 @@ function announceHateAdd(userId, guildId) {
   );
 }
 
-app.get('/api/hate/list', (req, res) => {
+async function describeHatedUsers(ids, guildId) {
+  const client = getDiscordClient();
+  const guild = client?.guilds?.cache?.get(guildId);
+  return Promise.all(ids.map(async id => {
+    let member = guild?.members?.cache?.get(id);
+    if (!member && guild) member = await guild.members.fetch(id).catch(() => null);
+    return {
+      id,
+      name: member?.displayName || member?.user?.globalName || member?.user?.username || `Discord user ${id}`
+    };
+  }));
+}
+
+app.get('/api/hate/list', async (req, res) => {
   const { guildId } = req.query;
   if (!ensureGuildAccess(req, res, guildId)) return;
-  res.json({ success: true, list: getHatedUserIds(guildId), guildId });
+  const list = getHatedUserIds(guildId);
+  res.json({ success: true, list, users: await describeHatedUsers(list, guildId), guildId });
+});
+
+app.get('/api/hate/all', async (req, res) => {
+  if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  const client = getDiscordClient();
+  const groups = client
+    ? await Promise.all([...client.guilds.cache.values()].map(async guild => {
+        const list = getHatedUserIds(guild.id);
+        return {
+          guildId: guild.id,
+          guildName: guild.name,
+          users: await describeHatedUsers(list, guild.id)
+        };
+      }))
+    : [];
+  res.json({ success: true, groups: groups.filter(group => group.users.length > 0) });
 });
 
 app.post('/api/hate/add', (req, res) => {
