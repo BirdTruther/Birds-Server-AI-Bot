@@ -440,7 +440,7 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-async function runMessageExport(userId, jobId) {
+async function runMessageExport(userId, jobId, guildId = null) {
   const job = exportJobs[jobId];
 
   if (!discordClientRef) {
@@ -470,7 +470,11 @@ async function runMessageExport(userId, jobId) {
   });
 
   try {
-    for (const [, guild] of discordClientRef.guilds.cache) {
+    // Scope to a single server unless this is a superadmin-wide export.
+    const guildList = guildId
+      ? [discordClientRef.guilds.cache.get(guildId)].filter(Boolean)
+      : [...discordClientRef.guilds.cache.values()];
+    for (const guild of guildList) {
       job.progress = `Scanning: ${guild.name}`;
       logSystem({
         log_type: 'EXPORT',
@@ -620,32 +624,58 @@ async function runMessageExport(userId, jobId) {
 }
 
 app.post('/api/export/start', (req, res) => {
-  const { userId } = req.body;
+  const { userId, guildId } = req.body;
   if (!userId || !/^\d{17,20}$/.test(userId)) {
     return res.status(400).json({ success: false, error: 'Invalid Discord user ID \u2014 must be 17-20 digits' });
   }
+  // Server admins can export only their own server; a bot-wide export is
+  // superadmin-only.
+  if (guildId) {
+    if (!ensureGuildAccess(req, res, guildId)) return;
+  } else if (!dashboardAuth.isSuperAdmin(req)) {
+    return res.status(403).json({ success: false, error: 'A server must be selected (or superadmin required for a full export)' });
+  }
   const jobId = Date.now().toString();
-  exportJobs[jobId] = { status: 'queued', userId, progress: 'Starting...', startedAt: new Date().toISOString() };
+  exportJobs[jobId] = { status: 'queued', userId, guildId: guildId || null, progress: 'Starting...', startedAt: new Date().toISOString() };
   logSystem({
     log_type: 'EXPORT',
     severity: 'INFO',
     component: 'export',
-    message: `Export job ${jobId} queued for user ID ${userId}`,
-    metadata: { jobId, userId }
+    message: `Export job ${jobId} queued for user ID ${userId}${guildId ? ` in guild ${guildId}` : ' (all servers)'}`,
+    metadata: { jobId, userId, guildId: guildId || null }
   });
-  runMessageExport(userId, jobId);
+  runMessageExport(userId, jobId, guildId || null);
   res.json({ success: true, jobId });
 });
+
+// Status/download share the same access rule: a job tied to a guild requires
+// access to that guild, otherwise superadmin.
+function canReachExportJob(req, res, job) {
+  if (job.guildId) {
+    if (!dashboardAuth.canAccessGuild(req.user, job.guildId)) {
+      res.status(403).json({ success: false, error: 'forbidden' });
+      return false;
+    }
+    return true;
+  }
+  if (!dashboardAuth.isSuperAdmin(req)) {
+    res.status(403).json({ success: false, error: 'superadmin only' });
+    return false;
+  }
+  return true;
+}
 
 app.get('/api/export/status/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+  if (!canReachExportJob(req, res, job)) return;
   res.json({ success: true, jobId: req.params.jobId, userId: job.userId, status: job.status, progress: job.progress, count: job.count || 0, error: job.error || null, startedAt: job.startedAt || null, completedAt: job.completedAt || null });
 });
 
 app.get('/api/export/download/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job || job.status !== 'done') return res.status(404).json({ error: 'Export not ready or job not found' });
+  if (!canReachExportJob(req, res, job)) return;
   const format = req.query.format || 'json';
   logSystem({
     log_type: 'EXPORT',
