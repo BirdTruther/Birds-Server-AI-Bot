@@ -14,16 +14,14 @@ const HATE_CHANNEL_KEY = 'hateChannelId';
 // Multi-guild support: the hate list + roast channel + ping toggle are
 // per-Discord-server, so each community decides its own local villain while the
 // persona + facts stay global ("one Patrick everywhere"). Keys are namespaced
-// by guild. When `guildId` is null (legacy rows / single-guild installs) we
-// fall back to the original global key so nothing breaks.
+// by guild. When `guildId` is null we use the legacy global key only for
+// non-Discord/legacy callers; every Discord guild must have an isolated key.
 function hateListKey(guildId)   { return guildId ? `hateList:${guildId}` : HATE_KEY; }
 function hateChannelKey(guildId){ return guildId ? `hateChannelId:${guildId}` : HATE_CHANNEL_KEY; }
 
 function getHatedUserIds(guildId = null) {
     try {
-        const raw = guildId
-            ? getSetting(hateListKey(guildId), null) ?? getSetting(HATE_KEY, '[]')
-            : getSetting(HATE_KEY, '[]');
+        const raw = getSetting(hateListKey(guildId), '[]');
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
     } catch (err) {
@@ -65,9 +63,7 @@ function isHated(userId, guildId = null) {
 }
 
 function getHateChannelId(guildId = null) {
-    return guildId
-        ? getSetting(hateChannelKey(guildId), null) ?? getSetting(HATE_CHANNEL_KEY, '')
-        : getSetting(HATE_CHANNEL_KEY, '');
+    return getSetting(hateChannelKey(guildId), '');
 }
 
 function setHateChannelId(channelId, guildId = null) {
