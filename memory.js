@@ -44,36 +44,39 @@ const FACT_MAX_LEN    = 140;  // Max chars per fact
 const FACT_TOPIC_MAX  = 8;    // Max topics per fact
 const MIN_NEW_MESSAGES = 5;   // Consolidation skips unless this many new msgs
 
-// Facts are server-wide. Keep the key names stable so the sheet survives
-// restarts and future config changes.
-const FACTS_SCOPE = 'global';
-function factsKey()       { return `memoryFacts:${FACTS_SCOPE}`; }
-function factsLastIdKey() { return `memoryFactsLastId:${FACTS_SCOPE}`; }
+// Facts are scoped. The "shared" scope is the global pool that Patrick recalls
+// on EVERY server (curated by the superadmin). Each Discord server also has its
+// own scope (keyed by guild id) that its admins manage and that consolidation
+// writes to. The old `memoryFacts:global` key IS the shared pool, so existing
+// facts are preserved and remain visible everywhere.
+const SHARED_SCOPE = 'shared';
 
-// Get server facts, optionally filtered to one topic (e.g. a username).
-function getLongTermFacts(platform, channelId, filterTopic) {
+function factsKey(scope) {
+  return scope && scope !== SHARED_SCOPE ? `memoryFacts:guild:${scope}` : 'memoryFacts:global';
+}
+function factsLastIdKey(scope) {
+  return scope && scope !== SHARED_SCOPE ? `memoryFactsLastId:guild:${scope}` : 'memoryFactsLastId:global';
+}
+
+function readSheet(scope) {
   try {
-    let facts = [];
-    const stored = getSetting(factsKey(), null);
-    try { facts = JSON.parse(stored || '[]'); }
-    catch { facts = []; }
-    if (!Array.isArray(facts)) facts = [];
+    const stored = getSetting(factsKey(scope), null);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error('[MEMORY] Failed to parse fact sheet:', err.message);
+    return [];
+  }
+}
 
-    // Migrate existing channel sheets into the new server-wide sheet on the
-    // first read, without deleting the old settings until consolidation saves.
-    if (!stored) {
-      const legacyRows = db.prepare("SELECT value FROM bot_settings WHERE key LIKE 'memoryFacts:%' AND key != ?").all(factsKey());
-      for (const row of legacyRows) {
-        try {
-          const legacy = JSON.parse(row.value);
-          if (Array.isArray(legacy)) facts.push(...legacy);
-        } catch { /* ignore malformed legacy sheets */ }
-      }
-    }
+// Get facts for one scope, optionally filtered to one topic (e.g. a username).
+function getLongTermFacts(platform, channelId, filterTopic, scope = SHARED_SCOPE) {
+  try {
+    const facts = readSheet(scope);
     if (filterTopic) {
       const t = String(filterTopic).toLowerCase();
       const norm = t.replace(/[^a-z0-9]/g, '');
-      facts = facts.filter(f => (f.topics || []).some(x => {
+      return facts.filter(f => (f.topics || []).some(x => {
         const xt = String(x).toLowerCase();
         // Exact match, or a normalized (alphanumeric-only) containment so a
         // stored username like "stoutirish" matches a queried display name
@@ -121,13 +124,13 @@ function factsOverlap(a, b) {
 // lost to consolidation, the 25-fact cap, or model omission. When the AI
 // returns a newer pinned version of a pinned fact (edit/rename), the newer
 // version wins. Duplicates are resolved in favour of the incoming entry.
-function saveFacts(platform, channelId, facts) {
+function saveFacts(platform, channelId, facts, scope = SHARED_SCOPE) {
   const incoming = Array.isArray(facts)
     ? facts.map(normalizeFact).filter(f => f.fact)
     : [];
 
-  // Pinned facts currently on disk — these must survive.
-  const stored = getLongTermFacts(platform, channelId);
+  // Pinned facts currently on disk in THIS scope — these must survive.
+  const stored = getLongTermFacts(platform, channelId, undefined, scope);
   const storedPinned = stored.filter(isPinned);
 
   // Re-merge pinned facts from disk. The AI never sets "pinned" on its
@@ -159,7 +162,7 @@ function saveFacts(platform, channelId, facts) {
   const unpinned = deduped.filter(f => !isPinned(f));
   const trimmed = [...pinnned, ...unpinned].slice(0, FACT_MAX);
 
-  setSetting(factsKey(), JSON.stringify(trimmed));
+  setSetting(factsKey(scope), JSON.stringify(trimmed));
   return trimmed;
 }
 
@@ -167,7 +170,7 @@ function saveFacts(platform, channelId, facts) {
 // Unlike saveFacts, this does NOT re-merge existing pinned facts from disk —
 // the caller has decided the exact final set, so we write it verbatim
 // (normalized, deduped, capped). Pinned flags on the passed facts are kept.
-function replaceFacts(platform, channelId, facts) {
+function replaceFacts(platform, channelId, facts, scope = SHARED_SCOPE) {
   const incoming = Array.isArray(facts)
     ? facts.map(normalizeFact).filter(f => f.fact)
     : [];
@@ -181,16 +184,16 @@ function replaceFacts(platform, channelId, facts) {
   const pinnned = deduped.filter(isPinned);
   const unpinned = deduped.filter(f => !isPinned(f));
   const trimmed = [...pinnned, ...unpinned].slice(0, FACT_MAX);
-  setSetting(factsKey(), JSON.stringify(trimmed));
+  setSetting(factsKey(scope), JSON.stringify(trimmed));
   return trimmed;
 }
 
-function getLastConsolidatedId(channelId) {
-  return parseInt(getSetting(factsLastIdKey(), '0'), 10) || 0;
+function getLastConsolidatedId(scope = SHARED_SCOPE) {
+  return parseInt(getSetting(factsLastIdKey(scope), '0'), 10) || 0;
 }
 
-function setLastConsolidatedId(channelId, id) {
-  setSetting(factsLastIdKey(), String(id));
+function setLastConsolidatedId(scope, id) {
+  setSetting(factsLastIdKey(scope), String(id));
 }
 
 // Pull new messages since a given id (bounded) — used to feed consolidation.
@@ -207,9 +210,24 @@ function getNewMessagesSince(platform, channelId, afterId, limit = 100) {
 }
 
 // Render facts as a ready-to-inject block string (empty if none).
-// Optional filterTopic narrows to facts whose topics include that value.
-function getContextFacts(platform, channelId, filterTopic) {
-  const facts = getLongTermFacts(platform, channelId, filterTopic);
+// Always includes the SHARED pool plus the given scope's own facts, so Patrick
+// recalls a fact learned on one server while talking on another. Optional
+// filterTopic narrows to facts whose topics include that value.
+function getContextFacts(platform, channelId, filterTopic, scope) {
+  const shared = getLongTermFacts(platform, channelId, filterTopic, SHARED_SCOPE);
+  const local = scope && scope !== SHARED_SCOPE
+    ? getLongTermFacts(platform, channelId, filterTopic, scope)
+    : [];
+
+  const seen = new Set();
+  const facts = [];
+  for (const f of [...shared, ...local]) {
+    const key = String(f.fact).toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    facts.push(f);
+  }
+
   if (!facts.length) return '';
   return facts
     .map((f, i) => `${i + 1}. ${f.fact}` + (f.topics && f.topics.length ? ` [${f.topics.join(', ')}]` : ''))
@@ -388,6 +406,7 @@ module.exports = {
   setLastConsolidatedId,
   getNewMessagesSince,
   getContextFacts,
+  SHARED_SCOPE,
   MIN_NEW_MESSAGES,
   FACT_MAX,
   FACT_MAX_LEN,

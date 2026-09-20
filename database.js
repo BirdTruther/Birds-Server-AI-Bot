@@ -114,7 +114,21 @@ try {
     CREATE INDEX IF NOT EXISTS idx_system_type ON system_logs(log_type);
     CREATE INDEX IF NOT EXISTS idx_system_severity ON system_logs(severity);
   `);
-  
+
+  // Multi-guild: tag command logs with the Discord guild they came from so the
+  // dashboard can show each server its own logs. Additive migration — existing
+  // rows keep guild_id NULL and are only visible to the superadmin.
+  try {
+    const cols = db.prepare("PRAGMA table_info(command_logs)").all();
+    if (!cols.some(c => c.name === 'guild_id')) {
+      db.exec("ALTER TABLE command_logs ADD COLUMN guild_id TEXT");
+      console.log('[DATABASE] Added guild_id column to command_logs');
+    }
+    db.exec("CREATE INDEX IF NOT EXISTS idx_command_guild ON command_logs(guild_id)");
+  } catch (err) {
+    console.error('[DATABASE] guild_id migration failed:', err.message);
+  }
+
   console.log('[DATABASE] Tables initialized successfully');
 } catch (err) {
   console.error('[DATABASE] Failed to create tables:', err);
@@ -123,8 +137,8 @@ try {
 
 // Insert log entry
 const insertLog = db.prepare(`
-  INSERT INTO command_logs (timestamp, platform, username, command, message, response, image_url, error)
-  VALUES (@timestamp, @platform, @username, @command, @message, @response, @image_url, @error)
+  INSERT INTO command_logs (timestamp, platform, username, command, message, response, image_url, error, guild_id)
+  VALUES (@timestamp, @platform, @username, @command, @message, @response, @image_url, @error, @guild_id)
 `);
 
 function logCommand(entry) {
@@ -137,7 +151,8 @@ function logCommand(entry) {
       message: entry.message || '',
       response: entry.response || null,
       image_url: entry.image_url || null,
-      error: entry.error ? 1 : 0
+      error: entry.error ? 1 : 0,
+      guild_id: entry.guild_id || null
     });
   } catch (err) {
     console.error('[DATABASE] Insert error:', err);
@@ -174,8 +189,19 @@ const getLogsStmt = db.prepare(`
   LIMIT @limit
 `);
 
-function getLogs(platform = 'all', limit = 100) {
+const getLogsByGuildStmt = db.prepare(`
+  SELECT * FROM command_logs
+  WHERE (@platform = 'all' OR platform = @platform)
+    AND guild_id = @guild_id
+  ORDER BY id DESC
+  LIMIT @limit
+`);
+
+function getLogs(platform = 'all', limit = 100, guildId = null) {
   try {
+    if (guildId) {
+      return getLogsByGuildStmt.all({ platform, guild_id: String(guildId), limit: Math.min(limit, 1000) });
+    }
     return getLogsStmt.all({ platform, limit: Math.min(limit, 1000) });
   } catch (err) {
     console.error('[DATABASE] Query error:', err);

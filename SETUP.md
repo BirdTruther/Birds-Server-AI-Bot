@@ -50,7 +50,6 @@ Then fill in your values:
 |---|---|---|
 | `DISCORD_TOKEN` | ✅ | [Developer Portal](https://discord.com/developers/applications) → Bot → Token |
 | `DISCORD_CLIENT_ID` | ✅ | Developer Portal → General Information → Application ID |
-| `DISCORD_GUILD_ID` | ✅ | Right-click server icon → Copy Server ID (requires Developer Mode) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | ✅ | [aistudio.google.com](https://aistudio.google.com) |
 | `TWITCH_BOT_USERNAME` | ✅ | Your Twitch bot account username |
 | `TWITCH_OAUTH_TOKEN` | ✅ | [twitchapps.com/tmi](https://twitchapps.com/tmi) |
@@ -70,6 +69,71 @@ node index.js
 node dashboard-server.js
 # → http://localhost:3001
 ```
+
+### Multi-server behavior
+
+The bot registers slash commands globally and can be invited to multiple
+Discord servers while running as one process. Persona and long-term facts are
+shared globally. Hate lists, roast channels, and the dashboard's Roast Pings
+toggle are isolated per Discord server.
+
+The dashboard's hate controls include a server selector. Configure `/hate
+channel` separately in each server where proactive roasts should run.
+
+### Per-server features
+
+The dashboard's "Managing server" picker (top of the page) scopes everything
+server-specific. It only lists servers where you have Owner / Manage Server /
+Administrator and the bot is present.
+
+| Feature | Scope |
+|---|---|
+| Persona | per server (Twitch/DMs use the global default) |
+| Hate list, roast channel, Roast Pings | per server |
+| Cultist alerts (channel + optional role ping) | per server |
+| Server facts | per server; admins manage their own |
+| Shared memory facts | global — recalled on every server, superadmin-curated |
+| Command logs | per server (superadmin can view all) |
+| System logs | superadmin only |
+
+- **Cultist alerts:** set the alert channel ID and optional role ID per server in
+  the Cultist card, then enable the toggle. The bot posts when the Tarkov night
+  window opens/closes.
+- **Shared memory:** open Bot Memory, tick "Shared memory (all servers)" (bot
+  owner only) to curate the global pool, or press "Share" on a server fact to
+  promote it so Patrick recalls it everywhere.
+- Command logs written before this change have no server tag and appear only in
+  the superadmin "All servers" view.
+
+### Dashboard login (Discord OAuth)
+
+The dashboard is protected by Discord OAuth login and binds to `127.0.0.1` by
+default. To expose it publicly, put a reverse proxy in front of it and set:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `DISCORD_CLIENT_SECRET` | ✅ | Developer Portal → OAuth2 → Client Secret |
+| `DASHBOARD_OAUTH_REDIRECT_URI` | ✅* | Public callback URL, e.g. `https://dash.example.com/auth/callback` |
+| `DASHBOARD_ALLOWED_USER_IDS` | ✅* | Comma-separated Discord user IDs allowed to log in |
+| `DASHBOARD_ALLOW_GUILD_ADMINS` | Optional | `true` lets users with Manage Server/Admin in a shared server log in |
+| `DASHBOARD_HOST` | Optional | Defaults to `127.0.0.1`; set `0.0.0.0` only for trusted LAN access |
+
+\* Set at least one of `DASHBOARD_ALLOWED_USER_IDS` or
+`DASHBOARD_ALLOW_GUILD_ADMINS=true`, or nobody can log in.
+
+Setup steps:
+
+1. Developer Portal → your app → **OAuth2 → Redirects**: add the exact callback
+   URL (for example `https://dash.example.com/auth/callback`).
+2. Set the variables above in `.env`.
+3. Point your reverse proxy at `http://127.0.0.1:3001`.
+4. Start (or restart) the process.
+
+To find your Discord user ID: enable Developer Mode, then right-click your
+avatar → Copy User ID.
+
+For quick local testing only, `DASHBOARD_AUTH_DISABLED=true` turns the login
+off (never use it on a publicly reachable instance).
 
 ---
 

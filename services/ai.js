@@ -1,7 +1,7 @@
 // services/ai.js
 const { generateText } = require('ai');
 const { google } = require('@ai-sdk/google');
-const { addToMemory, getSmartContext, getLongTermFacts, getContextFacts, saveFacts, getLastConsolidatedId, setLastConsolidatedId, getNewMessagesSince, MIN_NEW_MESSAGES, FACT_MAX } = require('../memory.js');
+const { addToMemory, getSmartContext, getLongTermFacts, getContextFacts, saveFacts, getLastConsolidatedId, setLastConsolidatedId, getNewMessagesSince, MIN_NEW_MESSAGES, FACT_MAX, SHARED_SCOPE } = require('../memory.js');
 const { logCommand, logSystemEvent } = require('../logger.js');
 const { getCurrentPersona, getPersonaErrorMessage } = require('../persona-manager.js');
 
@@ -55,18 +55,23 @@ async function generateTextWithFallback(options) {
 // The AI rewrites the whole sheet each run, so facts can be added, changed, or
 // removed. Never feed the raw transcript wholesale — only the current sheet
 // plus new messages since the last run, bounded to keep cost and spam in check.
-async function consolidateChannelFacts(platform, channelId, force = false) {
+async function consolidateChannelFacts(platform, channelIdOrIds, force = false, scope = SHARED_SCOPE) {
     const persona = getCurrentPersona();
-    const lastId = getLastConsolidatedId(channelId);
-    const newMessages = getNewMessagesSince(platform, channelId, lastId, 100);
+    const lastId = getLastConsolidatedId(scope);
+    const channelIds = Array.isArray(channelIdOrIds) ? channelIdOrIds : [channelIdOrIds];
+    const primaryChannel = channelIds[0] || 'global';
+    // New messages across every channel in this scope, in chronological order.
+    const newMessages = channelIds
+        .flatMap(cid => getNewMessagesSince(platform, cid, lastId, 100))
+        .sort((a, b) => a.id - b.id);
 
     // Skip if there's no meaningful new signal.
     if (!force && newMessages.length < MIN_NEW_MESSAGES) {
-        setLastConsolidatedId(channelId, newMessages.reduce((m, x) => Math.max(m, x.id), lastId));
+        setLastConsolidatedId(scope, newMessages.reduce((m, x) => Math.max(m, x.id), lastId));
         return { skipped: true, reason: 'too few new messages' };
     }
 
-    const currentFacts = getLongTermFacts(platform, channelId);
+    const currentFacts = getLongTermFacts(platform, primaryChannel, undefined, scope);
     const sheetText = currentFacts.length
         ? currentFacts.map((f, i) =>
             `${i + 1}. ${f.fact}${f.pinned ? ' [PINNED — ALWAYS KEEP VERBATIM]' : ''}`)
@@ -117,15 +122,15 @@ Respond with JSON only, no prose or code fences, in this exact shape:
         });
 
         const parsed = JSON.parse(extractJson(text || '{}'));
-        const facts = saveFacts(platform, channelId, parsed.facts || []);
-        setLastConsolidatedId(channelId, newMessages.reduce((m, x) => Math.max(m, x.id), lastId));
+        const facts = saveFacts(platform, primaryChannel, parsed.facts || [], scope);
+        setLastConsolidatedId(scope, newMessages.reduce((m, x) => Math.max(m, x.id), lastId));
 
-        console.log(`[MEMORY] Consolidated ${platform}:${channelId} — ${facts.length} facts`);
-        logSystemEvent('MEMORY_CONSOLIDATE', 'INFO', 'memory', `Consolidated ${platform}:${channelId} → ${facts.length} facts`);
+        console.log(`[MEMORY] Consolidated ${platform}:${scope} — ${facts.length} facts`);
+        logSystemEvent('MEMORY_CONSOLIDATE', 'INFO', 'memory', `Consolidated ${platform}:${scope} → ${facts.length} facts`);
         return { skipped: false, facts };
     } catch (error) {
         console.error('[MEMORY] Consolidation failed:', error.message);
-        logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation failed for ${platform}:${channelId}: ${error.message}`, error);
+        logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation failed for ${platform}:${scope}: ${error.message}`, error);
         // Keep the watermark unchanged so a transient API failure is retried
         // on the next hourly pass instead of losing these messages.
         return { skipped: false, error: error.message };
@@ -140,10 +145,12 @@ function extractJson(raw) {
     return braceMatch ? braceMatch[0] : raw;
 }
 
-async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = []) {
+async function getAIResponse(message, platform = 'discord', channelId = 'default', username = 'user', images = [], guildId = null) {
     try {
         const memoryContext  = getSmartContext(platform, channelId);
-        const currentPersona = getCurrentPersona();
+        const currentPersona = getCurrentPersona(guildId);
+        // Shared facts are always used; a Discord guild adds its own sheet.
+        const factsScope = guildId || (platform === 'twitch' ? 'twitch' : SHARED_SCOPE);
 
         const recentLines    = memoryContext.split('\n');
         const userLineCount  = recentLines.filter(l => l.startsWith(`${username}:`)).length;
@@ -167,7 +174,7 @@ async function getAIResponse(message, platform = 'discord', channelId = 'default
 
         // Long-term remembered facts about the server/people — durable info the
         // AI maintains across the 8-line rolling window.
-        const factsBlock = getContextFacts(platform, channelId);
+        const factsBlock = getContextFacts(platform, channelId, undefined, factsScope);
         const memorySection = factsBlock
             ? `\n\n==== LONG-TERM MEMORY ====\nThings you remember about this server and the people in it (use these — they're often what matters most):\n${factsBlock}`
             : '';
@@ -223,15 +230,16 @@ IMPORTANT — vary your response structure. Do NOT:
     }
 }
 
-async function getWildRequestResponse(messageText, platform, channelId, username) {
-    const persona = getCurrentPersona();
+async function getWildRequestResponse(messageText, platform, channelId, username, guildId = null) {
+    const persona = getCurrentPersona(guildId);
+    const factsScope = guildId || (platform === 'twitch' ? 'twitch' : SHARED_SCOPE);
 
     const platformNote = platform === 'twitch'
         ? 'Twitch – under 400 chars. Keep it VERY short, chat scrolls fast.'
         : 'Discord – keep it punchy, 1-3 sentences.';
 
     const memoryContext = getSmartContext(platform, channelId);
-    const factsBlock = getContextFacts(platform, channelId);
+    const factsBlock = getContextFacts(platform, channelId, undefined, factsScope);
 
     const roastPrompt = `${persona.systemPrompt}
 
@@ -273,8 +281,8 @@ ${factsBlock ? `\n**Things you remember about this server:**\n${factsBlock}\n` :
 // Generate a fresh, varied roast for a hated user using the AI, so the bot
 // doesn't just cycle canned lines. Returns a short tagged roast.
 
-async function generateHateRoast(username, userId, reasonContext = '', facts = '') {
-    const persona = getCurrentPersona();
+async function generateHateRoast(username, userId, reasonContext = '', facts = '', guildId = null) {
+    const persona = getCurrentPersona(guildId);
 
     const reason = reasonContext || "randomly roasting a member you have put on your private hate list";
     const factsBlock = facts

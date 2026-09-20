@@ -3,6 +3,21 @@
 // used throughout index.js.
 
 const { logCommand: dbLogCommand, logSystem: dbLogSystem } = require('./database.js');
+const { AsyncLocalStorage } = require('async_hooks');
+
+// Multi-guild log attribution without touching every call site: handlers run
+// inside runWithLogContext({ guildId }), and logCommand reads the current guild
+// from here automatically. Twitch / background work has no context -> null.
+const logContext = new AsyncLocalStorage();
+
+function runWithLogContext(context, fn) {
+    return logContext.run(context || {}, fn);
+}
+
+function currentGuildId() {
+    const store = logContext.getStore();
+    return store && store.guildId ? String(store.guildId) : null;
+}
 
 /**
  * Log a command/interaction.
@@ -24,7 +39,8 @@ function logCommand(platform, username, command, message, response, isError = fa
             message: message ? String(message).substring(0, 2000) : '',
             response: response ? String(response).substring(0, 4000) : null,
             image_url: imageUrl || null,
-            error: isError ? 1 : 0
+            error: isError ? 1 : 0,
+            guild_id: currentGuildId()
         });
     } catch (err) {
         console.error('[LOGGER] logCommand failed:', err.message);
@@ -57,4 +73,4 @@ function logSystemEvent(logType, severity, component, message, errorObj = null) 
     }
 }
 
-module.exports = { logCommand, logSystemEvent };
+module.exports = { logCommand, logSystemEvent, runWithLogContext };

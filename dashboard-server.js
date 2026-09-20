@@ -1,29 +1,39 @@
+require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
-const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId } = require('./hate-manager.js');
+const { getHatedUserIds, addToHateList, removeFromHateList, getHateChannelId, setHateChannelId } = require('./hate-manager.js');
 const { getLongTermFacts, saveFacts, replaceFacts, getLastConsolidatedId } = require('./memory.js');
 const { consolidateChannelFacts } = require('./services/ai.js');
 
-// Load cultist enabled state from DB on startup (persists across reboots)
+// Cultist spawn alerts are per-server; the Tarkov clock is global. The actual
+// posting lives in services/cultist.js (run by index.js); here we only expose
+// the clock for the dashboard display and per-guild config endpoints.
+const cultist = require('./services/cultist.js');
 let cultistState = {
-  enabled: getSetting('cultistEnabled', 'true') === 'true',
+  server1Time: '--:--',
+  server2Time: '--:--',
   server1Active: false,
-  server2Active: false,
-  server1Time: '--:--'
+  server2Active: false
 };
-console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 'ENABLED' : 'DISABLED'}`);
-
-// Expose getter so index.js can always read the live value
-global.getCultistEnabled = () => cultistState.enabled;
+console.log('[DASHBOARD] Cultist monitor loaded (per-server config)');
 
 // Roast-ping toggle — gates the proactive hate timer + random callouts so the
-// bot stops pinging hated users unprompted. Persisted across reboots.
-let hatePingsEnabled = getSetting('hatePingsEnabled', 'true') !== 'false';
-console.log(`[DASHBOARD] Roast pings loaded as: ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'}`);
-global.getHatePingsEnabled = () => hatePingsEnabled;
+// bot stops pinging hated users unprompted. Each Discord server has its own
+// setting; the old global key remains the fallback for legacy single-server data.
+const HATE_PINGS_KEY = 'hatePingsEnabled';
+function hatePingsKey(guildId) {
+  return guildId ? `${HATE_PINGS_KEY}:${guildId}` : HATE_PINGS_KEY;
+}
+function getHatePingsEnabled(guildId = null) {
+  const value = guildId
+    ? getSetting(hatePingsKey(guildId), null) ?? getSetting(HATE_PINGS_KEY, 'true')
+    : getSetting(HATE_PINGS_KEY, 'true');
+  return value !== 'false';
+}
+console.log('[DASHBOARD] Roast pings loaded with per-server settings');
+global.getHatePingsEnabled = getHatePingsEnabled;
 
 // Command logs storage (in-memory cache for real-time updates, max 500 entries)
 const MAX_LOGS = 500;
@@ -65,29 +75,16 @@ function addLog(entry) {
 
 global.dashboardLogCommand = addLog;
 
-function getCurrentTarkovTime() {
-  const oneDay = 24 * 60 * 60 * 1000;
-  const russia = 3 * 60 * 60 * 1000;
-  const tarkovRatio = 7;
-  const now = Date.now();
-  const tarkovTime = (russia + (now * tarkovRatio)) % oneDay;
-  const totalMinutes = Math.floor(tarkovTime / (60 * 1000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  return { hours, minutes };
-}
-
-function isCultistTime(hour) {
-  return hour >= 22 || hour < 7;
-}
-
+// Refresh the shared Tarkov clock shown on the dashboard (source of truth is
+// services/cultist.js, so the display and the alerts never disagree).
 setInterval(() => {
-  const { hours, minutes } = getCurrentTarkovTime();
-  const timeStr = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
-  cultistState.server1Time = timeStr;
-  cultistState.server1Active = isCultistTime(hours);
-  cultistState.server2Active = isCultistTime((hours + 12) % 24);
+  const snap = cultist.snapshot();
+  cultistState.server1Time = snap.server1Time;
+  cultistState.server2Time = snap.server2Time;
+  cultistState.server1Active = snap.server1Active;
+  cultistState.server2Active = snap.server2Active;
 }, 30000);
+cultistState = { ...cultistState, ...cultist.snapshot() };
 
 function formatUptime(seconds) {
   const totalSecs = Math.floor(seconds);
@@ -106,9 +103,33 @@ function formatUptime(seconds) {
 
 const app = express();
 const PORT = 3001;
+// Bind to loopback by default. Put a reverse proxy (Caddy/nginx/Cloudflare)
+// in front for remote access; set DASHBOARD_HOST=0.0.0.0 to expose on the LAN.
+const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 
-app.use(cors());
+app.set('trust proxy', 1);
 app.use(express.json());
+
+// Dashboard authentication (Discord OAuth). Routes under /auth/* and
+// /api/auth/me must be registered before the global gate below.
+const dashboardAuth = require('./dashboard-auth.js');
+dashboardAuth.attachRoutes(app, { getDiscordClient });
+app.use(dashboardAuth.requireAuth);
+
+// Guard server-scoped endpoints: the logged-in user must actually manage the
+// requested guild (allowlisted users may manage all of the bot's servers).
+function ensureGuildAccess(req, res, guildId) {
+  if (!guildId) {
+    res.status(400).json({ success: false, error: 'guildId is required' });
+    return false;
+  }
+  if (!dashboardAuth.canAccessGuild(req.user, guildId)) {
+    res.status(403).json({ success: false, error: 'forbidden' });
+    return false;
+  }
+  return true;
+}
+
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
@@ -117,24 +138,48 @@ app.get('/', (req, res) => {
 
 app.get('/api/cultist/status', (req, res) => { res.json(cultistState); });
 
-app.post('/api/cultist/toggle', (req, res) => {
-  const { enabled } = req.body;
-  cultistState.enabled = enabled;
-  setSetting('cultistEnabled', enabled);
-  console.log(`[API] Cultist ${enabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
-  res.json({ success: true, enabled });
+// Per-server cultist alert config: enable + channel (+ optional role to ping).
+app.get('/api/cultist/config', (req, res) => {
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  res.json({
+    success: true,
+    guildId,
+    enabled: cultist.isCultistEnabled(guildId),
+    channelId: cultist.getCultistChannelId(guildId),
+    roleId: cultist.getCultistRoleId(guildId)
+  });
+});
+
+app.post('/api/cultist/config', (req, res) => {
+  const { guildId, enabled, channelId, roleId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  if (enabled !== undefined) cultist.setCultistEnabled(guildId, !!enabled);
+  if (channelId !== undefined) cultist.setCultistChannelId(guildId, channelId);
+  if (roleId !== undefined) cultist.setCultistRoleId(guildId, roleId);
+  console.log(`[API] Cultist config for guild ${guildId}: enabled=${cultist.isCultistEnabled(guildId)} channel=${cultist.getCultistChannelId(guildId)} role=${cultist.getCultistRoleId(guildId)}`);
+  res.json({
+    success: true,
+    guildId,
+    enabled: cultist.isCultistEnabled(guildId),
+    channelId: cultist.getCultistChannelId(guildId),
+    roleId: cultist.getCultistRoleId(guildId)
+  });
 });
 
 app.get('/api/hate/pings/status', (req, res) => {
-  res.json({ enabled: hatePingsEnabled });
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  res.json({ success: true, enabled: getHatePingsEnabled(guildId) });
 });
 
 app.post('/api/hate/pings/toggle', (req, res) => {
-  const { enabled } = req.body;
-  hatePingsEnabled = !!enabled;
-  setSetting('hatePingsEnabled', hatePingsEnabled);
-  console.log(`[API] Roast pings ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
-  res.json({ success: true, enabled: hatePingsEnabled });
+  const { enabled, guildId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const value = !!enabled;
+  setSetting(hatePingsKey(guildId), value);
+  console.log(`[API] Roast pings ${value ? 'ENABLED' : 'DISABLED'} for guild ${guildId}`);
+  res.json({ success: true, enabled: value, guildId });
 });
 
 app.get('/api/bot/status', (req, res) => {
@@ -143,32 +188,35 @@ app.get('/api/bot/status', (req, res) => {
   res.json({ status: 'ONLINE', uptime: uptimeStr, lastCheck: new Date().toLocaleTimeString(), memory: (process.memoryUsage().rss / 1024 / 1024).toFixed(1) + ' MB' });
 });
 
-// Persona endpoints — persona state is shared via the database so both
+// Persona endpoints — per Discord server, shared via the database so both
 // index.js (bot process) and dashboard-server.js (Express process) stay in sync.
 app.get('/api/persona/current', (req, res) => {
-  const persona = getCurrentPersona(); // now includes .key
-  res.json({ success: true, persona: persona.key });
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const persona = getCurrentPersona(guildId); // now includes .key
+  res.json({ success: true, persona: persona.key, guildId });
 });
 
 app.post('/api/persona/set', (req, res) => {
-  const { persona } = req.body;
+  const { persona, guildId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
   const valid = getAvailablePersonas();
   if (!valid.includes(persona)) {
     return res.status(400).json({ success: false, error: 'Invalid persona. Valid options: ' + valid.join(', ') });
   }
-  const success = setPersona(persona);
+  const success = setPersona(persona, guildId);
   if (!success) return res.status(400).json({ success: false, error: 'Persona switch failed' });
-  console.log(`[API] Persona changed to: ${persona}`);
-  res.json({ success: true, persona });
+  console.log(`[API] Persona changed to: ${persona} for guild ${guildId}`);
+  res.json({ success: true, persona, guildId });
 });
 
 // ===== HATE LIST ENDPOINTS =====
 
 // Announce a newly-added hate-list victim into the configured roast channel.
-function announceHateAdd(userId) {
+function announceHateAdd(userId, guildId) {
   const client = getDiscordClient();
   if (!client) return;
-  const channelId = getHateChannelId();
+  const channelId = getHateChannelId(guildId);
   if (!channelId) return;
   const channel = client.channels.cache.get(channelId);
   if (!channel?.isTextBased()) return;
@@ -177,38 +225,102 @@ function announceHateAdd(userId) {
   );
 }
 
-app.get('/api/hate/list', (req, res) => {
-  res.json({ success: true, list: getHatedUserIds() });
+async function describeHatedUsers(ids, guildId) {
+  const client = getDiscordClient();
+  const guild = client?.guilds?.cache?.get(guildId);
+  return Promise.all(ids.map(async id => {
+    let member = guild?.members?.cache?.get(id);
+    if (!member && guild) member = await guild.members.fetch(id).catch(() => null);
+    return {
+      id,
+      name: member?.displayName || member?.user?.globalName || member?.user?.username || `Discord user ${id}`
+    };
+  }));
+}
+
+app.get('/api/hate/list', async (req, res) => {
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const list = getHatedUserIds(guildId);
+  res.json({ success: true, list, users: await describeHatedUsers(list, guildId), guildId });
+});
+
+app.get('/api/hate/config', (req, res) => {
+  const { guildId } = req.query;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  res.json({ success: true, guildId, channelId: getHateChannelId(guildId) });
+});
+
+app.post('/api/hate/config', (req, res) => {
+  const { guildId, channelId } = req.body;
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  setHateChannelId(channelId || '', guildId);
+  res.json({ success: true, guildId, channelId: getHateChannelId(guildId) });
+});
+
+app.get('/api/hate/all', async (req, res) => {
+  if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  const client = getDiscordClient();
+  const groups = client
+    ? await Promise.all([...client.guilds.cache.values()].map(async guild => {
+        const list = getHatedUserIds(guild.id);
+        return {
+          guildId: guild.id,
+          guildName: guild.name,
+          users: await describeHatedUsers(list, guild.id)
+        };
+      }))
+    : [];
+  res.json({ success: true, groups: groups.filter(group => group.users.length > 0) });
 });
 
 app.post('/api/hate/add', (req, res) => {
-  const { userId } = req.body;
+  const { userId, guildId } = req.body;
   if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
-  const result = addToHateList(userId);
-  console.log(`[API] Hate list add: ${userId} — ${result.message}`);
-  if (result.ok) announceHateAdd(userId);
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const result = addToHateList(userId, guildId);
+  console.log(`[API] Hate list add: ${userId} in ${guildId} — ${result.message}`);
+  if (result.ok) announceHateAdd(userId, guildId);
   res.json(result);
 });
 
 app.post('/api/hate/remove', (req, res) => {
-  const { userId } = req.body;
+  const { userId, guildId } = req.body;
   if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
-  const result = removeFromHateList(userId);
-  console.log(`[API] Hate list remove: ${userId} — ${result.message}`);
+  if (!ensureGuildAccess(req, res, guildId)) return;
+  const result = removeFromHateList(userId, guildId);
+  console.log(`[API] Hate list remove: ${userId} in ${guildId} — ${result.message}`);
   res.json(result);
 });
 
 // ===== MEMORY FACTS ENDPOINTS =====
+// Facts live in scopes: 'shared' (the global pool, superadmin-managed, recalled
+// on every server) or a guild id (per-server, managed by that server's admins).
+function resolveMemoryScope(req, res) {
+  const scope = (req.body && req.body.scope) || req.query.scope;
+  if (!scope) { res.status(400).json({ success: false, error: 'scope is required' }); return null; }
+  if (scope === 'shared') {
+    if (!dashboardAuth.isSuperAdmin(req)) { res.status(403).json({ success: false, error: 'superadmin only' }); return null; }
+    return 'shared';
+  }
+  if (!dashboardAuth.canAccessGuild(req.user, scope)) { res.status(403).json({ success: false, error: 'forbidden' }); return null; }
+  return scope;
+}
+
 app.get('/api/memory/facts', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   res.json({
     success: true,
-    scope: 'server',
-    facts: getLongTermFacts('discord', 'global'),
-    lastId: getLastConsolidatedId('global'),
+    scope,
+    facts: getLongTermFacts('discord', 'global', undefined, scope),
+    lastId: getLastConsolidatedId(scope),
   });
 });
 
 app.post('/api/memory/facts/add', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const fact = String((req.body && req.body.fact) || '').trim();
   const topics = Array.isArray(req.body && req.body.topics)
     ? req.body.topics
@@ -216,7 +328,7 @@ app.post('/api/memory/facts/add', (req, res) => {
 
   if (!fact) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   if (facts.some(existing => existing.fact.toLowerCase() === fact.toLowerCase())) {
     return res.status(409).json({ success: false, error: 'That fact already exists' });
   }
@@ -224,26 +336,56 @@ app.post('/api/memory/facts/add', (req, res) => {
   const updated = saveFacts('discord', 'global', [
     ...facts,
     { fact, pinned: true, topics: topics.map(topic => String(topic).trim().toLowerCase()).filter(Boolean) },
-  ]);
+  ], scope);
   const added = updated.some(existing => existing.fact.toLowerCase() === fact.toLowerCase());
   if (!added) return res.status(400).json({ success: false, error: 'Fact could not be saved' });
-  console.log(`[API] Global memory fact added: ${fact}`);
+  console.log(`[API] Memory fact added (${scope}): ${fact}`);
   res.json({ success: true, facts: updated });
 });
 
 app.post('/api/memory/facts/rebuild', async (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
+  if (scope === 'shared') {
+    return res.status(400).json({ success: false, error: 'Shared memory is curated manually; rebuild runs per server.' });
+  }
   try {
-    const result = await consolidateChannelFacts('discord', 'global', true);
-    res.json({ success: true, ...result, facts: getLongTermFacts('discord', 'global') });
+    const client = getDiscordClient();
+    const guild = client && client.guilds.cache.get(scope);
+    const channelIds = guild ? [...guild.channels.cache.keys()] : [];
+    const result = channelIds.length
+      ? await consolidateChannelFacts('discord', channelIds, true, scope)
+      : { skipped: true, reason: 'no channels found for this server' };
+    res.json({ success: true, ...result, facts: getLongTermFacts('discord', 'global', undefined, scope) });
   } catch (err) {
     console.error('[API] Memory rebuild error:', err.message);
     res.status(500).json({ success: false, error: 'Failed to rebuild memory: ' + err.message });
   }
 });
 
+// Superadmin: copy a fact (usually from a server sheet) into the shared pool so
+// Patrick recalls it on every server.
+app.post('/api/memory/facts/promote', (req, res) => {
+  if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  const fact = String((req.body && req.body.fact) || '').trim();
+  if (!fact) return res.status(400).json({ success: false, error: 'fact is required' });
+  const topics = Array.isArray(req.body && req.body.topics)
+    ? req.body.topics.map(t => String(t).trim().toLowerCase()).filter(Boolean)
+    : [];
+  const shared = getLongTermFacts('discord', 'global', undefined, 'shared');
+  if (shared.some(f => f.fact.toLowerCase() === fact.toLowerCase())) {
+    return res.status(409).json({ success: false, error: 'Already in shared memory' });
+  }
+  const saved = saveFacts('discord', 'global', [...shared, { fact, pinned: true, topics }], 'shared');
+  console.log(`[API] Fact promoted to shared memory: ${fact}`);
+  res.json({ success: true, facts: saved });
+});
+
 // Edit an existing fact (replace text/topics). Pinned status is preserved
 // unless an explicit pinned toggle is passed.
 app.post('/api/memory/facts/edit', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.oldFact) || '').trim();
   const newFact = String((req.body && req.body.fact) || '').trim();
   const topics = Array.isArray(req.body && req.body.topics)
@@ -254,7 +396,7 @@ app.post('/api/memory/facts/edit', (req, res) => {
     return res.status(400).json({ success: false, error: 'oldFact and fact are required' });
   }
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
   if (idx === -1) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
@@ -274,33 +416,37 @@ app.post('/api/memory/facts/edit', (req, res) => {
   const updatedArr = facts.slice();
   updatedArr[idx] = updatedFact;
 
-  const saved = replaceFacts('discord', 'global', updatedArr);
-  console.log(`[API] Global memory fact edited: ${target} -> ${newFact}`);
+  const saved = replaceFacts('discord', 'global', updatedArr, scope);
+  console.log(`[API] Memory fact edited (${scope}): ${target} -> ${newFact}`);
   res.json({ success: true, facts: saved, fact: saved.find(f => f.fact.toLowerCase() === newFact.toLowerCase()) });
 });
 
 // Delete a fact by text.
 app.post('/api/memory/facts/delete', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.fact) || '').trim();
   if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const filtered = facts.filter(f => f.fact.toLowerCase() !== target.toLowerCase());
   if (filtered.length === facts.length) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
   }
 
-  const saved = replaceFacts('discord', 'global', filtered);
-  console.log(`[API] Global memory fact deleted: ${target}`);
+  const saved = replaceFacts('discord', 'global', filtered, scope);
+  console.log(`[API] Memory fact deleted (${scope}): ${target}`);
   res.json({ success: true, facts: saved });
 });
 
 // Pin/unpin a fact by text.
 app.post('/api/memory/facts/pin', (req, res) => {
+  const scope = resolveMemoryScope(req, res);
+  if (!scope) return;
   const target = String((req.body && req.body.fact) || '').trim();
   if (!target) return res.status(400).json({ success: false, error: 'fact is required' });
 
-  const facts = getLongTermFacts('discord', 'global');
+  const facts = getLongTermFacts('discord', 'global', undefined, scope);
   const idx = facts.findIndex(f => f.fact.toLowerCase() === target.toLowerCase());
   if (idx === -1) {
     return res.status(404).json({ success: false, error: 'Fact not found' });
@@ -311,21 +457,29 @@ app.post('/api/memory/facts/pin', (req, res) => {
   const updatedArr = facts.slice();
   updatedArr[idx] = updatedFact;
 
-  const saved = replaceFacts('discord', 'global', updatedArr);
-  console.log(`[API] Global memory fact ${pinned ? 'pinned' : 'unpinned'}: ${target}`);
+  const saved = replaceFacts('discord', 'global', updatedArr, scope);
+  console.log(`[API] Memory fact ${pinned ? 'pinned' : 'unpinned'} (${scope}): ${target}`);
   res.json({ success: true, pinned, facts: saved });
 });
 
 app.get('/api/bot/logs', (req, res) => {
-  const { platform, limit } = req.query;
+  const { platform, limit, guildId, all } = req.query;
   const maxResults = Math.min(parseInt(limit) || 100, 1000);
+  // Command logs are per-server. "all" (every server) is superadmin-only.
+  let filterGuildId = null;
+  if (all === 'true') {
+    if (!dashboardAuth.isSuperAdmin(req)) return res.status(403).json({ success: false, error: 'superadmin only' });
+  } else {
+    if (!ensureGuildAccess(req, res, guildId)) return;
+    filterGuildId = guildId;
+  }
   try {
-    const dbLogs = getLogs(platform || 'all', maxResults);
+    const dbLogs = getLogs(platform || 'all', maxResults, filterGuildId);
     const totalCount = getLogCount();
     const formattedLogs = dbLogs.reverse().map(log => ({
       platform: log.platform, username: log.username, command: log.command,
       message: log.message, response: log.response, image_url: log.image_url,
-      error: log.error === 1, timestamp: log.timestamp, id: log.id
+      error: log.error === 1, timestamp: log.timestamp, id: log.id, guildId: log.guild_id || null
     }));
     res.json({ success: true, count: formattedLogs.length, total: totalCount, logs: formattedLogs });
   } catch (error) {
@@ -334,7 +488,7 @@ app.get('/api/bot/logs', (req, res) => {
   }
 });
 
-app.get('/api/bot/system-logs', (req, res) => {
+app.get('/api/bot/system-logs', dashboardAuth.requireSuperAdmin, (req, res) => {
   const { log_type, severity, component, limit } = req.query;
   try {
     const filters = { log_type: log_type || 'all', severity: severity || 'all', component: component || 'all', limit: Math.min(parseInt(limit) || 100, 1000) };
@@ -351,7 +505,7 @@ app.get('/api/bot/system-logs', (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to fetch system logs' }); }
 });
 
-app.post('/api/bot/logs/clear', (req, res) => {
+app.post('/api/bot/logs/clear', dashboardAuth.requireSuperAdmin, (req, res) => {
   try {
     const success = clearLogs();
     if (success) { commandLogs = []; res.json({ success: true, message: 'Logs cleared' }); }
@@ -359,7 +513,7 @@ app.post('/api/bot/logs/clear', (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: 'Failed to clear logs' }); }
 });
 
-app.post('/api/bot/system-logs/clear', (req, res) => {
+app.post('/api/bot/system-logs/clear', dashboardAuth.requireSuperAdmin, (req, res) => {
   try {
     const success = clearSystemLogs();
     if (success) res.json({ success: true, message: 'System logs cleared' });
@@ -396,7 +550,7 @@ function withTimeout(promise, ms, label) {
   ]);
 }
 
-async function runMessageExport(userId, jobId) {
+async function runMessageExport(userId, jobId, guildId = null) {
   const job = exportJobs[jobId];
 
   if (!discordClientRef) {
@@ -426,7 +580,11 @@ async function runMessageExport(userId, jobId) {
   });
 
   try {
-    for (const [, guild] of discordClientRef.guilds.cache) {
+    // Scope to a single server unless this is a superadmin-wide export.
+    const guildList = guildId
+      ? [discordClientRef.guilds.cache.get(guildId)].filter(Boolean)
+      : [...discordClientRef.guilds.cache.values()];
+    for (const guild of guildList) {
       job.progress = `Scanning: ${guild.name}`;
       logSystem({
         log_type: 'EXPORT',
@@ -576,32 +734,58 @@ async function runMessageExport(userId, jobId) {
 }
 
 app.post('/api/export/start', (req, res) => {
-  const { userId } = req.body;
+  const { userId, guildId } = req.body;
   if (!userId || !/^\d{17,20}$/.test(userId)) {
     return res.status(400).json({ success: false, error: 'Invalid Discord user ID \u2014 must be 17-20 digits' });
   }
+  // Server admins can export only their own server; a bot-wide export is
+  // superadmin-only.
+  if (guildId) {
+    if (!ensureGuildAccess(req, res, guildId)) return;
+  } else if (!dashboardAuth.isSuperAdmin(req)) {
+    return res.status(403).json({ success: false, error: 'A server must be selected (or superadmin required for a full export)' });
+  }
   const jobId = Date.now().toString();
-  exportJobs[jobId] = { status: 'queued', userId, progress: 'Starting...', startedAt: new Date().toISOString() };
+  exportJobs[jobId] = { status: 'queued', userId, guildId: guildId || null, progress: 'Starting...', startedAt: new Date().toISOString() };
   logSystem({
     log_type: 'EXPORT',
     severity: 'INFO',
     component: 'export',
-    message: `Export job ${jobId} queued for user ID ${userId}`,
-    metadata: { jobId, userId }
+    message: `Export job ${jobId} queued for user ID ${userId}${guildId ? ` in guild ${guildId}` : ' (all servers)'}`,
+    metadata: { jobId, userId, guildId: guildId || null }
   });
-  runMessageExport(userId, jobId);
+  runMessageExport(userId, jobId, guildId || null);
   res.json({ success: true, jobId });
 });
+
+// Status/download share the same access rule: a job tied to a guild requires
+// access to that guild, otherwise superadmin.
+function canReachExportJob(req, res, job) {
+  if (job.guildId) {
+    if (!dashboardAuth.canAccessGuild(req.user, job.guildId)) {
+      res.status(403).json({ success: false, error: 'forbidden' });
+      return false;
+    }
+    return true;
+  }
+  if (!dashboardAuth.isSuperAdmin(req)) {
+    res.status(403).json({ success: false, error: 'superadmin only' });
+    return false;
+  }
+  return true;
+}
 
 app.get('/api/export/status/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job) return res.status(404).json({ success: false, error: 'Job not found' });
+  if (!canReachExportJob(req, res, job)) return;
   res.json({ success: true, jobId: req.params.jobId, userId: job.userId, status: job.status, progress: job.progress, count: job.count || 0, error: job.error || null, startedAt: job.startedAt || null, completedAt: job.completedAt || null });
 });
 
 app.get('/api/export/download/:jobId', (req, res) => {
   const job = exportJobs[req.params.jobId];
   if (!job || job.status !== 'done') return res.status(404).json({ error: 'Export not ready or job not found' });
+  if (!canReachExportJob(req, res, job)) return;
   const format = req.query.format || 'json';
   logSystem({
     log_type: 'EXPORT',
@@ -628,13 +812,13 @@ app.get('/api/export/download/:jobId', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   logSystem({
     log_type: 'STARTUP',
     severity: 'INFO',
     component: 'dashboard',
-    message: `Dashboard server started on port ${PORT}`
+    message: `Dashboard server started on ${HOST}:${PORT}`
   });
-  console.log(`Dashboard on http://localhost:${PORT}/`);
+  console.log(`Dashboard on http://${HOST}:${PORT}/`);
   console.log(`Current persona: ${getCurrentPersona().name}`);
 });

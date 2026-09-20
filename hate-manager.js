@@ -11,9 +11,17 @@ const { getSetting, setSetting } = require('./database.js');
 const HATE_KEY = 'hateList';
 const HATE_CHANNEL_KEY = 'hateChannelId';
 
-function getHatedUserIds() {
+// Multi-guild support: the hate list + roast channel + ping toggle are
+// per-Discord-server, so each community decides its own local villain while the
+// persona + facts stay global ("one Patrick everywhere"). Keys are namespaced
+// by guild. When `guildId` is null we use the legacy global key only for
+// non-Discord/legacy callers; every Discord guild must have an isolated key.
+function hateListKey(guildId)   { return guildId ? `hateList:${guildId}` : HATE_KEY; }
+function hateChannelKey(guildId){ return guildId ? `hateChannelId:${guildId}` : HATE_CHANNEL_KEY; }
+
+function getHatedUserIds(guildId = null) {
     try {
-        const raw = getSetting(HATE_KEY, '[]');
+        const raw = getSetting(hateListKey(guildId), '[]');
         const parsed = JSON.parse(raw);
         return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
     } catch (err) {
@@ -22,9 +30,9 @@ function getHatedUserIds() {
     }
 }
 
-function saveHatedUserIds(ids) {
+function saveHatedUserIds(ids, guildId = null) {
     try {
-        setSetting(HATE_KEY, JSON.stringify(ids));
+        setSetting(hateListKey(guildId), JSON.stringify(ids));
         return true;
     } catch (err) {
         console.error('[HATE] Failed to save hate list:', err.message);
@@ -32,34 +40,34 @@ function saveHatedUserIds(ids) {
     }
 }
 
-function addToHateList(userId) {
-    const ids = getHatedUserIds();
+function addToHateList(userId, guildId = null) {
+    const ids = getHatedUserIds(guildId);
     const id = String(userId);
     if (ids.includes(id)) return { ok: false, message: '⚠️ That user is already on the hate list.' };
     ids.push(id);
-    saveHatedUserIds(ids);
+    saveHatedUserIds(ids, guildId);
     return { ok: true, message: '😈 Added to the hate list.' };
 }
 
-function removeFromHateList(userId) {
-    const ids = getHatedUserIds();
+function removeFromHateList(userId, guildId = null) {
+    const ids = getHatedUserIds(guildId);
     const id = String(userId);
     if (!ids.includes(id)) return { ok: false, message: "That user isn't on the hate list." };
     const remaining = ids.filter(x => x !== id);
-    saveHatedUserIds(remaining);
+    saveHatedUserIds(remaining, guildId);
     return { ok: true, message: '😇 Removed from the hate list.' };
 }
 
-function isHated(userId) {
-    return getHatedUserIds().includes(String(userId));
+function isHated(userId, guildId = null) {
+    return getHatedUserIds(guildId).includes(String(userId));
 }
 
-function getHateChannelId() {
-    return getSetting(HATE_CHANNEL_KEY, '');
+function getHateChannelId(guildId = null) {
+    return getSetting(hateChannelKey(guildId), '');
 }
 
-function setHateChannelId(channelId) {
-    return setSetting(HATE_CHANNEL_KEY, String(channelId));
+function setHateChannelId(channelId, guildId = null) {
+    return setSetting(hateChannelKey(guildId), String(channelId));
 }
 
 // ===== ROAST LINES =====

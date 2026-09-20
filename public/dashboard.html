@@ -308,6 +308,19 @@
         .export-dl-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 
         footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); font-size: 0.9rem; }
+        .auth-bar { margin-top: 14px; font-size: 0.85rem; color: var(--color-text-secondary); }
+        .auth-bar a { color: var(--color-primary); margin-left: 12px; text-decoration: none; }
+        .auth-bar a:hover { text-decoration: underline; }
+        .server-bar {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin: 0 0 24px; padding: 14px 18px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+        }
+        .server-bar label { font-weight: 600; }
+        .server-bar select { min-width: 240px; padding: 8px 10px; border-radius: var(--radius); background: #1a2742; border: 1px solid #4a90c4; color: #f1f5f9; font-size: 0.9rem; }
+        .server-bar-hint { color: var(--color-text-secondary); font-size: 0.8rem; }
 
         @media (max-width: 768px) {
             h1 { font-size: 1.8rem; }
@@ -324,9 +337,18 @@
             <!-- FIX 4: emoji in own span so gradient clip doesn't hide it -->
             <h1><span class="title-emoji">&#x1F916;</span><span class="title-text">ThePatrick Bot Dashboard</span></h1>
             <p class="subtitle">ThePatrick's Birds Server AI Bot Control Panel</p>
+            <div id="auth-bar" class="auth-bar"></div>
         </header>
 
         <div id="alerts"></div>
+
+        <div class="server-bar">
+            <label for="server-select">Managing server:</label>
+            <select id="server-select" class="persona-select">
+                <option value="">Loading servers...</option>
+            </select>
+            <span id="server-bar-hint" class="server-bar-hint"></span>
+        </div>
 
         <div class="dashboard-grid">
             <!-- AI Persona Card -->
@@ -368,13 +390,17 @@
                 </div>
                 <div class="control-section">
                     <label class="control-label">
-                        <span style="display:block;margin-bottom:10px;">Toggle Monitoring</span>
+                        <span style="display:block;margin-bottom:10px;">Post cultist alerts in this server</span>
                         <label class="toggle-switch"><input type="checkbox" id="cultist-toggle"><span class="slider"></span></label>
                     </label>
                 </div>
-                <div>
-                    <button class="button button-primary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
-                    <button class="button button-secondary" id="reset-cultist-btn">&#x2699;&#xFE0F; Reset</button>
+                <div class="control-section">
+                    <label class="control-label" for="cultist-channel">Alert Channel ID</label>
+                    <input type="text" id="cultist-channel" placeholder="Discord channel ID" class="persona-select" style="width:100%;margin-bottom:10px;">
+                    <label class="control-label" for="cultist-role">Cultist Role ID (optional ping)</label>
+                    <input type="text" id="cultist-role" placeholder="Role ID to ping" class="persona-select" style="width:100%;margin-bottom:10px;">
+                    <button class="button button-primary" id="save-cultist-config-btn">&#x1F4BE; Save</button>
+                    <button class="button button-secondary" id="refresh-cultist-btn">&#x1F504; Refresh Status</button>
                 </div>
             </div>
 
@@ -387,6 +413,15 @@
                 <p style="color:var(--color-text-secondary);margin-bottom:15px;">These Discord users get extra venom from the bot. Heavy roast vibes.</p>
                 <div class="status-info">
                     <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
+                </div>
+                <div id="hate-list" style="max-height:150px;overflow-y:auto;padding:10px;background:rgba(0,0,0,0.18);border-radius:6px;color:var(--color-text-secondary);font-family:monospace;font-size:0.85rem;white-space:pre-wrap;">No users on this server's hate list.</div>
+                <label id="hate-all-label" style="display:none;align-items:center;gap:6px;margin-top:10px;color:var(--color-text-secondary);font-size:0.85rem;">
+                    <input type="checkbox" id="hate-all-toggle"> View all server lists (superadmin)
+                </label>
+                <div class="control-section">
+                    <label class="control-label" for="hate-channel">Roast Channel ID</label>
+                    <input type="text" id="hate-channel" placeholder="Discord channel ID" class="persona-select" style="width:100%;margin-bottom:8px;">
+                    <button class="button button-primary" id="save-hate-config-btn">&#x1F4BE; Save Roast Channel</button>
                 </div>
                 <div class="control-section">
                     <span class="status-label" style="display:block;margin-bottom:10px;">Roast Pings (proactive hate timer + callouts)</span>
@@ -495,6 +530,9 @@
                     <input type="text" class="logs-search" id="logs-search" placeholder="Search logs...">
                     <button class="button button-primary" id="refresh-logs-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="clear-logs-btn">&#x1F5D1;&#xFE0F; Clear All</button>
+                    <label id="logs-all-label" style="display:none;align-items:center;gap:6px;color:var(--color-text-secondary);font-size:0.85rem;">
+                        <input type="checkbox" id="logs-all-servers"> All servers
+                    </label>
                 </div>
                 <div class="logs-container" id="logs-container">
                     <div class="logs-empty">No logs available. Logs will appear as commands are executed.</div>
@@ -631,8 +669,11 @@
                     <input type="text" id="memory-filter" class="logs-search" placeholder="Filter facts or topics...">
                     <button class="button button-primary" id="memory-refresh-btn">&#x1F504; Refresh</button>
                     <button class="button button-secondary" id="memory-rebuild-btn">&#x2699;&#xFE0F; Rebuild Now</button>
+                    <label id="memory-shared-label" style="display:none;align-items:center;gap:6px;color:var(--color-text-secondary);font-size:0.85rem;">
+                        <input type="checkbox" id="memory-shared-toggle"> Shared memory (all servers)
+                    </label>
                 </div>
-                <p style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Manually added facts are <strong>pinned</strong> so consolidation never drops them. Use the row actions to edit, pin/unpin, or delete a fact anytime.</p>
+                <p id="memory-scope-note" style="color:var(--color-text-secondary);margin:10px 0;">Patrick's durable, AI-maintained facts. Manually added facts are <strong>pinned</strong> so consolidation never drops them. Use the row actions to edit, pin/unpin, or delete a fact anytime.</p>
                 <div class="control-section" style="margin-bottom:12px;">
                     <label class="control-label" for="memory-fact-input">Add a fact manually</label>
                     <input type="text" id="memory-fact-input" class="persona-select" style="width:100%;margin-bottom:8px;" maxlength="140" placeholder="e.g. Bradyn mains scav runs in Tarkov">
@@ -687,6 +728,11 @@
                 this.exportPollTimer = null;
                 this.esmPollTimer = null;
                 this.esmCurrentJobId = null;
+                this.selectedGuildId = null;
+                this.isSuperAdmin = false;
+                this.viewSharedMemory = false;
+                this.viewAllLogs = false;
+                this.viewAllHate = false;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -694,21 +740,131 @@
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
-                this.loadHateList();
-                this.loadHatePingsStatus();
+                this.loadManageableGuilds();
                 this.loadMemory();
+                this.loadAuthUser();
+            }
+
+            async loadAuthUser() {
+                try {
+                    const res = await fetch(`${API_BASE}/auth/me`);
+                    if (res.status === 401) { window.location.href = '/auth/login'; return; }
+                    const data = await res.json();
+                    const bar = document.getElementById('auth-bar');
+                    if (!data.authenticated || !data.user) { bar.textContent = ''; return; }
+                    const name = data.user.globalName || data.user.username;
+                    bar.textContent = `Signed in as ${name} (@${data.user.username})`;
+                    const link = document.createElement('a');
+                    link.href = '/auth/logout';
+                    link.textContent = 'Sign out';
+                    bar.appendChild(link);
+                    this.isSuperAdmin = Boolean(data.user.superAdmin);
+                    const sysBtn = document.getElementById('view-system-logs-btn');
+                    if (sysBtn) sysBtn.style.display = this.isSuperAdmin ? '' : 'none';
+                    const logsAllLabel = document.getElementById('logs-all-label');
+                    if (logsAllLabel) logsAllLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
+                    const clearLogsBtn = document.getElementById('clear-logs-btn');
+                    if (clearLogsBtn) clearLogsBtn.style.display = this.isSuperAdmin ? '' : 'none';
+                    const hateAllLabel = document.getElementById('hate-all-label');
+                    if (hateAllLabel) hateAllLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
+                } catch (e) {
+                    console.error('[AUTH] failed to load session', e);
+                }
+            }
+
+            async loadManageableGuilds() {
+                try {
+                    const res = await fetch(`${API_BASE}/auth/guilds`);
+                    if (res.status === 401) { window.location.href = '/auth/login'; return; }
+                    const data = await res.json();
+                    const select = document.getElementById('server-select');
+                    const hint = document.getElementById('server-bar-hint');
+                    select.innerHTML = '';
+                    if (!data.success || data.guilds.length === 0) {
+                        select.innerHTML = '<option value="">No servers available</option>';
+                        hint.textContent = 'You need Manage Server access in a server the bot is in.';
+                        return;
+                    }
+                    data.guilds.forEach(guild => {
+                        const option = document.createElement('option');
+                        option.value = guild.id;
+                        option.textContent = guild.name;
+                        select.appendChild(option);
+                    });
+                    this.selectedGuildId = data.guilds[0].id;
+                    hint.textContent = `${data.guilds.length} server${data.guilds.length === 1 ? '' : 's'} available`;
+                    await this.reloadServerScoped();
+                } catch (e) {
+                    console.error('[SERVER] failed to load servers', e);
+                }
+            }
+
+            serverQuery() {
+                return this.selectedGuildId ? `?guildId=${encodeURIComponent(this.selectedGuildId)}` : '';
+            }
+
+            async selectServer(event) {
+                this.selectedGuildId = event.target.value || null;
+                this.viewAllHate = false;
+                const allToggle = document.getElementById('hate-all-toggle');
+                if (allToggle) allToggle.checked = false;
+                if (!this.selectedGuildId) return;
+                await this.reloadServerScoped();
+            }
+
+            async reloadServerScoped() {
+                await Promise.all([this.loadHateList(), this.loadHateConfig(), this.loadHatePingsStatus(), this.loadCurrentPersona(), this.loadCultistConfig()]);
+                if (this.memoryModal && this.memoryModal.classList.contains('show')) this.loadMemory();
+            }
+
+            async loadHateConfig() {
+                if (!this.selectedGuildId) return;
+                try {
+                    const res = await fetch(`${API_BASE}/hate/config${this.serverQuery()}`);
+                    const data = await res.json();
+                    if (data.success) document.getElementById('hate-channel').value = data.channelId || '';
+                } catch (e) { console.error('[HATE] config load failed', e); }
+            }
+
+            async saveHateConfig() {
+                if (!this.selectedGuildId) { alert('Select a server first'); return; }
+                const channelId = document.getElementById('hate-channel').value.trim();
+                try {
+                    const res = await fetch(`${API_BASE}/hate/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ guildId: this.selectedGuildId, channelId })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? (channelId ? 'Roasts will use the saved channel.' : 'Roast channel cleared.') : (data.error || 'Failed to save roast channel'));
+                } catch (e) { alert('Failed to save roast channel'); }
             }
 
             async loadHateList() {
                 try {
                     const badge = document.getElementById('hate-status');
                     const count = document.getElementById('hate-count');
-                    const res = await fetch(`${API_BASE}/hate/list`);
+                    if (!this.selectedGuildId && !this.viewAllHate) return;
+                    const res = await fetch(this.viewAllHate ? `${API_BASE}/hate/all` : `${API_BASE}/hate/list${this.serverQuery()}`);
                     const data = await res.json();
-                    if (data.success) {
+                    if (!data.success) return;
+                    const list = document.getElementById('hate-list');
+                    if (this.viewAllHate) {
+                        const groups = data.groups || [];
+                        const total = groups.reduce((sum, group) => sum + group.users.length, 0);
+                        count.textContent = total;
+                        badge.textContent = total > 0 ? `${total} HATED` : 'CLEAR';
+                        badge.className = 'status-badge ' + (total > 0 ? 'active' : 'inactive');
+                        list.textContent = total
+                            ? groups.map(group => `${group.guildName}\n${group.users.map(user => `  • ${user.name} (${user.id})`).join('\n')}`).join('\n\n')
+                            : 'No hate-list entries across connected servers.';
+                    } else {
                         count.textContent = data.list.length;
                         badge.textContent = data.list.length > 0 ? `${data.list.length} HATED` : 'CLEAR';
                         badge.className = 'status-badge ' + (data.list.length > 0 ? 'active' : 'inactive');
+                        list.textContent = data.users?.length
+                            ? data.users.map(user => `• ${user.name} (${user.id})`).join('\n')
+                            : 'No users on this server\'s hate list.';
                     }
                 } catch (e) {
                     console.error('[HATE] load failed', e);
@@ -716,13 +872,14 @@
             }
 
             async hateAction(action) {
+                if (this.viewAllHate) { alert('Switch back to a server list before changing entries.'); return; }
                 const userId = document.getElementById('hate-user').value.trim();
                 if (!userId) { alert('Enter a Discord user ID'); return; }
                 try {
                     const res = await fetch(`${API_BASE}/hate/${action}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId })
+                        body: JSON.stringify({ userId, guildId: this.selectedGuildId })
                     });
                     const data = await res.json();
                     alert(data.message || (data.success ? 'Done' : data.error));
@@ -734,13 +891,28 @@
                 }
             }
 
+            memoryScope() {
+                return this.viewSharedMemory ? 'shared' : this.selectedGuildId;
+            }
+
             async loadMemory() {
                 try {
                     const badge = document.getElementById('memory-status');
                     const count = document.getElementById('memory-count');
                     const filter = document.getElementById('memory-filter').value.trim().toLowerCase();
 
-                    const res = await fetch(`${API_BASE}/memory/facts`);
+                    // Superadmin-only shared-memory view toggle.
+                    const sharedLabel = document.getElementById('memory-shared-label');
+                    const sharedToggle = document.getElementById('memory-shared-toggle');
+                    sharedLabel.style.display = this.isSuperAdmin ? 'flex' : 'none';
+                    let scope = this.memoryScope();
+                    if (!scope) { this.viewSharedMemory = true; scope = 'shared'; }
+                    document.getElementById('memory-scope-note').textContent = this.viewSharedMemory
+                        ? 'SHARED memory — recalled by Patrick on every server. Curated by you.'
+                        : "This server's memory. Use Promote to share a fact with every server.";
+                    if (sharedToggle) sharedToggle.checked = this.viewSharedMemory;
+
+                    const res = await fetch(`${API_BASE}/memory/facts?scope=${encodeURIComponent(scope)}`);
                     const data = await res.json();
                     if (!data.success) return;
 
@@ -765,15 +937,20 @@
                     facts.forEach((f, i) => {
                         const tr = document.createElement('tr');
                         tr.dataset.fact = (f.fact || '').replace(/"/g, '&quot;');
+                        tr.dataset.topics = (f.topics || []).join(',');
                         const pinBtn = f.pinned
                             ? '<button class="button button-warn" data-action="pin" title="Unpin this fact" style="padding:3px 8px;font-size:12px;margin:2px;">&#128274; Unpin</button>'
                             : '<button class="button button-secondary" data-action="pin" title="Pin this fact so consolidation never drops it" style="padding:3px 8px;font-size:12px;margin:2px;">&#128391; Pin</button>';
+                        const promoteBtn = (this.isSuperAdmin && !this.viewSharedMemory)
+                            ? '<button class="button button-secondary" data-action="promote" title="Add this fact to shared memory (recalled on every server)" style="padding:3px 8px;font-size:12px;margin:2px;">&#x1F4E4; Share</button>'
+                            : '';
                         tr.innerHTML = `<td style="padding:6px;color:var(--color-text-secondary);">${f.pinned ? '&#128274;' : ''} ${i + 1}</td>
                             <td style="padding:6px;">${(f.fact || '').replace(/</g, '&lt;')}</td>
                             <td style="padding:6px;color:var(--color-accent);">${(f.topics || []).map(t => `#${t}`).join(' ')}</td>
                             <td style="padding:6px;white-space:nowrap;">
                                 <button class="button button-secondary" data-action="edit" style="padding:3px 8px;font-size:12px;margin:2px;">&#9998; Edit</button>
                                 ${pinBtn}
+                                ${promoteBtn}
                                 <button class="button button-danger" data-action="delete" style="padding:3px 8px;font-size:12px;margin:2px;">&#128465; Del</button>
                             </td>`;
                         tbody.appendChild(tr);
@@ -784,6 +961,7 @@
                             switch (btn.dataset.action) {
                                 case 'edit':   this.editMemoryFact(fact); break;
                                 case 'pin':    this.toggleMemoryPin(fact); break;
+                                case 'promote': this.promoteMemoryFact(fact, btn.closest('tr').dataset.topics || ''); break;
                                 case 'delete': this.deleteMemoryFact(fact); break;
                             }
                         });
@@ -794,11 +972,12 @@
             }
 
             async rebuildMemory() {
+                if (this.viewSharedMemory) { alert('Shared memory is curated manually — switch to a server to rebuild.'); return; }
                 try {
                     const res = await fetch(`${API_BASE}/memory/facts/rebuild`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({})
+                        body: JSON.stringify({ scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? `Rebuilt: ${(data.facts || []).length} facts` : (data.error || 'Rebuild failed'));
@@ -818,7 +997,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/add`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact, topics: topicsInput.value })
+                        body: JSON.stringify({ fact, topics: topicsInput.value, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     if (!data.success) { alert(data.error || 'Failed to add fact'); return; }
@@ -843,7 +1022,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/edit`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ oldFact, fact: trimmed, topics })
+                        body: JSON.stringify({ oldFact, fact: trimmed, topics, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? 'Fact updated' : (data.error || 'Failed to update fact'));
@@ -859,7 +1038,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/pin`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact })
+                        body: JSON.stringify({ fact, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     if (!data.success) { alert(data.error || 'Failed to update pin'); return; }
@@ -876,7 +1055,7 @@
                     const res = await fetch(`${API_BASE}/memory/facts/delete`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ fact })
+                        body: JSON.stringify({ fact, scope: this.memoryScope() })
                     });
                     const data = await res.json();
                     alert(data.success ? 'Fact deleted' : (data.error || 'Failed to delete fact'));
@@ -887,21 +1066,40 @@
                 }
             }
 
+            async promoteMemoryFact(fact, topics) {
+                if (!this.isSuperAdmin) { alert('Only the bot owner can share a fact'); return; }
+                try {
+                    const res = await fetch(`${API_BASE}/memory/facts/promote`, {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ fact, topics: String(topics || '').split(',').map(t => t.trim()).filter(Boolean) })
+                    });
+                    const data = await res.json();
+                    alert(data.success ? 'Shared with every server' : (data.error || 'Failed to share fact'));
+                } catch (e) {
+                    console.error('[MEMORY] promote failed', e);
+                    alert('Failed to share fact');
+                }
+            }
+
             initializeEventListeners() {
                 document.getElementById('persona-select').addEventListener('change', (e) => this.updatePersonaDescription(e));
                 document.getElementById('apply-persona-btn').addEventListener('click', () => this.applyPersona());
                 document.getElementById('preview-persona-btn').addEventListener('click', () => this.previewPersona());
                 document.getElementById('cultist-toggle').addEventListener('change', (e) => this.toggleCultist(e));
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
-                document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
+                document.getElementById('save-cultist-config-btn').addEventListener('click', () => this.saveCultistConfig());
                 document.getElementById('hate-pings-toggle').addEventListener('change', (e) => this.toggleHatePings(e));
+                document.getElementById('server-select').addEventListener('change', (e) => this.selectServer(e));
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
+                document.getElementById('hate-all-toggle').addEventListener('change', (e) => { this.viewAllHate = e.target.checked; this.loadHateList(); });
+                document.getElementById('save-hate-config-btn').addEventListener('click', () => this.saveHateConfig());
                 document.getElementById('hate-user').addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') this.hateAction('add');
                 });
                 document.getElementById('memory-refresh-btn').addEventListener('click', () => this.loadMemory());
+                document.getElementById('memory-shared-toggle').addEventListener('change', (e) => { this.viewSharedMemory = e.target.checked; this.loadMemory(); });
                 document.getElementById('memory-rebuild-btn').addEventListener('click', () => this.rebuildMemory());
                 document.getElementById('memory-add-btn').addEventListener('click', () => this.addMemoryFact());
                 document.getElementById('memory-view-btn').addEventListener('click', () => this.openMemoryModal());
@@ -917,6 +1115,7 @@
                 document.getElementById('close-system-logs-modal').addEventListener('click', () => this.closeSystemLogsModal());
                 document.getElementById('close-system-logs-btn').addEventListener('click', () => this.closeSystemLogsModal());
                 document.getElementById('refresh-logs-btn').addEventListener('click', () => this.fetchLogs());
+                document.getElementById('logs-all-servers').addEventListener('change', (e) => { this.viewAllLogs = e.target.checked; this.fetchLogs(); });
                 document.getElementById('clear-logs-btn').addEventListener('click', () => this.clearLogs());
                 document.getElementById('refresh-system-logs-btn').addEventListener('click', () => this.fetchSystemLogs());
                 document.getElementById('clear-system-logs-btn').addEventListener('click', () => this.clearSystemLogs());
@@ -955,7 +1154,9 @@
 
             startAutoRefresh() {
                 this.refreshCultistStatus();
+                this.checkBotStatus();
                 setInterval(() => this.refreshCultistStatus(), 10000);
+                setInterval(() => this.checkBotStatus(), 10000);
                 setInterval(() => this.updateFooterTime(), 1000);
             }
 
@@ -965,7 +1166,8 @@
 
             async loadCurrentPersona() {
                 try {
-                    const response = await fetch(`${API_BASE}/persona/current`);
+                    if (!this.selectedGuildId) return;
+                    const response = await fetch(`${API_BASE}/persona/current${this.serverQuery()}`);
                     if (!response.ok) throw new Error('Failed to load persona');
                     const data = await response.json();
                     this.currentPersona = data.persona;
@@ -984,7 +1186,7 @@
                 try {
                     const response = await fetch(`${API_BASE}/persona/set`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ persona })
+                        body: JSON.stringify({ persona, guildId: this.selectedGuildId })
                     });
                     const data = await response.json();
                     if (data.success) { this.currentPersona = persona; this.showAlert(`Persona set to: ${persona}`, 'success'); }
@@ -999,47 +1201,62 @@
             }
 
             async toggleCultist(event) {
-                const enabled = event.target.checked;
+                await this.saveCultistConfig({ enabled: event.target.checked });
+            }
+
+            async loadCultistConfig() {
+                if (!this.selectedGuildId) return;
                 try {
-                    const response = await fetch(`${API_BASE}/cultist/toggle`, {
+                    const res = await fetch(`${API_BASE}/cultist/config${this.serverQuery()}`);
+                    const data = await res.json();
+                    if (!data.success) return;
+                    document.getElementById('cultist-toggle').checked = !!data.enabled;
+                    document.getElementById('cultist-channel').value = data.channelId || '';
+                    document.getElementById('cultist-role').value = data.roleId || '';
+                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
+                } catch (error) { console.error('Load cultist config error:', error); }
+            }
+
+            async saveCultistConfig(overrides = {}) {
+                if (!this.selectedGuildId) { this.showAlert('Select a server first', 'error'); return; }
+                const payload = {
+                    guildId: this.selectedGuildId,
+                    enabled: overrides.enabled !== undefined ? overrides.enabled : document.getElementById('cultist-toggle').checked,
+                    channelId: document.getElementById('cultist-channel').value.trim(),
+                    roleId: document.getElementById('cultist-role').value.trim()
+                };
+                try {
+                    const res = await fetch(`${API_BASE}/cultist/config`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
+                        body: JSON.stringify(payload)
                     });
-                    const data = await response.json();
+                    const data = await res.json();
                     if (data.success) {
-                        this.cultistEnabled = enabled;
-                        this.showAlert(`Cultist monitoring ${enabled ? 'enabled' : 'disabled'}`, enabled ? 'success' : 'warning');
-                        this.refreshCultistStatus();
+                        this.showAlert(`Cultist alerts ${data.enabled ? 'enabled' : 'disabled'}`, data.enabled ? 'success' : 'warning');
+                        document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
+                    } else {
+                        this.showAlert(data.error || 'Failed to save cultist config', 'error');
                     }
-                } catch (error) { this.showAlert('Toggle error: ' + error.message, 'error'); }
+                } catch (error) { this.showAlert('Save error: ' + error.message, 'error'); }
             }
 
             async refreshCultistStatus() {
                 try {
                     const response = await fetch(`${API_BASE}/cultist/status`);
                     const data = await response.json();
-                    document.getElementById('cultist-monitoring').textContent = data.enabled ? 'Active' : 'Disabled';
                     document.getElementById('cultist-s1-status').textContent = data.server1Active ? 'ACTIVE (Cultists!)' : 'Safe';
                     document.getElementById('cultist-s2-status').textContent = data.server2Active ? 'ACTIVE (Cultists!)' : 'Safe';
                     document.getElementById('tarkov-time').textContent = data.server1Time || '--:--';
                     const badge = document.getElementById('cultist-status');
-                    const toggle = document.getElementById('cultist-toggle');
-                    if (data.enabled) { badge.textContent = 'ACTIVE'; badge.className = 'status-badge active'; toggle.checked = true; }
-                    else { badge.textContent = 'OFFLINE'; badge.className = 'status-badge inactive'; toggle.checked = false; }
+                    if (data.server1Active || data.server2Active) { badge.textContent = 'CULTISTS'; badge.className = 'status-badge active'; }
+                    else { badge.textContent = 'SAFE'; badge.className = 'status-badge inactive'; }
                 } catch (error) { console.error('Refresh cultist error:', error); }
-            }
-
-            async resetCultist() {
-                try {
-                    await fetch(`${API_BASE}/cultist/toggle`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) });
-                    this.showAlert('Cultist monitor reset', 'success');
-                    this.refreshCultistStatus();
-                } catch (error) { this.showAlert('Reset error: ' + error.message, 'error'); }
             }
 
             async loadHatePingsStatus() {
                 try {
-                    const res = await fetch(`${API_BASE}/hate/pings/status`);
+                    if (!this.selectedGuildId) return;
+                    const res = await fetch(`${API_BASE}/hate/pings/status${this.serverQuery()}`);
                     const data = await res.json();
                     document.getElementById('hate-pings-toggle').checked = !!data.enabled;
                 } catch (error) { console.error('Load hate pings status error:', error); }
@@ -1050,7 +1267,7 @@
                 try {
                     const res = await fetch(`${API_BASE}/hate/pings/toggle`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
+                        body: JSON.stringify({ enabled, guildId: this.selectedGuildId })
                     });
                     const data = await res.json();
                     if (data.success) {
@@ -1113,7 +1330,8 @@
 
             async fetchLogs() {
                 try {
-                    const url = `${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=200`;
+                    const scope = this.viewAllLogs ? '&all=true' : `&guildId=${encodeURIComponent(this.selectedGuildId || '')}`;
+                    const url = `${API_BASE}/bot/logs?platform=${this.currentLogsPlatform}&limit=200${scope}`;
                     const response = await fetch(url);
                     const data = await response.json();
                     if (data.success) {
@@ -1267,7 +1485,7 @@
                 try {
                     const res = await fetch(`${API_BASE}/export/start`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId })
+                        body: JSON.stringify({ userId, guildId: this.selectedGuildId || undefined })
                     });
                     const data = await res.json();
                     if (!data.success) throw new Error(data.error);

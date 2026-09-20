@@ -7,7 +7,7 @@ require('dotenv').config();
 
 // Core modules
 const { addToMemory, getContextFacts } = require('./memory.js');
-const { logCommand, logSystemEvent } = require('./logger.js');
+const { logCommand, logSystemEvent, runWithLogContext } = require('./logger.js');
 const { getSetting, setSetting } = require('./database.js');
 const { musicSlashCommandDefs, handleMusicInteraction } = require('./music.js');
 const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, canPing, isOnPingCooldown } = require('./hate-manager.js');
@@ -15,6 +15,7 @@ const { isHated, getHatedUserIds, getHateChannelId, buildHateJab, buildCallout, 
 // Services
 const { getAIResponse, isWildRequest, getWildRequestResponse, generateHateRoast, consolidateChannelFacts } = require('./services/ai.js');
 const { generateImage, detectImageRequest, sanitizeImagePrompt, checkImageRateLimit } = require('./services/image.js');
+const { startCultistMonitor } = require('./services/cultist.js');
 require('./services/twitch.js'); // self-initializing — connects on require
 
 // Command modules
@@ -129,12 +130,23 @@ discordClient.once(Events.ClientReady, async (client) => {
             ...Object.values(allCommands).map(cmd => cmd.data.toJSON()),
             ...musicSlashCommandDefs.map(def => def.toJSON()),
         ];
+        // Multi-guild: commands are registered globally (not guild-scoped) so
+        // one running instance serves every server Patrick joins. Global slash
+        // commands can take up to an hour to propagate to existing servers.
         await rest.put(
-            Routes.applicationGuildCommands(client.user.id, process.env.DISCORD_GUILD_ID),
+            Routes.applicationCommands(client.user.id),
             { body: slashDefs }
         );
         logSystemEvent('SLASH_REGISTER', 'INFO', 'discord', `Registered ${slashDefs.length} slash commands`);
         console.log(`✅ Registered ${slashDefs.length} slash commands`);
+
+        // Remove the old guild-scoped copies left behind by the previous
+        // registration strategy. Without this, Discord shows both the legacy
+        // guild commands and the new global commands during migration.
+        await Promise.all([...client.guilds.cache.keys()].map(guildId =>
+            rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: [] })
+        ));
+        console.log(`✅ Cleared legacy guild-scoped commands from ${client.guilds.cache.size} server(s)`);
     } catch (err) {
         console.error('[SLASH REGISTER ERROR]', err);
         logSystemEvent('SLASH_REGISTER_ERROR', 'ERROR', 'discord', `Slash registration failed: ${err.message}`);
@@ -155,11 +167,19 @@ discordClient.once(Events.ClientReady, async (client) => {
     startHateTimer(client);
     console.log('[HATE] Proactive hate timer started');
 
+    startCultistMonitor(client);
+
     // Long-term memory: hourly, turn recent server chat into one durable,
     // AI-maintained fact sheet ("Patrick learns").
     const consolidateMemory = async () => {
         try {
-            await consolidateChannelFacts('discord', 'global');
+            // Consolidate each Discord server's channels into that server's fact
+            // sheet (scope = guild id). Shared facts are curated separately.
+            for (const [guildId, guild] of discordClient.guilds.cache) {
+                const channelIds = [...guild.channels.cache.keys()];
+                if (channelIds.length === 0) continue;
+                await consolidateChannelFacts('discord', channelIds, false, guildId);
+            }
         } catch (err) {
             console.error('[MEMORY] Consolidation timer error:', err.message);
             logSystemEvent('MEMORY_CONSOLIDATE', 'ERROR', 'memory', `Consolidation sweep failed: ${err.message}`, err);
@@ -171,7 +191,7 @@ discordClient.once(Events.ClientReady, async (client) => {
 });
 
 // ===== SLASH COMMAND HANDLER =====
-discordClient.on(Events.InteractionCreate, async (interaction) => {
+discordClient.on(Events.InteractionCreate, async (interaction) => runWithLogContext({ guildId: interaction.guildId }, async () => {
     if (!interaction.isChatInputCommand()) return;
 
     const { commandName } = interaction;
@@ -213,15 +233,15 @@ discordClient.on(Events.InteractionCreate, async (interaction) => {
     }
 
     await interaction.editReply(`❌ Unknown command: \`/${commandName}\``);
-});
+}));
 
 // ===== HATE LIST AUGMENTATION =====
 // Adds the bot's "hated user" flavor to replies and random callouts.
 
 // Append a roast jab to an AI reply for a hated user (rate-limited so spam
 // mentioners don't burn extra AI calls on the sass every single message).
-function augmentReplyWithHate(userId, username, response) {
-    if (!isHated(userId)) return response;
+function augmentReplyWithHate(userId, username, response, guildId = null) {
+    if (!isHated(userId, guildId)) return response;
     if (!canPing(userId)) return response;
     const jab = buildHateJab(username, userId);
     const room = 2000 - response.length - jab.length - 3;
@@ -232,11 +252,11 @@ function augmentReplyWithHate(userId, username, response) {
 // Fire a roast at a hated user's general-chat message. High chance so it
 // actually happens a lot, but gated by canPing so we don't spam them 5x in a
 // row while they type.
-function maybeRandomCallout(userId, username, channel) {
-    if (!isHated(userId)) return;
+function maybeRandomCallout(userId, username, channel, guildId = null) {
+    if (!isHated(userId, guildId)) return;
     if (!canPing(userId)) return;
-    // Roast pings can be turned off from the dashboard (global toggle).
-    if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled()) return;
+    // Roast pings can be turned off from the dashboard (per-server toggle).
+    if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled(guildId)) return;
     // ~40% chance — the bot reacts a lot when they talk.
     if (Math.random() > 0.40) return;
     const callout = buildCallout(username, userId, true);
@@ -251,74 +271,78 @@ function maybeRandomCallout(userId, username, channel) {
 // ===== HATE CALLOUT HANDLER =====
 // Reacts when a hated user chats in general (no mention/reply needed). Menions
 // and replies are skipped here because they already get an augmented AI reply.
-discordClient.on(Events.MessageCreate, (message) => {
+discordClient.on(Events.MessageCreate, (message) => runWithLogContext({ guildId: message.guildId }, () => {
     if (message.author.bot) return;
     if (message.mentions.has(discordClient.user)) return;
     if (message.reference) return;
-    maybeRandomCallout(message.author.id, message.author.username, message.channel);
-});
+    maybeRandomCallout(message.author.id, message.author.username, message.channel, message.guildId);
+}));
 
 // ===== PROACTIVE HATE TIMER =====
 // Once per hour, with a HEAVY chance (~70%), the bot randomly picks a hated
-// user and has the AI generate a fresh, random tagged roast into the channel.
+// user and has the AI generate a fresh, random tagged roast into that server's
+// configured roast channel. Each Discord server it's in manages its OWN hate
+// list + roast channel + ping toggle, so one instance serves every community.
 // The check-in is fed into the AI so the roast is varied, not a canned line.
 function startHateTimer(client) {
     setInterval(async () => {
-        try {
-            const hated = getHatedUserIds();
-            if (hated.length === 0) return;
+        for (const [guildId, guild] of client.guilds.cache) {
+            try {
+                const hated = getHatedUserIds(guildId);
+                if (hated.length === 0) continue;
 
-            const channelId = getHateChannelId();
-            if (!channelId) return;
-            const channel = client.channels.cache.get(channelId);
-            if (!channel?.isTextBased()) return;
+                const channelId = getHateChannelId(guildId);
+                if (!channelId) continue;
+                const channel = client.channels.cache.get(channelId);
+                if (!channel?.isTextBased()) continue;
 
-            // Heavy chance this hour that the bot actually fires.
-            if (Math.random() > 0.70) return;
+                // Heavy chance this hour that the bot actually fires.
+                if (Math.random() > 0.70) continue;
 
-            // Roast pings can be turned off from the dashboard (global toggle).
-            if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled()) return;
+                // Roast pings can be turned off per-server from the dashboard.
+                if (typeof global.getHatePingsEnabled === 'function' && !global.getHatePingsEnabled(guildId)) continue;
 
-            // Pick a target not on cooldown.
-            const targets = hated.filter(uid => !isOnPingCooldown(uid));
-            if (targets.length === 0) return;
-            const target = targets[Math.floor(Math.random() * targets.length)];
-            if (!canPing(target)) return;
+                // Pick a target not on cooldown.
+                const targets = hated.filter(uid => !isOnPingCooldown(uid));
+                if (targets.length === 0) continue;
+                const target = targets[Math.floor(Math.random() * targets.length)];
+                if (!canPing(target)) continue;
 
-            const member = channel.guild?.members?.cache?.get(target);
-            const name = member?.displayName || `<@${target}>`;
+                const member = channel.guild?.members?.cache?.get(target);
+                const name = member?.displayName || `<@${target}>`;
 
-            // Ammunition: facts remembered about THIS user, so the roast hits
-            // where it hurts. Try matching by Discord username first, then by
-            // display name. Deliberately do NOT fall back to the whole global
-            // sheet — unrelated facts (e.g. another user's "is god") leaking
-            // into a targeted roast is what caused the confusing messages.
-            const targetUsername = member?.user?.username?.toLowerCase();
-            const targetFacts = targetUsername
-                ? getContextFacts('discord', 'global', targetUsername)
-                : '';
-            const roastFacts = targetFacts
-                || getContextFacts('discord', 'global', name.toLowerCase());
+                // Ammunition: facts remembered about THIS user, so the roast hits
+                // where it hurts. Try matching by Discord username first, then by
+                // display name. Deliberately do NOT fall back to the whole global
+                // sheet — unrelated facts (e.g. another user's "is god") leaking
+                // into a targeted roast is what caused the confusing messages.
+                const targetUsername = member?.user?.username?.toLowerCase();
+                const targetFacts = targetUsername
+                    ? getContextFacts('discord', 'global', targetUsername, guildId)
+                    : '';
+                const roastFacts = targetFacts
+                    || getContextFacts('discord', 'global', name.toLowerCase(), guildId);
 
-            await channel.sendTyping();
-            const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts);
+                await channel.sendTyping();
+                const roast = await generateHateRoast(name, target, 'roasting the member randomly, unprompted, just because they are on the hate list', roastFacts, guildId);
 
-            safeDiscordSend(channel, roast);
-            // Record the roast as a bot message so Patrick can recall having
-            // said it later instead of denying it when called out. The marker
-            // keeps consolidation from mining facts out of the roast itself.
-            addToMemory('discord', channel.id, 'ThePatrick', `<proactive>${roast}`, true);
-            logSystemEvent('HATE', 'INFO', 'discord', `Proactive AI roast fired at ${target}: ${roast}`);
-            logCommand('discord', name, 'hate proactive', '', roast);
-        } catch (err) {
-            console.error('[HATE] Proactive timer error:', err.message);
-            logSystemEvent('HATE_ERROR', 'WARNING', 'discord', `Proactive hate timer failed: ${err.message}`);
+                safeDiscordSend(channel, roast);
+                // Record the roast as a bot message so Patrick can recall having
+                // said it later instead of denying it when called out. The marker
+                // keeps consolidation from mining facts out of the roast itself.
+                addToMemory('discord', channel.id, 'ThePatrick', `<proactive>${roast}`, true);
+                logSystemEvent('HATE', 'INFO', 'discord', `Proactive AI roast fired at ${target} in ${guildId}: ${roast}`);
+                logCommand('discord', username, 'hate proactive', '', roast);
+            } catch (err) {
+                console.error('[HATE] Proactive timer error:', err.message);
+                logSystemEvent('HATE_ERROR', 'WARNING', 'discord', `Proactive hate timer failed: ${err.message}`);
+            }
         }
     }, 60 * 60 * 1000); // every 1 hour
 }
 
 // ===== DISCORD MESSAGE HANDLER =====
-discordClient.on(Events.MessageCreate, async (message) => {
+discordClient.on(Events.MessageCreate, async (message) => runWithLogContext({ guildId: message.guildId }, async () => {
     if (message.author.bot) return;
     if (message.reference)  return;
 
@@ -334,7 +358,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (!userMessage && !hasImageAttachment(message)) return;
 
     if (isWildRequest(userMessage)) {
-        const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
+        const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username, message.guildId);
         await safeDiscordReply(message, roast);
         logCommand('discord', username, '@mention (wild)', userMessage, roast);
         return;
@@ -366,21 +390,21 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
-        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
-        response = augmentReplyWithHate(message.author.id, username, response);
+        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images, message.guildId);
+        response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
         await safeDiscordReply(message, response);
         logCommand('discord', username, '@mention (image analysis)', userMessage, response);
         return;
     }
 
-    let response = await getAIResponse(userMessage, 'discord', channelId, username);
-    response = augmentReplyWithHate(message.author.id, username, response);
+    let response = await getAIResponse(userMessage, 'discord', channelId, username, [], message.guildId);
+    response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
     await safeDiscordReply(message, response);
     logCommand('discord', username, '@mention', userMessage, response);
-});
+}));
 
 // ===== DISCORD REPLY HANDLER =====
-discordClient.on(Events.MessageCreate, async (message) => {
+discordClient.on(Events.MessageCreate, async (message) => runWithLogContext({ guildId: message.guildId }, async () => {
     if (message.author.bot)  return;
     if (!message.reference)  return;
 
@@ -398,7 +422,7 @@ discordClient.on(Events.MessageCreate, async (message) => {
     if (!userMessage && !hasImageAttachment(message)) return;
 
     if (isWildRequest(userMessage)) {
-        const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username);
+        const roast = await getWildRequestResponse(userMessage, 'discord', channelId, username, message.guildId);
         await safeDiscordReply(message, roast);
         logCommand('discord', username, 'reply (wild)', userMessage, roast);
         return;
@@ -406,18 +430,18 @@ discordClient.on(Events.MessageCreate, async (message) => {
 
     if (hasImageAttachment(message)) {
         const images   = await getImageAttachments(message);
-        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images);
-        response = augmentReplyWithHate(message.author.id, username, response);
+        let response = await getAIResponse(userMessage || 'What do you see?', 'discord', channelId, username, images, message.guildId);
+        response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
         await safeDiscordReply(message, response);
         logCommand('discord', username, 'reply (image analysis)', userMessage, response);
         return;
     }
 
-    let response = await getAIResponse(userMessage, 'discord', channelId, username);
-    response = augmentReplyWithHate(message.author.id, username, response);
+    let response = await getAIResponse(userMessage, 'discord', channelId, username, [], message.guildId);
+    response = augmentReplyWithHate(message.author.id, username, response, message.guildId);
     await safeDiscordReply(message, response);
     logCommand('discord', username, 'reply', userMessage, response);
-});
+}));
 
 // ===== LOGIN =====
 discordClient.login(process.env.DISCORD_TOKEN)

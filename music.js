@@ -72,17 +72,33 @@ const YTDLP = (() => {
 
 console.log(`[MUSIC] yt-dlp binary: ${YTDLP}`);
 
+function parseYtdlpJson(stdout, description) {
+    const records = String(stdout || '')
+        .split('\n')
+        .map(line => line.trim())
+        .filter(Boolean)
+        .map(line => {
+            try { return JSON.parse(line); } catch (_) { return null; }
+        })
+        .filter(data => data?.id);
+
+    if (records.length === 0) {
+        throw new Error(`No YouTube results found for ${description}. Try a broader search or paste the YouTube URL.`);
+    }
+    return records;
+}
+
 async function ytdlpSearch(query) {
     console.log(`[MUSIC] Searching yt-dlp for: ${query}`);
     const args = [
-        `ytsearch1:${query}`,
+        `ytsearch5:${query}`,
         '--dump-json',
         '--no-playlist',
         '--quiet',
         '--no-warnings',
     ];
     const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
-    const data = JSON.parse(stdout.trim().split('\n')[0]);
+    const [data] = parseYtdlpJson(stdout, `"${query}"`);
     console.log(`[MUSIC] Found: ${data.title}`);
     return {
         title:     data.title    || 'Unknown Title',
@@ -103,7 +119,7 @@ async function ytdlpInfo(url) {
         '--no-warnings',
     ];
     const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
-    const data = JSON.parse(stdout.trim().split('\n')[0]);
+    const [data] = parseYtdlpJson(stdout, `URL ${url}`);
     return {
         title:     data.title    || 'Unknown Title',
         url:       `https://www.youtube.com/watch?v=${data.id}`,
