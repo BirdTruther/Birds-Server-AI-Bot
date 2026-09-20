@@ -138,6 +138,14 @@ discordClient.once(Events.ClientReady, async (client) => {
         );
         logSystemEvent('SLASH_REGISTER', 'INFO', 'discord', `Registered ${slashDefs.length} slash commands`);
         console.log(`✅ Registered ${slashDefs.length} slash commands`);
+
+        // Remove the old guild-scoped copies left behind by the previous
+        // registration strategy. Without this, Discord shows both the legacy
+        // guild commands and the new global commands during migration.
+        await Promise.all([...client.guilds.cache.keys()].map(guildId =>
+            rest.put(Routes.applicationGuildCommands(client.user.id, guildId), { body: [] })
+        ));
+        console.log(`✅ Cleared legacy guild-scoped commands from ${client.guilds.cache.size} server(s)`);
     } catch (err) {
         console.error('[SLASH REGISTER ERROR]', err);
         logSystemEvent('SLASH_REGISTER_ERROR', 'ERROR', 'discord', `Slash registration failed: ${err.message}`);
