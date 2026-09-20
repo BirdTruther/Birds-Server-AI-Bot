@@ -1,5 +1,7 @@
 # Setup & Deployment
 
+> **Before you clone this:** ThePatrick is licensed under [BSL 1.1](LICENSE) — the code is public to read, study, and modify, but running it as a live Discord or Twitch bot ("Production Use") requires a license from the developer, whether self-hosted or not. This guide is for permitted non-production setup (local testing, development, evaluation). If you want Patrick actually running on your server, don't start here — reach out via **[birdsserver.cfd](https://birdsserver.cfd/)** or open a [GitHub issue](https://github.com/BirdTruther/ThePatrick/issues) instead.
+
 ---
 
 ## Prerequisites

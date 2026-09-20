@@ -2,7 +2,13 @@
 
 Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 integration, Gemini AI, voice music, roleplay features, and a live web dashboard.
 
-**[Commands →](COMMANDS.md)** | **[Setup & Deployment →](SETUP.md)**
+**[Commands →](COMMANDS.md)** | **[Self-Hosting & License →](SETUP.md)**
+
+---
+
+## Want Patrick on your server?
+
+Head to **[birdsserver.cfd](https://birdsserver.cfd/)** — Discord and GitHub contact links are there. The source is public and readable, but running Patrick live (self-hosted or otherwise) is licensed under [BSL 1.1](LICENSE), so getting him onto your server starts with reaching out, not cloning the repo.
 
 ---
 
