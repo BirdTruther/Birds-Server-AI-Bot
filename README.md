@@ -8,7 +8,7 @@ Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 int
 
 ## Want Patrick on your server?
 
-Head to **[birdsserver.cfd](https://birdsserver.cfd/)** — Discord and GitHub contact links are there. The source is public and readable, but running Patrick live (self-hosted or otherwise) is licensed under [BSL 1.1](LICENSE), so getting him onto your server starts with reaching out, not cloning the repo.
+Head to **[birdsserver.cfd](https://birdsserver.cfd/)**. Discord and GitHub contact links are there. The source is public and readable, but running Patrick live, self-hosted or otherwise, requires a license under [BSL 1.1](LICENSE). Getting him onto your server starts with reaching out, not cloning the repo.
 
 ---
 
