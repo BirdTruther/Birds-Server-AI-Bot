@@ -1,5 +1,7 @@
 # ThePatrick
 
+![Version](https://img.shields.io/github/v/release/BirdTruther/ThePatrick)
+
 Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 integration, Gemini AI, voice music, roleplay features, and a live web dashboard.
 
 **[Commands →](COMMANDS.md)** | **[Self-Hosting & License →](SETUP.md)**
