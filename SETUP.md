@@ -80,6 +80,36 @@ toggle are isolated per Discord server.
 The dashboard's hate controls include a server selector. Configure `/hate
 channel` separately in each server where proactive roasts should run.
 
+### Dashboard login (Discord OAuth)
+
+The dashboard is protected by Discord OAuth login and binds to `127.0.0.1` by
+default. To expose it publicly, put a reverse proxy in front of it and set:
+
+| Variable | Required | Notes |
+|---|---|---|
+| `DISCORD_CLIENT_SECRET` | ✅ | Developer Portal → OAuth2 → Client Secret |
+| `DASHBOARD_OAUTH_REDIRECT_URI` | ✅* | Public callback URL, e.g. `https://dash.example.com/auth/callback` |
+| `DASHBOARD_ALLOWED_USER_IDS` | ✅* | Comma-separated Discord user IDs allowed to log in |
+| `DASHBOARD_ALLOW_GUILD_ADMINS` | Optional | `true` lets users with Manage Server/Admin in a shared server log in |
+| `DASHBOARD_HOST` | Optional | Defaults to `127.0.0.1`; set `0.0.0.0` only for trusted LAN access |
+
+\* Set at least one of `DASHBOARD_ALLOWED_USER_IDS` or
+`DASHBOARD_ALLOW_GUILD_ADMINS=true`, or nobody can log in.
+
+Setup steps:
+
+1. Developer Portal → your app → **OAuth2 → Redirects**: add the exact callback
+   URL (for example `https://dash.example.com/auth/callback`).
+2. Set the variables above in `.env`.
+3. Point your reverse proxy at `http://127.0.0.1:3001`.
+4. Start (or restart) the process.
+
+To find your Discord user ID: enable Developer Mode, then right-click your
+avatar → Copy User ID.
+
+For quick local testing only, `DASHBOARD_AUTH_DISABLED=true` turns the login
+off (never use it on a publicly reachable instance).
+
 ---
 
 ## Discord Bot Invite Scopes

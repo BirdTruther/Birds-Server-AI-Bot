@@ -1,5 +1,5 @@
+require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const path = require('path');
 const { getLogs, getLogCount, clearLogs, getSystemLogs, getSystemLogCount, clearSystemLogs, logCommand: dbLogCommand, logSystem, getSetting, setSetting } = require('./database.js');
 const { getCurrentPersona, setPersona, getAvailablePersonas } = require('./persona-manager.js');
@@ -116,9 +116,33 @@ function formatUptime(seconds) {
 
 const app = express();
 const PORT = 3001;
+// Bind to loopback by default. Put a reverse proxy (Caddy/nginx/Cloudflare)
+// in front for remote access; set DASHBOARD_HOST=0.0.0.0 to expose on the LAN.
+const HOST = process.env.DASHBOARD_HOST || '127.0.0.1';
 
-app.use(cors());
+app.set('trust proxy', 1);
 app.use(express.json());
+
+// Dashboard authentication (Discord OAuth). Routes under /auth/* and
+// /api/auth/me must be registered before the global gate below.
+const dashboardAuth = require('./dashboard-auth.js');
+dashboardAuth.attachRoutes(app, { getDiscordClient });
+app.use(dashboardAuth.requireAuth);
+
+// Guard server-scoped endpoints: the logged-in user must actually manage the
+// requested guild (allowlisted users may manage all of the bot's servers).
+function ensureGuildAccess(req, res, guildId) {
+  if (!guildId) {
+    res.status(400).json({ success: false, error: 'guildId is required' });
+    return false;
+  }
+  if (!dashboardAuth.canAccessGuild(req.user, guildId)) {
+    res.status(403).json({ success: false, error: 'forbidden' });
+    return false;
+  }
+  return true;
+}
+
 app.use(express.static('public'));
 
 app.get('/', (req, res) => {
@@ -135,25 +159,15 @@ app.post('/api/cultist/toggle', (req, res) => {
   res.json({ success: true, enabled });
 });
 
-app.get('/api/discord/guilds', (req, res) => {
-  const client = getDiscordClient();
-  const guilds = client
-    ? [...client.guilds.cache.values()]
-        .map(guild => ({ id: guild.id, name: guild.name }))
-        .sort((a, b) => a.name.localeCompare(b.name))
-    : [];
-  res.json({ success: true, guilds });
-});
-
 app.get('/api/hate/pings/status', (req, res) => {
   const { guildId } = req.query;
-  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  if (!ensureGuildAccess(req, res, guildId)) return;
   res.json({ success: true, enabled: getHatePingsEnabled(guildId) });
 });
 
 app.post('/api/hate/pings/toggle', (req, res) => {
   const { enabled, guildId } = req.body;
-  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  if (!ensureGuildAccess(req, res, guildId)) return;
   const value = !!enabled;
   setSetting(hatePingsKey(guildId), value);
   console.log(`[API] Roast pings ${value ? 'ENABLED' : 'DISABLED'} for guild ${guildId}`);
@@ -202,13 +216,14 @@ function announceHateAdd(userId, guildId) {
 
 app.get('/api/hate/list', (req, res) => {
   const { guildId } = req.query;
-  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  if (!ensureGuildAccess(req, res, guildId)) return;
   res.json({ success: true, list: getHatedUserIds(guildId), guildId });
 });
 
 app.post('/api/hate/add', (req, res) => {
   const { userId, guildId } = req.body;
-  if (!userId || !guildId) return res.status(400).json({ success: false, error: 'userId and guildId are required' });
+  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
+  if (!ensureGuildAccess(req, res, guildId)) return;
   const result = addToHateList(userId, guildId);
   console.log(`[API] Hate list add: ${userId} in ${guildId} — ${result.message}`);
   if (result.ok) announceHateAdd(userId, guildId);
@@ -217,7 +232,8 @@ app.post('/api/hate/add', (req, res) => {
 
 app.post('/api/hate/remove', (req, res) => {
   const { userId, guildId } = req.body;
-  if (!userId || !guildId) return res.status(400).json({ success: false, error: 'userId and guildId are required' });
+  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
+  if (!ensureGuildAccess(req, res, guildId)) return;
   const result = removeFromHateList(userId, guildId);
   console.log(`[API] Hate list remove: ${userId} in ${guildId} — ${result.message}`);
   res.json(result);
@@ -653,13 +669,13 @@ app.get('/api/export/download/:jobId', (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, HOST, () => {
   logSystem({
     log_type: 'STARTUP',
     severity: 'INFO',
     component: 'dashboard',
-    message: `Dashboard server started on port ${PORT}`
+    message: `Dashboard server started on ${HOST}:${PORT}`
   });
-  console.log(`Dashboard on http://localhost:${PORT}/`);
+  console.log(`Dashboard on http://${HOST}:${PORT}/`);
   console.log(`Current persona: ${getCurrentPersona().name}`);
 });

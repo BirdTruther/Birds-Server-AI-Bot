@@ -308,6 +308,19 @@
         .export-dl-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 16px; }
 
         footer { text-align: center; margin-top: 50px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); color: var(--color-text-secondary); font-size: 0.9rem; }
+        .auth-bar { margin-top: 14px; font-size: 0.85rem; color: var(--color-text-secondary); }
+        .auth-bar a { color: var(--color-primary); margin-left: 12px; text-decoration: none; }
+        .auth-bar a:hover { text-decoration: underline; }
+        .server-bar {
+            display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+            margin: 0 0 24px; padding: 14px 18px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius);
+        }
+        .server-bar label { font-weight: 600; }
+        .server-bar select { min-width: 240px; padding: 8px 10px; border-radius: var(--radius); background: #1a2742; border: 1px solid #4a90c4; color: #f1f5f9; font-size: 0.9rem; }
+        .server-bar-hint { color: var(--color-text-secondary); font-size: 0.8rem; }
 
         @media (max-width: 768px) {
             h1 { font-size: 1.8rem; }
@@ -324,9 +337,18 @@
             <!-- FIX 4: emoji in own span so gradient clip doesn't hide it -->
             <h1><span class="title-emoji">&#x1F916;</span><span class="title-text">ThePatrick Bot Dashboard</span></h1>
             <p class="subtitle">ThePatrick's Birds Server AI Bot Control Panel</p>
+            <div id="auth-bar" class="auth-bar"></div>
         </header>
 
         <div id="alerts"></div>
+
+        <div class="server-bar">
+            <label for="server-select">Managing server:</label>
+            <select id="server-select" class="persona-select">
+                <option value="">Loading servers...</option>
+            </select>
+            <span id="server-bar-hint" class="server-bar-hint"></span>
+        </div>
 
         <div class="dashboard-grid">
             <!-- AI Persona Card -->
@@ -385,12 +407,6 @@
                     <span id="hate-status" class="status-badge inactive">OFFLINE</span>
                 </div>
                 <p style="color:var(--color-text-secondary);margin-bottom:15px;">These Discord users get extra venom from the bot. Heavy roast vibes.</p>
-                <div class="control-section">
-                    <label class="control-label" for="hate-guild-select">Discord Server</label>
-                    <select id="hate-guild-select" class="persona-select" style="width:100%;">
-                        <option value="">Loading servers...</option>
-                    </select>
-                </div>
                 <div class="status-info">
                     <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
                 </div>
@@ -701,18 +717,40 @@
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
-                this.loadDiscordGuilds();
+                this.loadManageableGuilds();
                 this.loadMemory();
+                this.loadAuthUser();
             }
 
-            async loadDiscordGuilds() {
+            async loadAuthUser() {
                 try {
-                    const res = await fetch(`${API_BASE}/discord/guilds`);
+                    const res = await fetch(`${API_BASE}/auth/me`);
+                    if (res.status === 401) { window.location.href = '/auth/login'; return; }
                     const data = await res.json();
-                    const select = document.getElementById('hate-guild-select');
+                    const bar = document.getElementById('auth-bar');
+                    if (!data.authenticated || !data.user) { bar.textContent = ''; return; }
+                    const name = data.user.globalName || data.user.username;
+                    bar.textContent = `Signed in as ${name} (@${data.user.username})`;
+                    const link = document.createElement('a');
+                    link.href = '/auth/logout';
+                    link.textContent = 'Sign out';
+                    bar.appendChild(link);
+                } catch (e) {
+                    console.error('[AUTH] failed to load session', e);
+                }
+            }
+
+            async loadManageableGuilds() {
+                try {
+                    const res = await fetch(`${API_BASE}/auth/guilds`);
+                    if (res.status === 401) { window.location.href = '/auth/login'; return; }
+                    const data = await res.json();
+                    const select = document.getElementById('server-select');
+                    const hint = document.getElementById('server-bar-hint');
                     select.innerHTML = '';
                     if (!data.success || data.guilds.length === 0) {
-                        select.innerHTML = '<option value="">No connected Discord servers</option>';
+                        select.innerHTML = '<option value="">No servers available</option>';
+                        hint.textContent = 'You need Manage Server access in a server the bot is in.';
                         return;
                     }
                     data.guilds.forEach(guild => {
@@ -722,19 +760,24 @@
                         select.appendChild(option);
                     });
                     this.selectedGuildId = data.guilds[0].id;
-                    await Promise.all([this.loadHateList(), this.loadHatePingsStatus()]);
+                    hint.textContent = `${data.guilds.length} server${data.guilds.length === 1 ? '' : 's'} available`;
+                    await this.reloadServerScoped();
                 } catch (e) {
-                    console.error('[HATE] failed to load Discord servers', e);
+                    console.error('[SERVER] failed to load servers', e);
                 }
             }
 
-            hateGuildQuery() {
+            serverQuery() {
                 return this.selectedGuildId ? `?guildId=${encodeURIComponent(this.selectedGuildId)}` : '';
             }
 
-            async selectHateGuild(event) {
+            async selectServer(event) {
                 this.selectedGuildId = event.target.value || null;
                 if (!this.selectedGuildId) return;
+                await this.reloadServerScoped();
+            }
+
+            async reloadServerScoped() {
                 await Promise.all([this.loadHateList(), this.loadHatePingsStatus()]);
             }
 
@@ -743,7 +786,7 @@
                     const badge = document.getElementById('hate-status');
                     const count = document.getElementById('hate-count');
                     if (!this.selectedGuildId) return;
-                    const res = await fetch(`${API_BASE}/hate/list${this.hateGuildQuery()}`);
+                    const res = await fetch(`${API_BASE}/hate/list${this.serverQuery()}`);
                     const data = await res.json();
                     if (data.success) {
                         count.textContent = data.list.length;
@@ -935,7 +978,7 @@
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
                 document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
                 document.getElementById('hate-pings-toggle').addEventListener('change', (e) => this.toggleHatePings(e));
-                document.getElementById('hate-guild-select').addEventListener('change', (e) => this.selectHateGuild(e));
+                document.getElementById('server-select').addEventListener('change', (e) => this.selectServer(e));
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
@@ -1081,7 +1124,7 @@
             async loadHatePingsStatus() {
                 try {
                     if (!this.selectedGuildId) return;
-                    const res = await fetch(`${API_BASE}/hate/pings/status${this.hateGuildQuery()}`);
+                    const res = await fetch(`${API_BASE}/hate/pings/status${this.serverQuery()}`);
                     const data = await res.json();
                     document.getElementById('hate-pings-toggle').checked = !!data.enabled;
                 } catch (error) { console.error('Load hate pings status error:', error); }
