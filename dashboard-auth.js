@@ -117,6 +117,13 @@ function getSession(id) {
     setSetting(SESSION_PREFIX + id, '');
     return null;
   }
+  // Reconcile the role on every request so changing the allowlist takes effect
+  // without requiring users to manually clear an otherwise-valid session.
+  const shouldBeSuperAdmin = config().allowedIds.includes(String(session.userId));
+  if (Boolean(session.superAdmin) !== shouldBeSuperAdmin) {
+    session.superAdmin = shouldBeSuperAdmin;
+    setSetting(SESSION_PREFIX + id, JSON.stringify(session));
+  }
   return session;
 }
 
