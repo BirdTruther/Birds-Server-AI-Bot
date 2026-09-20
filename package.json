@@ -1,5 +1,5 @@
 {
-  "name": "birds-server-ai-bot",
+  "name": "thepatrick",
   "version": "1.0.0",
   "description": "Discord and Twitch bot with Tarkov integration and web dashboard",
   "main": "index.js",
@@ -35,5 +35,5 @@
     "escape-from-tarkov"
   ],
   "author": "BirdTruther",
-  "license": "GPL-3.0"
+  "license": "BUSL-1.1"
 }

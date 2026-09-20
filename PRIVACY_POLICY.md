@@ -1,13 +1,13 @@
 # Privacy Policy
 
-**Birds-Server-AI-Bot**
-**Last Updated: August 29, 2026**
+**ThePatrick**
+**Last Updated: September 20, 2026**
 
 ---
 
 ## 1. Overview
 
-This Privacy Policy describes how Birds-Server-AI-Bot ("the Bot", "we", "our", "ThePatrick") handles information when you interact with the Bot on Discord or Twitch. We are committed to being transparent about what data is collected, why, and how it is used.
+This Privacy Policy describes how ThePatrick ("the Bot", "we", "our") handles information when you interact with the Bot on Discord or Twitch. We are committed to being transparent about what data is collected, why, and how it is used.
 
 ## 2. Information We Collect
 
@@ -94,17 +94,17 @@ We do **not** sell, rent, or share your data with advertisers or data brokers.
 
 You have the right to:
 
-- **Request review or removal** of long-term facts or conversation data by contacting the server administrator or the developer via a [GitHub issue](https://github.com/BirdTruther/Birds-Server-AI-Bot/issues)
-- **Request removal** of your data by contacting the server administrator or the developer via a [GitHub issue](https://github.com/BirdTruther/Birds-Server-AI-Bot/issues)
+- **Request review or removal** of long-term facts or conversation data by contacting the server administrator or the developer via a [GitHub issue](https://github.com/BirdTruther/ThePatrick/issues)
+- **Request removal** of your data by contacting the server administrator or the developer via a [GitHub issue](https://github.com/BirdTruther/ThePatrick/issues)
 - **Stop data collection** by not interacting with the Bot, or by asking a server administrator to remove the Bot from the server
 
 ## 8. Children's Privacy
 
 The Bot is not directed at children under the age of 13. We do not knowingly collect data from children under 13. If you believe a child has provided personal data, please contact us via the GitHub repository.
 
-## 9. Open Source Transparency
+## 9. Source Availability
 
-Birds-Server-AI-Bot is fully open-source. You can review exactly how data is collected, stored, and used by reading the source code at [https://github.com/BirdTruther/Birds-Server-AI-Bot](https://github.com/BirdTruther/Birds-Server-AI-Bot).
+ThePatrick's source code is publicly available for review at [https://github.com/BirdTruther/ThePatrick](https://github.com/BirdTruther/ThePatrick), licensed under the Business Source License 1.1 (converting to GPLv2 on 2031-09-20). You can see exactly how data is collected, stored, and used by reading the source.
 
 ## 10. Changes to This Policy
 
@@ -112,8 +112,8 @@ This Privacy Policy may be updated at any time. The "Last Updated" date at the t
 
 ## 11. Contact
 
-For privacy-related questions or data removal requests, please open an issue on the [GitHub repository](https://github.com/BirdTruther/Birds-Server-AI-Bot/issues).
+For privacy-related questions or data removal requests, please open an issue on the [GitHub repository](https://github.com/BirdTruther/ThePatrick/issues).
 
 ---
 
-*This policy applies to the publicly hosted instance of Birds-Server-AI-Bot operated by BirdTruther. Self-hosted instances are the responsibility of their respective operators.*
+*This policy applies to the publicly hosted instance of ThePatrick operated by BirdTruther. Any separately-licensed self-hosted instance is the responsibility of its respective operator.*

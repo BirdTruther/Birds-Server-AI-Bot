@@ -16,8 +16,8 @@
 ### 1. Clone
 
 ```bash
-git clone https://github.com/BirdTruther/Birds-Server-AI-Bot.git
-cd Birds-Server-AI-Bot
+git clone https://github.com/BirdTruther/ThePatrick.git
+cd ThePatrick
 ```
 
 ### 2. Install npm dependencies

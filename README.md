@@ -1,4 +1,4 @@
-# Birds-Server-AI-Bot
+# ThePatrick
 
 Multi-platform Discord + Twitch bot with Escape from Tarkov integration, CS2 integration, Gemini AI, voice music, roleplay features, and a live web dashboard.
 
