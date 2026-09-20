@@ -20,10 +20,20 @@ console.log(`[DASHBOARD] Cultist monitoring loaded as: ${cultistState.enabled ? 
 global.getCultistEnabled = () => cultistState.enabled;
 
 // Roast-ping toggle — gates the proactive hate timer + random callouts so the
-// bot stops pinging hated users unprompted. Persisted across reboots.
-let hatePingsEnabled = getSetting('hatePingsEnabled', 'true') !== 'false';
-console.log(`[DASHBOARD] Roast pings loaded as: ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'}`);
-global.getHatePingsEnabled = () => hatePingsEnabled;
+// bot stops pinging hated users unprompted. Each Discord server has its own
+// setting; the old global key remains the fallback for legacy single-server data.
+const HATE_PINGS_KEY = 'hatePingsEnabled';
+function hatePingsKey(guildId) {
+  return guildId ? `${HATE_PINGS_KEY}:${guildId}` : HATE_PINGS_KEY;
+}
+function getHatePingsEnabled(guildId = null) {
+  const value = guildId
+    ? getSetting(hatePingsKey(guildId), null) ?? getSetting(HATE_PINGS_KEY, 'true')
+    : getSetting(HATE_PINGS_KEY, 'true');
+  return value !== 'false';
+}
+console.log('[DASHBOARD] Roast pings loaded with per-server settings');
+global.getHatePingsEnabled = getHatePingsEnabled;
 
 // Command logs storage (in-memory cache for real-time updates, max 500 entries)
 const MAX_LOGS = 500;
@@ -125,16 +135,29 @@ app.post('/api/cultist/toggle', (req, res) => {
   res.json({ success: true, enabled });
 });
 
+app.get('/api/discord/guilds', (req, res) => {
+  const client = getDiscordClient();
+  const guilds = client
+    ? [...client.guilds.cache.values()]
+        .map(guild => ({ id: guild.id, name: guild.name }))
+        .sort((a, b) => a.name.localeCompare(b.name))
+    : [];
+  res.json({ success: true, guilds });
+});
+
 app.get('/api/hate/pings/status', (req, res) => {
-  res.json({ enabled: hatePingsEnabled });
+  const { guildId } = req.query;
+  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  res.json({ success: true, enabled: getHatePingsEnabled(guildId) });
 });
 
 app.post('/api/hate/pings/toggle', (req, res) => {
-  const { enabled } = req.body;
-  hatePingsEnabled = !!enabled;
-  setSetting('hatePingsEnabled', hatePingsEnabled);
-  console.log(`[API] Roast pings ${hatePingsEnabled ? 'ENABLED' : 'DISABLED'} (saved to database)`);
-  res.json({ success: true, enabled: hatePingsEnabled });
+  const { enabled, guildId } = req.body;
+  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  const value = !!enabled;
+  setSetting(hatePingsKey(guildId), value);
+  console.log(`[API] Roast pings ${value ? 'ENABLED' : 'DISABLED'} for guild ${guildId}`);
+  res.json({ success: true, enabled: value, guildId });
 });
 
 app.get('/api/bot/status', (req, res) => {
@@ -165,10 +188,10 @@ app.post('/api/persona/set', (req, res) => {
 // ===== HATE LIST ENDPOINTS =====
 
 // Announce a newly-added hate-list victim into the configured roast channel.
-function announceHateAdd(userId) {
+function announceHateAdd(userId, guildId) {
   const client = getDiscordClient();
   if (!client) return;
-  const channelId = getHateChannelId();
+  const channelId = getHateChannelId(guildId);
   if (!channelId) return;
   const channel = client.channels.cache.get(channelId);
   if (!channel?.isTextBased()) return;
@@ -178,23 +201,25 @@ function announceHateAdd(userId) {
 }
 
 app.get('/api/hate/list', (req, res) => {
-  res.json({ success: true, list: getHatedUserIds() });
+  const { guildId } = req.query;
+  if (!guildId) return res.status(400).json({ success: false, error: 'guildId is required' });
+  res.json({ success: true, list: getHatedUserIds(guildId), guildId });
 });
 
 app.post('/api/hate/add', (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
-  const result = addToHateList(userId);
-  console.log(`[API] Hate list add: ${userId} — ${result.message}`);
-  if (result.ok) announceHateAdd(userId);
+  const { userId, guildId } = req.body;
+  if (!userId || !guildId) return res.status(400).json({ success: false, error: 'userId and guildId are required' });
+  const result = addToHateList(userId, guildId);
+  console.log(`[API] Hate list add: ${userId} in ${guildId} — ${result.message}`);
+  if (result.ok) announceHateAdd(userId, guildId);
   res.json(result);
 });
 
 app.post('/api/hate/remove', (req, res) => {
-  const { userId } = req.body;
-  if (!userId) return res.status(400).json({ success: false, error: 'userId is required' });
-  const result = removeFromHateList(userId);
-  console.log(`[API] Hate list remove: ${userId} — ${result.message}`);
+  const { userId, guildId } = req.body;
+  if (!userId || !guildId) return res.status(400).json({ success: false, error: 'userId and guildId are required' });
+  const result = removeFromHateList(userId, guildId);
+  console.log(`[API] Hate list remove: ${userId} in ${guildId} — ${result.message}`);
   res.json(result);
 });
 

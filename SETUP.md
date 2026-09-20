@@ -50,7 +50,6 @@ Then fill in your values:
 |---|---|---|
 | `DISCORD_TOKEN` | ✅ | [Developer Portal](https://discord.com/developers/applications) → Bot → Token |
 | `DISCORD_CLIENT_ID` | ✅ | Developer Portal → General Information → Application ID |
-| `DISCORD_GUILD_ID` | ✅ | Right-click server icon → Copy Server ID (requires Developer Mode) |
 | `GOOGLE_GENERATIVE_AI_API_KEY` | ✅ | [aistudio.google.com](https://aistudio.google.com) |
 | `TWITCH_BOT_USERNAME` | ✅ | Your Twitch bot account username |
 | `TWITCH_OAUTH_TOKEN` | ✅ | [twitchapps.com/tmi](https://twitchapps.com/tmi) |
@@ -70,6 +69,16 @@ node index.js
 node dashboard-server.js
 # → http://localhost:3001
 ```
+
+### Multi-server behavior
+
+The bot registers slash commands globally and can be invited to multiple
+Discord servers while running as one process. Persona and long-term facts are
+shared globally. Hate lists, roast channels, and the dashboard's Roast Pings
+toggle are isolated per Discord server.
+
+The dashboard's hate controls include a server selector. Configure `/hate
+channel` separately in each server where proactive roasts should run.
 
 ---
 

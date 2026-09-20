@@ -385,6 +385,12 @@
                     <span id="hate-status" class="status-badge inactive">OFFLINE</span>
                 </div>
                 <p style="color:var(--color-text-secondary);margin-bottom:15px;">These Discord users get extra venom from the bot. Heavy roast vibes.</p>
+                <div class="control-section">
+                    <label class="control-label" for="hate-guild-select">Discord Server</label>
+                    <select id="hate-guild-select" class="persona-select" style="width:100%;">
+                        <option value="">Loading servers...</option>
+                    </select>
+                </div>
                 <div class="status-info">
                     <div class="status-item"><span class="status-label">Hated Users:</span><span class="status-value" id="hate-count">0</span></div>
                 </div>
@@ -687,6 +693,7 @@
                 this.exportPollTimer = null;
                 this.esmPollTimer = null;
                 this.esmCurrentJobId = null;
+                this.selectedGuildId = null;
 
                 this.initializeEventListeners();
                 this.initExport();
@@ -694,16 +701,49 @@
                 this.startAutoRefresh();
                 this.updateFooterTime();
                 this.loadCurrentPersona();
-                this.loadHateList();
-                this.loadHatePingsStatus();
+                this.loadDiscordGuilds();
                 this.loadMemory();
+            }
+
+            async loadDiscordGuilds() {
+                try {
+                    const res = await fetch(`${API_BASE}/discord/guilds`);
+                    const data = await res.json();
+                    const select = document.getElementById('hate-guild-select');
+                    select.innerHTML = '';
+                    if (!data.success || data.guilds.length === 0) {
+                        select.innerHTML = '<option value="">No connected Discord servers</option>';
+                        return;
+                    }
+                    data.guilds.forEach(guild => {
+                        const option = document.createElement('option');
+                        option.value = guild.id;
+                        option.textContent = guild.name;
+                        select.appendChild(option);
+                    });
+                    this.selectedGuildId = data.guilds[0].id;
+                    await Promise.all([this.loadHateList(), this.loadHatePingsStatus()]);
+                } catch (e) {
+                    console.error('[HATE] failed to load Discord servers', e);
+                }
+            }
+
+            hateGuildQuery() {
+                return this.selectedGuildId ? `?guildId=${encodeURIComponent(this.selectedGuildId)}` : '';
+            }
+
+            async selectHateGuild(event) {
+                this.selectedGuildId = event.target.value || null;
+                if (!this.selectedGuildId) return;
+                await Promise.all([this.loadHateList(), this.loadHatePingsStatus()]);
             }
 
             async loadHateList() {
                 try {
                     const badge = document.getElementById('hate-status');
                     const count = document.getElementById('hate-count');
-                    const res = await fetch(`${API_BASE}/hate/list`);
+                    if (!this.selectedGuildId) return;
+                    const res = await fetch(`${API_BASE}/hate/list${this.hateGuildQuery()}`);
                     const data = await res.json();
                     if (data.success) {
                         count.textContent = data.list.length;
@@ -722,7 +762,7 @@
                     const res = await fetch(`${API_BASE}/hate/${action}`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ userId })
+                        body: JSON.stringify({ userId, guildId: this.selectedGuildId })
                     });
                     const data = await res.json();
                     alert(data.message || (data.success ? 'Done' : data.error));
@@ -895,6 +935,7 @@
                 document.getElementById('refresh-cultist-btn').addEventListener('click', () => this.refreshCultistStatus());
                 document.getElementById('reset-cultist-btn').addEventListener('click', () => this.resetCultist());
                 document.getElementById('hate-pings-toggle').addEventListener('change', (e) => this.toggleHatePings(e));
+                document.getElementById('hate-guild-select').addEventListener('change', (e) => this.selectHateGuild(e));
                 document.getElementById('hate-add-btn').addEventListener('click', () => this.hateAction('add'));
                 document.getElementById('hate-remove-btn').addEventListener('click', () => this.hateAction('remove'));
                 document.getElementById('hate-refresh-btn').addEventListener('click', () => this.loadHateList());
@@ -1039,7 +1080,8 @@
 
             async loadHatePingsStatus() {
                 try {
-                    const res = await fetch(`${API_BASE}/hate/pings/status`);
+                    if (!this.selectedGuildId) return;
+                    const res = await fetch(`${API_BASE}/hate/pings/status${this.hateGuildQuery()}`);
                     const data = await res.json();
                     document.getElementById('hate-pings-toggle').checked = !!data.enabled;
                 } catch (error) { console.error('Load hate pings status error:', error); }
@@ -1050,7 +1092,7 @@
                 try {
                     const res = await fetch(`${API_BASE}/hate/pings/toggle`, {
                         method: 'POST', headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ enabled })
+                        body: JSON.stringify({ enabled, guildId: this.selectedGuildId })
                     });
                     const data = await res.json();
                     if (data.success) {

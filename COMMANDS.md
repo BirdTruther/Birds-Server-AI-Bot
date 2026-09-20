@@ -2,7 +2,9 @@
 
 All commands are Discord slash commands. Type `/` in any channel — Discord autocomplete shows them instantly.
 
-Commands are registered **guild-scoped** to `DISCORD_GUILD_ID` on startup.
+Commands are registered **globally** on startup, so one bot instance can serve
+multiple Discord servers. Global command changes can take up to an hour to
+appear everywhere.
 
 ---
 
@@ -91,7 +93,7 @@ Admin-managed roleplay "hate list". Admins add users, and the bot roasts them: c
 
 > `add`, `remove`, `list`, and `channel` are gated by Discord-native slash-command permissions — only admins you grant them to can use those. `/hate remove-me` is intentionally open so any listed player can opt out anytime.
 >
-> Proactive roast pings (the hourly AI timer and random chat callouts) can be disabled entirely from the dashboard's "Roast Pings" toggle; on-demand roasts and reply-based attacks stay active.
+> The hate list, roast channel, and "Roast Pings" toggle are separate for each Discord server. Proactive roast pings (the hourly AI timer and random chat callouts) can be disabled from the dashboard; on-demand roasts and reply-based attacks stay active.
 
 ---
 
