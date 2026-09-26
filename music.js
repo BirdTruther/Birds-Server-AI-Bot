@@ -72,13 +72,31 @@ const YTDLP = (() => {
 
 console.log(`[MUSIC] yt-dlp binary: ${YTDLP}`);
 
-function parseYtdlpJson(stdout, description) {
+// Print only the fields we need as JSON-encoded, tab-separated values.
+// `--dump-json` emits every format for every result (often ~2 MB for a
+// 5-result search), which overruns execFile's 1 MB stdout buffer.
+const YTDLP_EXEC_OPTS = { timeout: 30000, maxBuffer: 32 * 1024 * 1024 };
+const YTDLP_PRINT_TEMPLATE =
+    '%(id)j\t%(title)j\t%(duration)j\t%(thumbnail)j\t%(uploader)j';
+
+function parseJsonField(value) {
+    try { return JSON.parse(value); } catch (_) { return null; }
+}
+
+function parseYtdlpRecords(stdout, description) {
     const records = String(stdout || '')
         .split('\n')
         .map(line => line.trim())
         .filter(Boolean)
         .map(line => {
-            try { return JSON.parse(line); } catch (_) { return null; }
+            const [id, title, duration, thumbnail, uploader] = line.split('\t');
+            return {
+                id:       parseJsonField(id),
+                title:    parseJsonField(title),
+                duration: parseJsonField(duration),
+                thumbnail: parseJsonField(thumbnail),
+                uploader: parseJsonField(uploader),
+            };
         })
         .filter(data => data?.id);
 
@@ -92,13 +110,13 @@ async function ytdlpSearch(query) {
     console.log(`[MUSIC] Searching yt-dlp for: ${query}`);
     const args = [
         `ytsearch5:${query}`,
-        '--dump-json',
         '--no-playlist',
         '--quiet',
         '--no-warnings',
+        '--print', YTDLP_PRINT_TEMPLATE,
     ];
-    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
-    const [data] = parseYtdlpJson(stdout, `"${query}"`);
+    const { stdout } = await execFileAsync(YTDLP, args, YTDLP_EXEC_OPTS);
+    const [data] = parseYtdlpRecords(stdout, `"${query}"`);
     console.log(`[MUSIC] Found: ${data.title}`);
     return {
         title:     data.title    || 'Unknown Title',
@@ -113,13 +131,13 @@ async function ytdlpInfo(url) {
     console.log(`[MUSIC] Fetching info for URL: ${url}`);
     const args = [
         url,
-        '--dump-json',
         '--no-playlist',
         '--quiet',
         '--no-warnings',
+        '--print', YTDLP_PRINT_TEMPLATE,
     ];
-    const { stdout } = await execFileAsync(YTDLP, args, { timeout: 20000 });
-    const [data] = parseYtdlpJson(stdout, `URL ${url}`);
+    const { stdout } = await execFileAsync(YTDLP, args, YTDLP_EXEC_OPTS);
+    const [data] = parseYtdlpRecords(stdout, `URL ${url}`);
     return {
         title:     data.title    || 'Unknown Title',
         url:       `https://www.youtube.com/watch?v=${data.id}`,
